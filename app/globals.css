@@ -146,6 +146,11 @@ h1 {
   padding: 24px;
 }
 
+.auth-panel {
+  display: grid;
+  gap: 12px;
+}
+
 .auth-panel h1,
 .chat-panel h2,
 .runway-panel h2,
@@ -204,10 +209,57 @@ h1 {
   gap: 12px;
 }
 
+.upload-panel,
+.selected-image-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 14px;
+}
+
+.selected-image-list {
+  display: grid;
+  gap: 10px;
+}
+
+.upload-panel.is-dragging {
+  border-color: var(--accent);
+  background: var(--soft);
+}
+
+.upload-panel strong,
+.selected-image-card strong {
+  display: block;
+}
+
+.upload-actions {
+  flex: 0 0 auto;
+}
+
+.upload-copy,
+.image-meta {
+  margin: 4px 0 0;
+}
+
 .chat-input-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+}
+
+.field-row {
+  display: grid;
+  gap: 8px;
+}
+
+.field-label {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
 }
 
 .chat-form textarea,
@@ -379,6 +431,8 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .upload-panel,
+  .selected-image-card,
   .section-head,
   .edit-actions,
   .bill-list li {
