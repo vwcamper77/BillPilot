@@ -42,6 +42,7 @@ export default function DashboardPage() {
   const recognitionRef = useRef(null);
   const transcriptRef = useRef("");
   const imageInputRef = useRef(null);
+  const billsRef = useRef([]);
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [bills, setBills] = useState([]);
@@ -55,18 +56,27 @@ export default function DashboardPage() {
   const [editingIncome, setEditingIncome] = useState(false);
   const [incomeForm, setIncomeForm] = useState({ amount: "", payDay: "" });
   const [assistantMessage, setAssistantMessage] = useState("");
-  const [error, setError] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [chatError, setChatError] = useState("");
+  const [balanceError, setBalanceError] = useState("");
+  const [editError, setEditError] = useState("");
+  const [pageNotice, setPageNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [savingBalance, setSavingBalance] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState("");
-  const [selectedImages, setSelectedImages] = useState([]);
+  const [importJobs, setImportJobs] = useState([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [currentImportJobId, setCurrentImportJobId] = useState(null);
+  const [lastCompletedImportJobName, setLastCompletedImportJobName] = useState(null);
+  const [importSummary, setImportSummary] = useState(null);
+  const [lastImportError, setLastImportError] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
-  const [importProgress, setImportProgress] = useState(null);
-  const [pendingImportedBills, setPendingImportedBills] = useState([]);
+  const [optimisticBalance, setOptimisticBalance] = useState(null);
+  const [optimisticIncome, setOptimisticIncome] = useState(null);
 
   useEffect(() => {
     if (!auth) {
@@ -95,6 +105,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    billsRef.current = bills;
+  }, [bills]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return undefined;
     }
@@ -116,7 +130,7 @@ export default function DashboardPage() {
     recognition.onstart = () => {
       setListening(true);
       setVoiceMessage("Listening...");
-      setError("");
+      setChatError("");
       transcriptRef.current = "";
     };
 
@@ -205,6 +219,7 @@ export default function DashboardPage() {
     const unsubscribeIncome = onSnapshot(doc(db, "users", user.uid, "income", "main"), (snapshot) => {
       const nextIncome = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setIncome(nextIncome);
+      setOptimisticIncome(null);
       setIncomeForm({
         amount: nextIncome?.amount?.toString() || "",
         payDay: nextIncome?.payDay?.toString() || "",
@@ -213,6 +228,7 @@ export default function DashboardPage() {
     const unsubscribeAccount = onSnapshot(doc(db, "users", user.uid, "profile", "main"), (snapshot) => {
       const nextAccount = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setAccount(nextAccount);
+      setOptimisticBalance(null);
       setBalanceInput(nextAccount?.currentBalance?.toString() || "");
     });
     const unsubscribeReminders = onSnapshot(remindersQuery, (snapshot) => {
@@ -227,29 +243,37 @@ export default function DashboardPage() {
     };
   }, [user]);
 
-  const displayBills = useMemo(
-    () => mergeUniqueBills(bills, pendingImportedBills),
-    [bills, pendingImportedBills],
-  );
+  const displayIncome = useMemo(() => (
+    optimisticIncome === null
+      ? income
+      : { ...(income || {}), ...optimisticIncome, type: "income", active: true, currency: "GBP" }
+  ), [income, optimisticIncome]);
+  const displayAccount = useMemo(() => (
+    optimisticBalance === null
+      ? account
+      : { ...(account || {}), currentBalance: optimisticBalance, currency: "GBP" }
+  ), [account, optimisticBalance]);
   const dashboard = useMemo(
-    () => calculateDashboard(displayBills, income, account),
-    [account, displayBills, income],
+    () => calculateDashboard(bills, displayIncome, displayAccount),
+    [bills, displayAccount, displayIncome],
   );
+  const importLocked = isImporting;
+  const importQueueFinished = importJobs.length > 0 && !isImporting && importJobs.some((job) => job.status !== "queued");
 
   async function handleSignIn() {
     if (!auth) {
-      setError("Firebase is not configured yet.");
+      setAuthError("Firebase is not configured yet.");
       return;
     }
 
     setSigningIn(true);
-    setError("");
+    setAuthError("");
 
     try {
       await authPersistenceReady;
       await signInAnonymously(auth);
     } catch (signInError) {
-      setError(signInError.message);
+      setAuthError(signInError.message);
     } finally {
       setSigningIn(false);
     }
@@ -257,12 +281,12 @@ export default function DashboardPage() {
 
   async function handleGoogleSignIn() {
     if (!auth || !googleProvider) {
-      setError("Firebase is not configured yet.");
+      setAuthError("Firebase is not configured yet.");
       return;
     }
 
     setSigningIn(true);
-    setError("");
+    setAuthError("");
 
     try {
       await authPersistenceReady;
@@ -281,16 +305,16 @@ export default function DashboardPage() {
       await signInWithPopup(auth, googleProvider);
     } catch (signInError) {
       if (signInError?.code === "auth/popup-closed-by-user") {
-        setError("Google sign-in was closed before it finished.");
+        setAuthError("Google sign-in was closed before it finished.");
         return;
       }
 
       if (signInError?.code === "auth/unauthorized-domain") {
-        setError("Add this site to Firebase Authentication authorised domains, then try again.");
+        setAuthError("Add this site to Firebase Authentication authorised domains, then try again.");
         return;
       }
 
-      setError(signInError.message);
+      setAuthError(signInError.message);
     } finally {
       setSigningIn(false);
     }
@@ -299,52 +323,257 @@ export default function DashboardPage() {
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if ((!message.trim() && !selectedImages.length) || !user) {
+    if ((!message.trim() && !importJobs.length) || !user) {
       return;
     }
 
-    setSubmitting(true);
-    setError("");
+    setChatError("");
     setAssistantMessage("");
-    setImportProgress(null);
+    setPageNotice("");
 
     try {
-      const response = await runWithTimeout(fetch("/api/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          imageDataUrls: selectedImages.map((image) => image.dataUrl),
-          imageNames: selectedImages.map((image) => image.name),
-        }),
-      }), "The parser is taking too long. Try again.");
-      const parsed = await response.json();
+      if (importJobs.length) {
+        await runImportQueue();
+      } else {
+        setSubmitting(true);
+        const response = await runWithTimeout(fetch("/api/parse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        }), "The parser is taking too long. Try again.");
+        const parsed = await response.json();
 
-      if (!response.ok) {
-        throw new Error(parsed.responseMessage || "I could not read that yet.");
-      }
+        if (!response.ok) {
+          throw new Error(parsed.responseMessage || "I could not read that yet.");
+        }
 
-      const outcome = await applyParsedActions(user.uid, parsed, Boolean(income), bills, {
-        onPendingBills: setPendingImportedBills,
-        onProgress: setImportProgress,
-      });
-      setAssistantMessage(buildOutcomeMessage(parsed, outcome));
-
-      if (parsed.action === "unknown") {
-        return;
+        const outcome = await applyParsedActions(user.uid, parsed, Boolean(displayIncome), bills);
+        setAssistantMessage(buildOutcomeMessage(parsed, outcome));
       }
 
       setMessage("");
       setVoiceMessage("");
-      setSelectedImages([]);
       transcriptRef.current = "";
     } catch (submitError) {
-      setError(submitError.message);
+      if (submitError?.message === "Failed to fetch") {
+        setChatError("The screenshot did not reach the server. Try again with that image.");
+      } else {
+        setChatError(submitError.message);
+      }
     } finally {
-      setPendingImportedBills([]);
-      setImportProgress(null);
       setSubmitting(false);
     }
+  }
+
+  async function runImportQueue() {
+    if (isImporting) return;
+
+    setIsImporting(true);
+    setImportSummary(null);
+    setLastImportError(null);
+    setLastCompletedImportJobName(null);
+
+    const jobsToRun = importJobs.filter((job) => job.status === "queued");
+
+    let importedTotal = 0;
+    let skippedTotal = 0;
+    let processedTotal = 0;
+
+    try {
+      for (const job of jobsToRun) {
+        setCurrentImportJobId(job.id);
+
+        updateJob(job.id, {
+          status: "processing",
+          progressText: "Reading this screenshot now",
+          errorMessage: "",
+        });
+
+        try {
+          console.log("[import-queue] starting job", job.id, job.name);
+
+          const result = await withTimeout(
+            importSingleImage(job),
+            45000,
+            job.name,
+          );
+
+          importedTotal += result.importedCount || 0;
+          skippedTotal += result.skippedCount || 0;
+          processedTotal += 1;
+          const progressParts = [];
+
+          if (result.importedCount === 1) progressParts.push("Imported 1 bill.");
+          else if (result.importedCount > 1) progressParts.push(`Imported ${result.importedCount} bills.`);
+
+          if (result.skippedCount === 1) progressParts.push("Skipped 1 duplicate or unreadable row.");
+          else if (result.skippedCount > 1) progressParts.push(`Skipped ${result.skippedCount} duplicate or unreadable rows.`);
+
+          updateJob(job.id, {
+            status: "done",
+            progressText: progressParts.join(" ") || "Imported.",
+            importedCount: result.importedCount || 0,
+            skippedCount: result.skippedCount || 0,
+            errorMessage: "",
+          });
+
+          console.log("[import-queue] finished job", job.id, job.name, result);
+        } catch (error) {
+          processedTotal += 1;
+
+          const errMsg = error?.message || "Unknown import error";
+          setLastImportError(errMsg);
+
+          updateJob(job.id, {
+            status: "failed",
+            progressText: "Could not read this screenshot. Try again.",
+            errorMessage: errMsg,
+          });
+
+          console.error("[import-queue] failed job", job.id, job.name, error);
+        } finally {
+          setLastCompletedImportJobName(job.name);
+          setCurrentImportJobId(null);
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+      }
+    } finally {
+      const summary = { importedCount: importedTotal, skippedCount: skippedTotal, processedCount: processedTotal };
+      setImportSummary(summary);
+
+      const parts = [];
+      if (importedTotal === 1) parts.push("Imported 1 bill.");
+      else if (importedTotal > 1) parts.push(`Imported ${importedTotal} bills.`);
+      if (skippedTotal === 1) parts.push("Skipped 1 duplicate.");
+      else if (skippedTotal > 1) parts.push(`Skipped ${skippedTotal} duplicates.`);
+      if (parts.length) setAssistantMessage(parts.join(" "));
+
+      setIsImporting(false);
+    }
+  }
+
+  async function importSingleImage(job) {
+    console.log("[import-single] sending", job.name);
+
+    const formData = new FormData();
+    formData.append("image", job.file, job.name);
+    if (message.trim()) {
+      formData.append("message", message);
+    }
+
+    const response = await fetch("/api/parse", {
+      method: "POST",
+      body: formData,
+    });
+
+    console.log("[import-single] response status", response.status);
+    const json = await response.json();
+    console.log("[import-single] parsed json", json);
+    if (!response.ok || json.ok === false) {
+      throw new Error(json.error || json.message || "Image import failed");
+    }
+
+    const parsedBills = Array.isArray(json.bills) ? json.bills : [];
+    let importedCount = 0;
+    let skippedCount = 0;
+    let saveErrorCount = 0;
+    let firstSaveError = null;
+
+    for (const bill of parsedBills) {
+      try {
+        const result = await saveImportedBill(user.uid, bill);
+
+        if (result?.skipped) {
+          skippedCount += 1;
+        } else {
+          importedCount += 1;
+        }
+      } catch (error) {
+        console.error("[import-single] failed saving bill", bill, error);
+        skippedCount += 1;
+        saveErrorCount += 1;
+        if (!firstSaveError) {
+          firstSaveError = error;
+        }
+      }
+    }
+
+    if (parsedBills.length > 0 && importedCount === 0 && saveErrorCount > 0) {
+      throw new Error(firstSaveError?.message || "Imported rows could not be saved.");
+    }
+
+    console.log("[import-single] image result", {
+      name: job.name,
+      responseOk: response.ok,
+      jsonOk: json.ok,
+      billCount: parsedBills.length,
+      importedCount,
+      skippedCount,
+    });
+
+    return {
+      importedCount,
+      skippedCount,
+      bills: parsedBills,
+    };
+  }
+
+  function updateJob(jobId, patch) {
+    setImportJobs((jobs) =>
+      jobs.map((job) =>
+        job.id === jobId ? { ...job, ...patch } : job,
+      ),
+    );
+  }
+
+  async function saveImportedBill(userId, bill) {
+    const parsedBill = {
+      action: "create_bill",
+      name: String(bill?.name || "").trim(),
+      amount: Number(bill?.amount),
+      currency: bill?.currency || "GBP",
+      frequency: "monthly",
+      dueDay: Number(bill?.dueDay),
+      reminderOffsetDays: 1,
+    };
+
+    if (!parsedBill.name || !Number.isFinite(parsedBill.amount) || !Number.isFinite(parsedBill.dueDay)) {
+      return { skipped: true, reason: "invalid" };
+    }
+
+    const currentBills = billsRef.current || [];
+    const duplicate = currentBills.some((existingBill) => billFingerprint(existingBill) === billFingerprint(parsedBill));
+
+    if (duplicate) {
+      return { skipped: true, reason: "duplicate" };
+    }
+
+    const billRef = doc(collection(db, "users", userId, "bills"));
+    const billDocument = buildBillDocument(parsedBill);
+    const batch = writeBatch(db);
+
+    batch.set(billRef, {
+      ...billDocument,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await batch.commit();
+    const savedBill = {
+      ...billDocument,
+      id: billRef.id,
+    };
+
+    billsRef.current = [...currentBills, savedBill];
+    setBills((current) => {
+      if (current.some((existingBill) => existingBill.id === savedBill.id)) {
+        return current;
+      }
+
+      return [...current, savedBill];
+    });
+
+    return { skipped: false };
   }
 
   async function handleBalanceSave(event) {
@@ -357,15 +586,20 @@ export default function DashboardPage() {
     const parsedBalance = Number(balanceInput);
 
     if (!Number.isFinite(parsedBalance)) {
-      setError("Add your current account balance as a number.");
+      setBalanceError("Add your current account balance as a number.");
       return;
     }
 
     setSavingBalance(true);
-    setError("");
+    setBalanceError("");
+    setPageNotice("");
+    setOptimisticBalance(parsedBalance);
+    setBalanceInput(parsedBalance.toString());
+    setPageNotice(`Balance updated to ${formatGBP(parsedBalance)}.`);
 
-    try {
-      await runWithTimeout(setDoc(
+    setSavingBalance(false);
+
+    setDoc(
         doc(db, "users", user.uid, "profile", "main"),
         {
           currentBalance: parsedBalance,
@@ -374,12 +608,11 @@ export default function DashboardPage() {
           createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
         },
         { merge: true },
-      ), "Saving the balance is taking too long. Check your connection and try again.");
-    } catch (saveError) {
-      setError(saveError.message);
-    } finally {
-      setSavingBalance(false);
-    }
+      ).catch((saveError) => {
+        setOptimisticBalance(null);
+        setPageNotice("");
+        setBalanceError(saveError.message || "Balance could not be saved.");
+      });
   }
 
   function startBillEdit(bill) {
@@ -389,7 +622,7 @@ export default function DashboardPage() {
       amount: bill.amount?.toString() || "",
       dueDay: bill.dueDay?.toString() || "",
     });
-    setError("");
+    setEditError("");
   }
 
   function cancelBillEdit() {
@@ -408,12 +641,13 @@ export default function DashboardPage() {
     const dueDay = Number(editingBillForm.dueDay);
 
     if (!editingBillForm.name.trim() || !Number.isFinite(amount) || !Number.isFinite(dueDay)) {
-      setError("Add a bill name, amount, and due day before saving.");
+      setEditError("Add a bill name, amount, and due day before saving.");
       return;
     }
 
     setSavingEdit(true);
-    setError("");
+    setEditError("");
+    setPageNotice("");
 
     try {
       const updatedBill = buildBillDocument({
@@ -434,8 +668,9 @@ export default function DashboardPage() {
       ), "Saving that bill is taking too long. Check your connection and try again.");
 
       cancelBillEdit();
+      setPageNotice("Bill updated.");
     } catch (saveError) {
-      setError(saveError.message);
+      setEditError(saveError.message);
     } finally {
       setSavingEdit(false);
     }
@@ -452,30 +687,42 @@ export default function DashboardPage() {
     const payDay = Number(incomeForm.payDay);
 
     if (!Number.isFinite(amount) || !Number.isFinite(payDay)) {
-      setError("Add payday amount and day before saving.");
+      setEditError("Add payday amount and day before saving.");
       return;
     }
 
     setSavingEdit(true);
-    setError("");
+    setEditError("");
+    setPageNotice("");
+    setOptimisticIncome({
+      name: income?.name || "Payday",
+      amount,
+      payDay,
+    });
+    setIncomeForm({
+      amount: amount.toString(),
+      payDay: payDay.toString(),
+    });
+    setEditingIncome(false);
+    setPageNotice(`Payday set for the ${formatOrdinal(payDay)}.`);
 
-    try {
-      await saveIncome(
-        user.uid,
-        {
-          name: income?.name || "Payday",
-          amount,
-          payDay,
-          currency: "GBP",
-        },
-        Boolean(income),
-      );
-      setEditingIncome(false);
-    } catch (saveError) {
-      setError(saveError.message);
-    } finally {
-      setSavingEdit(false);
-    }
+    setSavingEdit(false);
+
+    saveIncome(
+      user.uid,
+      {
+        name: income?.name || "Payday",
+        amount,
+        payDay,
+        currency: "GBP",
+      },
+      Boolean(income),
+    ).catch((saveError) => {
+      setOptimisticIncome(null);
+      setEditingIncome(true);
+      setPageNotice("");
+      setEditError(saveError.message);
+    });
   }
 
   function handleVoiceToggle() {
@@ -495,31 +742,47 @@ export default function DashboardPage() {
   }
 
   async function handleImageFiles(fileList) {
-    const imageFiles = Array.from(fileList || []).filter((entry) => entry?.type?.startsWith("image/"));
-
-    if (!imageFiles.length) {
-      setError("Add a PNG, JPG, WEBP, or GIF screenshot.");
+    if (importLocked) {
       return;
     }
 
-    setError("");
+    const imageFiles = Array.from(fileList || []).filter((entry) => entry?.type?.startsWith("image/"));
+
+    if (!imageFiles.length) {
+      setChatError("Add a PNG, JPG, WEBP, or GIF screenshot.");
+      return;
+    }
+
+    setChatError("");
     setAssistantMessage("");
 
     try {
-      const nextImages = await Promise.all(
+      const nextJobs = await Promise.all(
         imageFiles.slice(0, 8).map(async (file) => ({
+          id: buildImportJobId(file),
+          file,
           name: file.name || "bill-screenshot.png",
-          size: file.size || 0,
+          previewUrl: URL.createObjectURL(file),
+          status: "queued",
+          progressText: "Waiting",
+          importedCount: 0,
+          skippedCount: 0,
+          errorMessage: "",
           dataUrl: await readFileAsDataUrl(file),
         })),
       );
-      setSelectedImages((current) => mergeSelectedImages(current, nextImages));
+      setImportJobs((current) => mergeImportJobs(current, nextJobs));
     } catch {
-      setError("I could not read that image. Try a different screenshot or file.");
+      setChatError("I could not read that image. Try a different screenshot or file.");
     }
   }
 
   function handleImagePickerChange(event) {
+    if (importLocked) {
+      event.target.value = "";
+      return;
+    }
+
     void handleImageFiles(event.target.files);
     event.target.value = "";
   }
@@ -527,6 +790,9 @@ export default function DashboardPage() {
   function handleDrop(event) {
     event.preventDefault();
     setDragActive(false);
+    if (importLocked) {
+      return;
+    }
     void handleImageFiles(event.dataTransfer.files);
   }
 
@@ -549,7 +815,33 @@ export default function DashboardPage() {
   }
 
   function removeSelectedImage(imageKey) {
-    setSelectedImages((current) => current.filter((image) => image.key !== imageKey));
+    setImportJobs((current) => {
+      const removed = current.find((job) => job.id === imageKey);
+
+      if (removed?.previewUrl) {
+        URL.revokeObjectURL(removed.previewUrl);
+      }
+
+      return current.filter((job) => job.id !== imageKey);
+    });
+  }
+
+  function clearImports() {
+    setImportJobs((current) => {
+      current.forEach((job) => {
+        if (job.previewUrl) {
+          URL.revokeObjectURL(job.previewUrl);
+        }
+      });
+
+      return [];
+    });
+    setAssistantMessage("");
+    setChatError("");
+    setImportSummary(null);
+    setLastImportError(null);
+    setLastCompletedImportJobName(null);
+    setCurrentImportJobId(null);
   }
 
   if (!authReady) {
@@ -587,7 +879,7 @@ export default function DashboardPage() {
             Continue as guest
           </button>
           <p className="helper-text">Guest mode is temporary. Google sign-in keeps your data attached to your account.</p>
-          {error ? <p className="error">{error}</p> : null}
+          {authError ? <p className="error">{authError}</p> : null}
         </section>
       </main>
     );
@@ -617,6 +909,12 @@ export default function DashboardPage() {
         </div>
       </header>
 
+      {pageNotice ? (
+        <section className="page-notice" aria-live="polite">
+          {pageNotice}
+        </section>
+      ) : null}
+
       <section className="summary-grid" aria-label="Bill summary">
         <SummaryCard
           label="Before payday"
@@ -625,7 +923,7 @@ export default function DashboardPage() {
         <SummaryCard
           label="Left for food and fun"
           value={
-            account?.currentBalance !== undefined
+            displayAccount?.currentBalance !== undefined
               ? `${formatGBP(dashboard.leftBeforePayday)} after bills before payday`
               : "Add your balance"
           }
@@ -658,20 +956,22 @@ export default function DashboardPage() {
                     id="account-balance"
                     inputMode="decimal"
                     value={balanceInput}
+                    disabled={importLocked}
                     onChange={(event) => setBalanceInput(event.target.value)}
                     placeholder="Current balance in GBP"
                   />
-                  <button className="secondary-button" type="submit" disabled={savingBalance}>
+                  <button className="secondary-button" type="submit" disabled={savingBalance || importLocked}>
                     {savingBalance ? "Saving..." : "Save"}
                   </button>
                 </div>
               </div>
             </form>
             <p className="helper-text balance-copy">
-              {account?.currentBalance !== undefined
+              {displayAccount?.currentBalance !== undefined
                 ? `${formatGBP(dashboard.currentBalance)} in the account. ${formatGBP(dashboard.leftBeforePayday)} left after bills due before payday.`
                 : "Add your current balance to see what is left after bills before payday."}
             </p>
+            {balanceError ? <p className="error">{balanceError}</p> : null}
           </section>
 
           <section className="chat-panel">
@@ -705,6 +1005,7 @@ export default function DashboardPage() {
                   <button
                     className="secondary-button small-button"
                     type="button"
+                    disabled={importLocked}
                     onClick={() => imageInputRef.current?.click()}
                   >
                     Choose image
@@ -719,20 +1020,35 @@ export default function DashboardPage() {
                   />
                 </div>
               </div>
-              {selectedImages.length ? (
+              {importJobs.length ? (
                 <div className="selected-image-list">
-                  {selectedImages.map((image) => (
-                    <div key={image.key} className="selected-image-card">
+                  {importJobs.map((job) => (
+                    <div
+                      key={job.id}
+                      className={`selected-image-card${getImportJobClass(job)}`}
+                    >
                       <div>
-                        <strong>{image.name}</strong>
+                        <div className="selected-image-head">
+                          <img className="selected-image-preview" src={job.previewUrl} alt="" />
+                          <strong>{job.name}</strong>
+                        </div>
                         <p className="helper-text image-meta">
-                          Screenshot ready. I&apos;ll read it when you log it.
+                          {job.progressText}
                         </p>
+                        {job.status === "processing" ? (
+                          <div className="image-progress" aria-hidden="true">
+                            <span
+                              className="image-progress-bar"
+                              style={{ width: "100%" }}
+                            />
+                          </div>
+                        ) : null}
                       </div>
                       <button
                         className="secondary-button small-button"
                         type="button"
-                        onClick={() => removeSelectedImage(image.key)}
+                        disabled={importLocked}
+                        onClick={() => removeSelectedImage(job.id)}
                       >
                         Remove
                       </button>
@@ -740,9 +1056,25 @@ export default function DashboardPage() {
                   ))}
                 </div>
               ) : null}
+              {importJobs.length ? (
+                <div className="import-debug-panel" style={{ fontSize: "11px", fontFamily: "monospace", background: "#1a1a2e", color: "#a0d8ef", padding: "10px 12px", borderRadius: "6px", lineHeight: 1.7 }}>
+                  <strong style={{ color: "#e0e0e0" }}>Import Debug</strong>
+                  <div>queue started: {isImporting ? "true" : "false"}</div>
+                  <div>isImporting: {String(isImporting)}</div>
+                  <div>current job id: {currentImportJobId || "none"}</div>
+                  <div>current job name: {currentImportJobId ? (importJobs.find((j) => j.id === currentImportJobId)?.name ?? "?") : "none"}</div>
+                  <div>current job status: {currentImportJobId ? (importJobs.find((j) => j.id === currentImportJobId)?.status ?? "?") : "none"}</div>
+                  <div>last completed job: {lastCompletedImportJobName || "none"}</div>
+                  <div>last error: {lastImportError || "none"}</div>
+                  <div>queued: {importJobs.filter((j) => j.status === "queued").length}</div>
+                  <div>done: {importJobs.filter((j) => j.status === "done").length}</div>
+                  <div>failed: {importJobs.filter((j) => j.status === "failed").length}</div>
+                </div>
+              ) : null}
               <div className="chat-input-row">
                 <textarea
                   value={message}
+                  disabled={importLocked}
                   onChange={(event) => setMessage(event.target.value)}
                   onPaste={handlePaste}
                   placeholder="My rent is GBP 1,100 due on the 26th every month."
@@ -750,24 +1082,25 @@ export default function DashboardPage() {
                 <button
                   className={`secondary-button mic-button${listening ? " is-listening" : ""}`}
                   type="button"
+                  disabled={importLocked}
                   onClick={handleVoiceToggle}
                   aria-pressed={listening}
                 >
                   {listening ? "Stop" : "Mic"}
                 </button>
               </div>
-              <button className="primary-button" type="submit" disabled={submitting}>
-                {submitting ? "Reading..." : "Log it"}
+              <button className="primary-button" type="submit" disabled={submitting || importLocked}>
+                {importLocked ? "Importing..." : submitting ? "Reading..." : "Log it"}
               </button>
             </form>
-            {voiceMessage ? <p className="helper-text voice-status">{voiceMessage}</p> : null}
-            {importProgress ? (
-              <p className="helper-text voice-status">
-                {importProgress.message}
-              </p>
+            {importQueueFinished ? (
+              <button className="secondary-button small-button" type="button" onClick={clearImports}>
+                Clear imports
+              </button>
             ) : null}
+            {voiceMessage ? <p className="helper-text voice-status">{voiceMessage}</p> : null}
             {assistantMessage ? <p className="assistant-message">{assistantMessage}</p> : null}
-            {error ? <p className="error">{error}</p> : null}
+            {chatError ? <p className="error">{chatError}</p> : null}
           </section>
 
           <section className="runway-panel">
@@ -807,6 +1140,7 @@ export default function DashboardPage() {
               <button
                 className="secondary-button small-button"
                 type="button"
+                disabled={importLocked}
                 onClick={() => setEditingIncome((current) => !current)}
               >
                 {editingIncome ? "Cancel" : income ? "Edit" : "Set"}
@@ -818,6 +1152,7 @@ export default function DashboardPage() {
                 <input
                   id="payday-amount"
                   inputMode="decimal"
+                  disabled={importLocked}
                   value={incomeForm.amount}
                   onChange={(event) => setIncomeForm((current) => ({ ...current, amount: event.target.value }))}
                   placeholder="Payday amount in GBP"
@@ -826,20 +1161,21 @@ export default function DashboardPage() {
                 <input
                   id="payday-day"
                   inputMode="numeric"
+                  disabled={importLocked}
                   value={incomeForm.payDay}
                   onChange={(event) => setIncomeForm((current) => ({ ...current, payDay: event.target.value }))}
                   placeholder="Day of month"
                 />
                 <div className="edit-actions">
-                  <button className="primary-button" type="submit" disabled={savingEdit}>
+                  <button className="primary-button" type="submit" disabled={savingEdit || importLocked}>
                     {savingEdit ? "Saving..." : "Save"}
                   </button>
                 </div>
               </form>
             ) : (
               <p className="helper-text">
-                {income
-                  ? `${formatGBP(income.amount)} on the ${formatOrdinal(income.payDay)} of each month.`
+                {displayIncome
+                  ? `${formatGBP(displayIncome.amount)} on the ${formatOrdinal(displayIncome.payDay)} of each month.`
                   : "No payday set yet."}
               </p>
             )}
@@ -854,6 +1190,7 @@ export default function DashboardPage() {
             onEditCancel={cancelBillEdit}
             onEditSave={handleBillEditSave}
             savingEdit={savingEdit}
+            importLocked={importLocked}
           />
           <BillGroup
             title="After payday"
@@ -865,7 +1202,9 @@ export default function DashboardPage() {
             onEditCancel={cancelBillEdit}
             onEditSave={handleBillEditSave}
             savingEdit={savingEdit}
+            importLocked={importLocked}
           />
+          {editingIncome || editingBillId ? (editError ? <p className="error">{editError}</p> : null) : null}
         </section>
       </section>
     </main>
@@ -902,6 +1241,7 @@ function BillGroup({
   onEditCancel,
   onEditSave,
   savingEdit,
+  importLocked,
 }) {
   return (
     <div className="bill-section">
@@ -936,10 +1276,10 @@ function BillGroup({
                     placeholder="Day of month"
                   />
                   <div className="edit-actions">
-                    <button className="primary-button small-button" type="submit" disabled={savingEdit}>
+                    <button className="primary-button small-button" type="submit" disabled={savingEdit || importLocked}>
                       {savingEdit ? "Saving..." : "Save"}
                     </button>
-                    <button className="secondary-button small-button" type="button" onClick={onEditCancel}>
+                    <button className="secondary-button small-button" type="button" disabled={importLocked} onClick={onEditCancel}>
                       Cancel
                     </button>
                   </div>
@@ -950,14 +1290,11 @@ function BillGroup({
                     <span>{bill.name}</span>
                     <span className="bill-meta">
                       {formatGBP(bill.amount)} - {formatOrdinal(bill.dueDay)}
-                      {bill.pendingImport ? " - importing..." : ""}
                     </span>
                   </div>
-                  {bill.pendingImport ? null : (
-                    <button className="secondary-button small-button" type="button" onClick={() => onEditStart(bill)}>
-                      Edit
-                    </button>
-                  )}
+                  <button className="secondary-button small-button" type="button" disabled={importLocked} onClick={() => onEditStart(bill)}>
+                    Edit
+                  </button>
                 </>
               )}
             </li>
@@ -981,15 +1318,10 @@ async function saveIncome(userId, parsed, hasExistingIncome) {
     payload.createdAt = serverTimestamp();
   }
 
-  await runWithTimeout(
-    setDoc(doc(db, "users", userId, "income", "main"), payload, { merge: true }),
-    "Saving payday is taking too long. Check your connection and try again.",
-  );
+  await setDoc(doc(db, "users", userId, "income", "main"), payload, { merge: true });
 }
 
-async function applyParsedActions(userId, parsed, hasExistingIncome, existingBills = [], handlers = {}) {
-  const onPendingBills = handlers.onPendingBills || (() => undefined);
-  const onProgress = handlers.onProgress || (() => undefined);
+async function applyParsedActions(userId, parsed, hasExistingIncome, existingBills = []) {
   const outcome = { createdBills: 0, skippedBills: 0, savedIncome: false };
   const items = parsed.action === "batch" ? parsed.items || [] : [parsed];
   const billItems = dedupeBillItems(
@@ -997,60 +1329,54 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
     existingBills,
   );
   const incomeItems = items.filter((item) => item.action === "set_income");
-  const totalSteps = billItems.toCreate.length + (incomeItems.length ? 1 : 0);
-
-  if (billItems.toCreate.length) {
-    onPendingBills(billItems.toCreate.map(buildPendingBill));
-  } else {
-    onPendingBills([]);
-  }
-
-  onProgress({
-    completed: 0,
-    total: totalSteps,
-    message: buildImportProgressMessage(0, totalSteps, billItems.toCreate.length),
-  });
 
   outcome.skippedBills = billItems.skipped;
 
   if (billItems.toCreate.length) {
-    const batch = writeBatch(db);
-
-    billItems.toCreate.forEach((item) => {
-      const billRef = doc(collection(db, "users", userId, "bills"));
-      const bill = buildBillDocument(item);
-
-      batch.set(billRef, {
-        ...bill,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    });
-
-    await runWithTimeout(
-      batch.commit(),
-      "Importing those bills is taking too long. Check your connection and try again.",
-      25000,
+    const saveResults = await Promise.allSettled(
+      billItems.toCreate.map((item) => {
+        const billRef = doc(collection(db, "users", userId, "bills"));
+        const bill = buildBillDocument(item);
+        const batch = writeBatch(db);
+        batch.set(billRef, {
+          ...bill,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        return batch.commit();
+      }),
     );
-    outcome.createdBills = billItems.toCreate.length;
-    onProgress({
-      completed: outcome.createdBills,
-      total: totalSteps,
-      message: buildImportProgressMessage(outcome.createdBills, totalSteps, billItems.toCreate.length),
-    });
+    outcome.createdBills = saveResults.filter((r) => r.status === "fulfilled").length;
+    const failures = saveResults.filter((r) => r.status === "rejected");
+    if (failures.length) {
+      console.error("[applyParsedActions] some bill saves failed", failures.map((f) => f.reason));
+    }
   }
 
   if (incomeItems.length) {
-    await saveIncome(userId, incomeItems[incomeItems.length - 1], hasExistingIncome);
-    outcome.savedIncome = true;
-    onProgress({
-      completed: outcome.createdBills + 1,
-      total: totalSteps,
-      message: buildImportProgressMessage(outcome.createdBills + 1, totalSteps, billItems.toCreate.length),
-    });
+    try {
+      await saveIncome(userId, incomeItems[incomeItems.length - 1], hasExistingIncome);
+      outcome.savedIncome = true;
+    } catch (saveError) {
+      console.error("[applyParsedActions] income save failed", saveError);
+    }
   }
 
   return outcome;
+}
+
+async function withTimeout(promise, ms, label) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function runWithTimeout(promise, timeoutMessage, timeoutMs = 12000) {
@@ -1072,28 +1398,99 @@ function readFileAsDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
-    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onload = async () => {
+      const originalDataUrl = String(reader.result || "");
+
+      try {
+        if (!file.type.startsWith("image/")) {
+          resolve(originalDataUrl);
+          return;
+        }
+
+        const compressed = await compressImageDataUrl(originalDataUrl, file.type);
+        resolve(compressed);
+      } catch {
+        resolve(originalDataUrl);
+      }
+    };
     reader.onerror = () => reject(new Error("Could not read file"));
     reader.readAsDataURL(file);
   });
 }
 
-function mergeSelectedImages(current, next) {
+function compressImageDataUrl(dataUrl, mimeType) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => {
+      const maxDimension = 1600;
+      const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+      const canvas = document.createElement("canvas");
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const context = canvas.getContext("2d");
+
+      if (!context) {
+        reject(new Error("Canvas is not available"));
+        return;
+      }
+
+      context.drawImage(image, 0, 0, width, height);
+
+      const outputType = mimeType === "image/png" ? "image/png" : "image/jpeg";
+      const quality = outputType === "image/jpeg" ? 0.82 : undefined;
+      const nextDataUrl = canvas.toDataURL(outputType, quality);
+
+      resolve(nextDataUrl);
+    };
+
+    image.onerror = () => reject(new Error("Could not process image"));
+    image.src = dataUrl;
+  });
+}
+
+function buildImportJobId(file) {
+  return `${file.name}_${file.size}_${file.lastModified}`;
+}
+
+function mergeImportJobs(current, next) {
+  const seen = new Set(current.map((job) => job.id));
   const merged = [...current];
-  const seen = new Set(current.map((image) => image.key));
 
-  for (const image of next) {
-    const key = `${image.name}_${image.size}`;
-
-    if (seen.has(key)) {
+  for (const job of next) {
+    if (seen.has(job.id)) {
       continue;
     }
 
-    seen.add(key);
-    merged.push({ ...image, key });
+    seen.add(job.id);
+    merged.push(job);
   }
 
   return merged.slice(0, 8);
+}
+
+function getImportJobClass(job) {
+  if (job.status === "done") {
+    return " is-done";
+  }
+
+  if (job.status === "processing") {
+    return " is-processing";
+  }
+
+  if (job.status === "failed") {
+    return " is-error";
+  }
+
+  return "";
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function billFingerprint(bill) {
@@ -1102,22 +1499,6 @@ function billFingerprint(bill) {
     Number(bill.amount || 0).toFixed(2),
     Number(bill.dueDay || 0),
   ].join("|");
-}
-
-function mergeUniqueBills(savedBills, pendingBills) {
-  const savedKeys = new Set(savedBills.map((bill) => billFingerprint(bill)));
-  return [
-    ...savedBills,
-    ...pendingBills.filter((bill) => !savedKeys.has(billFingerprint(bill))),
-  ];
-}
-
-function buildPendingBill(parsed) {
-  return {
-    id: `pending-${billFingerprint(parsed)}`,
-    pendingImport: true,
-    ...buildBillDocument(parsed),
-  };
 }
 
 function dedupeBillItems(items, existingBills) {
@@ -1141,24 +1522,23 @@ function dedupeBillItems(items, existingBills) {
   return { toCreate, skipped };
 }
 
-function buildImportProgressMessage(completed, total, newBills) {
-  if (!total) {
-    return "";
-  }
+function mergeOutcomeBills(existingBills, parsed) {
+  const nextBills = [...existingBills];
+  const items = parsed.action === "batch" ? parsed.items || [] : [parsed];
 
-  if (completed < total) {
-    if (newBills > 1) {
-      return `Importing your bills. ${completed} of ${total} steps done. Watch the bill list update as they land.`;
+  items.forEach((item) => {
+    if (item.action !== "create_bill") {
+      return;
     }
 
-    return `Saving your bill. ${completed} of ${total} steps done.`;
-  }
+    if (nextBills.some((bill) => billFingerprint(bill) === billFingerprint(item))) {
+      return;
+    }
 
-  if (newBills > 1) {
-    return `Import complete. ${newBills} bills processed.`;
-  }
+    nextBills.push(item);
+  });
 
-  return "Import complete.";
+  return nextBills;
 }
 
 function buildOutcomeMessage(parsed, outcome) {
@@ -1189,4 +1569,34 @@ function buildOutcomeMessage(parsed, outcome) {
   }
 
   return parts.join(" ") || parsed.responseMessage;
+}
+
+function buildBatchOutcomeMessage(outcome, sourceCount) {
+  const parts = [];
+
+  if (outcome.createdBills > 0) {
+    parts.push(
+      outcome.createdBills === 1
+        ? "Imported 1 bill."
+        : `Imported ${outcome.createdBills} bills.`,
+    );
+  }
+
+  if (outcome.skippedBills > 0) {
+    parts.push(
+      outcome.skippedBills === 1
+        ? "Skipped 1 duplicate."
+        : `Skipped ${outcome.skippedBills} duplicates.`,
+    );
+  }
+
+  if (outcome.savedIncome) {
+    parts.push("Payday updated.");
+  }
+
+  if (sourceCount > 1 && parts.length) {
+    parts.push(`Read across ${sourceCount} screenshots.`);
+  }
+
+  return parts.join(" ");
 }

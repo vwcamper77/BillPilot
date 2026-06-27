@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { recognize } from "tesseract.js";
 import { formatGBP, formatOrdinal, normaliseEntityName } from "@/lib/billMath";
 
 export const runtime = "nodejs";
@@ -9,7 +10,28 @@ const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;
 const MAX_IMAGE_COUNT = 8;
 
 export async function POST(request) {
-  const { message, imageDataUrls, imageNames, imageDataUrl, imageName } = await request.json().catch(() => ({}));
+  const contentType = request.headers.get("content-type") || "";
+  const isMultipartImageImport = contentType.includes("multipart/form-data");
+  let message;
+  let imageDataUrls;
+  let imageNames;
+  let imageDataUrl;
+  let imageName;
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await request.formData().catch(() => null);
+    const file = form?.get("image");
+
+    message = form?.get("message") || "";
+
+    if (file instanceof File) {
+      console.log("[api/parse] received multipart image", file.name, file.size);
+      imageDataUrl = await fileToDataUrl(file);
+      imageName = file.name;
+    }
+  } else {
+    ({ message, imageDataUrls, imageNames, imageDataUrl, imageName } = await request.json().catch(() => ({})));
+  }
 
   const safeMessage = typeof message === "string" ? message : "";
   const safeImages = normaliseImageInputs({
@@ -20,49 +42,62 @@ export async function POST(request) {
   });
 
   if (!safeMessage.trim() && !safeImages.length) {
-    return NextResponse.json({
-      action: "unknown",
-      missingFields: ["message"],
-      responseMessage: "Add a bill note, a screenshot, or a bill image and I'll read it.",
-    });
+    return NextResponse.json(
+      isMultipartImageImport
+        ? buildImageImportFailure("Add a screenshot or bill image and I'll read it.")
+        : {
+          action: "unknown",
+          missingFields: ["message"],
+          responseMessage: "Add a bill note, a screenshot, or a bill image and I'll read it.",
+        },
+      { status: isMultipartImageImport ? 400 : 200 },
+    );
   }
 
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(
-      {
-        action: "unknown",
-        responseMessage: "OpenAI is not configured yet. Add OPENAI_API_KEY and try again.",
-      },
+      isMultipartImageImport
+        ? buildImageImportFailure("OpenAI is not configured yet. Add OPENAI_API_KEY and try again.")
+        : {
+          action: "unknown",
+          responseMessage: "OpenAI is not configured yet. Add OPENAI_API_KEY and try again.",
+        },
       { status: 500 },
     );
   }
 
   if (safeImages.length > MAX_IMAGE_COUNT) {
     return NextResponse.json(
-      {
-        action: "unknown",
-        responseMessage: `Add up to ${MAX_IMAGE_COUNT} images at a time for v1.`,
-      },
+      isMultipartImageImport
+        ? buildImageImportFailure(`Add up to ${MAX_IMAGE_COUNT} images at a time for v1.`)
+        : {
+          action: "unknown",
+          responseMessage: `Add up to ${MAX_IMAGE_COUNT} images at a time for v1.`,
+        },
       { status: 400 },
     );
   }
 
   if (safeImages.some((image) => !isSupportedImageDataUrl(image.dataUrl))) {
     return NextResponse.json(
-      {
-        action: "unknown",
-        responseMessage: "That file does not look like a supported image. Try a PNG, JPG, WEBP, or GIF screenshot.",
-      },
+      isMultipartImageImport
+        ? buildImageImportFailure("That file does not look like a supported image. Try a PNG, JPG, WEBP, or GIF screenshot.")
+        : {
+          action: "unknown",
+          responseMessage: "That file does not look like a supported image. Try a PNG, JPG, WEBP, or GIF screenshot.",
+        },
       { status: 400 },
     );
   }
 
   if (safeImages.some((image) => image.dataUrl.length > MAX_IMAGE_DATA_URL_LENGTH)) {
     return NextResponse.json(
-      {
-        action: "unknown",
-        responseMessage: "That image is a bit large for v1. Try a smaller screenshot or crop it first.",
-      },
+      isMultipartImageImport
+        ? buildImageImportFailure("That image is a bit large for v1. Try a smaller screenshot or crop it first.")
+        : {
+          action: "unknown",
+          responseMessage: "That image is a bit large for v1. Try a smaller screenshot or crop it first.",
+        },
       { status: 400 },
     );
   }
@@ -74,15 +109,71 @@ export async function POST(request) {
   }
 
   try {
+    console.log("[api/parse] starting vision parse", { hasImage: safeImages.length > 0, hasMessage: Boolean(safeMessage.trim()) });
     const parsed = await parseMessageWithOpenAI({
       message: safeMessage,
       images: safeImages,
     });
-    return NextResponse.json(normaliseParsedResult(parsed, safeMessage, safeImages.length > 0));
+    console.log("[api/parse] finished vision parse");
+    const normalised = normaliseParsedResult(parsed, safeMessage, safeImages.length > 0);
+
+    if (isMultipartImageImport) {
+      const imageBills = extractBillsForImageImport(normalised);
+
+      if (imageBills.length) {
+        return NextResponse.json(buildImageImportSuccess(imageBills), { status: 200 });
+      }
+    }
+
+    if (safeImages.length && normalised.action === "unknown") {
+      const ocrFallback = await parseImagesWithOcr(safeImages);
+
+      if (ocrFallback) {
+        if (isMultipartImageImport) {
+          return NextResponse.json(buildImageImportResponse(ocrFallback), { status: 200 });
+        }
+        const ocrBillCount = ocrFallback.action === "batch" ? (ocrFallback.items || []).length : 0;
+        console.log("[api/parse] returning bill count (ocr fallback)", ocrBillCount);
+        return NextResponse.json(ocrFallback);
+      }
+
+      if (isMultipartImageImport) {
+        return NextResponse.json(
+          buildImageImportFailure(normalised.responseMessage || "Could not read this screenshot."),
+          { status: 200 },
+        );
+      }
+    }
+
+    const billCount = normalised.action === "batch" ? (normalised.items || []).length : (normalised.action === "create_bill" ? 1 : 0);
+    console.log("[api/parse] returning bill count", billCount);
+
+    if (isMultipartImageImport) {
+      return NextResponse.json(
+        buildImageImportFailure(normalised.responseMessage || "Could not read this screenshot."),
+        { status: 200 },
+      );
+    }
+
+    return NextResponse.json(normalised);
   } catch (error) {
+    if (safeImages.length) {
+      const ocrFallback = await parseImagesWithOcr(safeImages).catch(() => null);
+
+      if (ocrFallback) {
+        if (isMultipartImageImport) {
+          return NextResponse.json(buildImageImportResponse(ocrFallback), { status: 200 });
+        }
+        return NextResponse.json(ocrFallback);
+      }
+    }
+
     const openAiError = normaliseOpenAiError(error, safeImages.length > 0);
 
     if (openAiError) {
+      if (isMultipartImageImport) {
+        return NextResponse.json(buildImageImportFailure(openAiError.message), { status: openAiError.status || 200 });
+      }
       return NextResponse.json(
         {
           action: "unknown",
@@ -93,13 +184,20 @@ export async function POST(request) {
     }
 
     return NextResponse.json(
-      {
-        action: "unknown",
-        responseMessage: buildClarifyingResponse(safeMessage, safeImages.length > 0),
-      },
-      { status: 502 },
+      isMultipartImageImport
+        ? buildImageImportFailure("Could not read this screenshot.")
+        : {
+          action: "unknown",
+          responseMessage: buildClarifyingResponse(safeMessage, safeImages.length > 0),
+        },
+      { status: isMultipartImageImport ? 200 : 502 },
     );
   }
+}
+
+async function fileToDataUrl(file) {
+  const bytes = Buffer.from(await file.arrayBuffer());
+  return `data:${file.type || "image/jpeg"};base64,${bytes.toString("base64")}`;
 }
 
 async function parseMessageWithOpenAI({ message, images }) {
@@ -512,6 +610,209 @@ function sanitiseAssistantMessage(message) {
   }
 
   return message;
+}
+
+async function parseImagesWithOcr(images) {
+  const textChunks = [];
+
+  for (const image of images) {
+    const buffer = dataUrlToBuffer(image.dataUrl);
+
+    if (!buffer) {
+      continue;
+    }
+
+    const result = await recognize(buffer, "eng", {
+      logger: () => undefined,
+    });
+    const text = String(result?.data?.text || "").trim();
+
+    if (text) {
+      textChunks.push(text);
+    }
+  }
+
+  if (!textChunks.length) {
+    return null;
+  }
+
+  const items = extractBillsFromRecurringText(textChunks.join("\n"));
+
+  if (!items.length) {
+    return null;
+  }
+
+  return {
+    action: "batch",
+    items,
+    responseMessage:
+      items.length === 1
+        ? `Logged 1 bill from the screenshot.`
+        : `Logged ${items.length} bills from the screenshots.`,
+  };
+}
+
+function buildImageImportResponse(parsed) {
+  const bills = extractBillsForImageImport(parsed);
+
+  if (bills.length) {
+    return buildImageImportSuccess(bills);
+  }
+
+  return buildImageImportFailure(
+    parsed?.responseMessage || "Could not read this screenshot.",
+  );
+}
+
+function buildImageImportSuccess(bills) {
+  return {
+    ok: true,
+    mode: "image_import",
+    bills,
+    importedCount: bills.length,
+    skippedCount: 0,
+    message: bills.length === 1 ? "Imported 1 bill." : `Imported ${bills.length} bills.`,
+  };
+}
+
+function buildImageImportFailure(message) {
+  return {
+    ok: false,
+    mode: "image_import",
+    bills: [],
+    importedCount: 0,
+    skippedCount: 0,
+    error: message || "Could not read this screenshot.",
+  };
+}
+
+function extractBillsForImageImport(parsed) {
+  if (!parsed) {
+    return [];
+  }
+
+  if (parsed.action === "create_bill") {
+    return [toImportBill(parsed)];
+  }
+
+  if (parsed.action === "batch") {
+    return (parsed.items || [])
+      .filter((item) => item.action === "create_bill")
+      .map(toImportBill);
+  }
+
+  return [];
+}
+
+function toImportBill(item) {
+  return {
+    name: normaliseEntityName(item.name),
+    amount: Number(item.amount),
+    dueDay: Number(item.dueDay),
+    currency: item.currency || "GBP",
+  };
+}
+
+function dataUrlToBuffer(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  return Buffer.from(match[1], "base64");
+}
+
+function extractBillsFromRecurringText(text) {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const items = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const current = lines[index];
+    const next = lines[index + 1] || "";
+    const nextTwo = lines[index + 2] || "";
+    const candidate = parseRecurringLineGroup([current, next, nextTwo]);
+
+    if (!candidate) {
+      continue;
+    }
+
+    items.push(candidate.item);
+    index += candidate.linesUsed - 1;
+  }
+
+  return dedupeParsedItems(items);
+}
+
+function parseRecurringLineGroup(lines) {
+  const joined = lines.filter(Boolean).join(" ");
+  const monthlyMatch = joined.match(/\bMonthly on ([12]?\d|3[01])(st|nd|rd|th)\b/i);
+
+  if (!monthlyMatch) {
+    return null;
+  }
+
+  if (/\bQuarterly\b|\bEvery 2 months\b|\bEvery 6 months\b|\bLast paid\b/i.test(joined)) {
+    return null;
+  }
+
+  const dueDay = Number(monthlyMatch[1]);
+  const amount = extractAmountFromRecurringText(joined);
+  const name = extractNameFromRecurringText(lines[0], joined);
+
+  if (!name || !amount || !dueDay) {
+    return null;
+  }
+
+  return {
+    linesUsed: 3,
+    item: {
+      action: "create_bill",
+      name,
+      amount,
+      currency: "GBP",
+      frequency: "monthly",
+      dueDay,
+      reminderOffsetDays: 1,
+      responseMessage: `Logged. ${name} - ${formatGBP(amount)} - due on the ${formatOrdinal(dueDay)}. Reminder set for the day before.`,
+    },
+  };
+}
+
+function extractAmountFromRecurringText(text) {
+  const matches = [...String(text || "").matchAll(/(?:£)?\s*(\d{1,4}\.\d{2}|\d{2,4})\b/g)];
+  const amounts = matches
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  if (!amounts.length) {
+    return null;
+  }
+
+  return amounts.at(-1);
+}
+
+function extractNameFromRecurringText(firstLine, joined) {
+  const line = String(firstLine || "").replace(/\s+/g, " ").trim();
+  const cleaned = line
+    .replace(/^[A-Z]{1,3}\s+/, "")
+    .replace(/\b\d+(?:\.\d{2})?\b.*$/, "")
+    .replace(/[£$€].*$/, "")
+    .trim();
+
+  if (cleaned && cleaned.length > 1 && !/^Scheduled Payments$/i.test(cleaned)) {
+    return normaliseEntityName(cleaned);
+  }
+
+  const fallback = String(joined || "")
+    .replace(/\bMonthly on [12]?\d(?:st|nd|rd|th)\b.*$/i, "")
+    .replace(/[£$€].*$/, "")
+    .trim();
+
+  return fallback ? normaliseEntityName(fallback) : "";
 }
 
 function normaliseOpenAiError(error, hasImage) {
