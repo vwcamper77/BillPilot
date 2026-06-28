@@ -1,6 +1,6 @@
-# BillPilot
+# Billie
 
-BillPilot is an AI-powered bill heads-up app.
+Billie is an AI-powered bill heads-up app for `billie.money`.
 
 The MVP loop is:
 

@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "BillPilot",
-  description: "AI-powered bill heads-up app",
+  title: "Billie",
+  description: "Your payday heads-up for bills.",
 };
 
 export default function RootLayout({ children }) {

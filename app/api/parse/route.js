@@ -109,6 +109,37 @@ export async function POST(request) {
   }
 
   try {
+    if (isMultipartImageImport) {
+      console.log("[api/parse] starting image import parse", { hasMessage: Boolean(safeMessage.trim()) });
+      const imageResult = await parseImageImportWithOpenAI({
+        message: safeMessage,
+        image: safeImages[0],
+      });
+      let bills = imageResult?.bills || [];
+      let ocrInsight = null;
+
+      if (bills.length <= 1) {
+        ocrInsight = await collectOcrInsights(safeImages).catch(() => null);
+        bills = mergeImageImportBills(bills, ocrInsight?.bills || []);
+
+        if (bills.length === 1 && (ocrInsight?.amountHintCount || 0) > 1) {
+          console.warn("[api/parse] possible under-extraction: multiple amounts found but only one bill returned");
+        }
+      }
+
+      console.log("[api/parse] extracted bills count", bills.length);
+      console.log("[api/parse] extracted bills", bills);
+
+      if (bills.length) {
+        return NextResponse.json(buildImageImportSuccess(bills), { status: 200 });
+      }
+
+      return NextResponse.json(
+        buildImageImportFailure(imageResult?.error || "Could not read this screenshot."),
+        { status: 200 },
+      );
+    }
+
     console.log("[api/parse] starting vision parse", { hasImage: safeImages.length > 0, hasMessage: Boolean(safeMessage.trim()) });
     const parsed = await parseMessageWithOpenAI({
       message: safeMessage,
@@ -116,14 +147,6 @@ export async function POST(request) {
     });
     console.log("[api/parse] finished vision parse");
     const normalised = normaliseParsedResult(parsed, safeMessage, safeImages.length > 0);
-
-    if (isMultipartImageImport) {
-      const imageBills = extractBillsForImageImport(normalised);
-
-      if (imageBills.length) {
-        return NextResponse.json(buildImageImportSuccess(imageBills), { status: 200 });
-      }
-    }
 
     if (safeImages.length && normalised.action === "unknown") {
       const ocrFallback = await parseImagesWithOcr(safeImages);
@@ -251,7 +274,7 @@ async function parseMessageWithOpenAI({ message, images }) {
         {
           role: "system",
           content: [
-            "You parse natural language bill and payday messages for BillPilot.",
+            "You parse natural language bill and payday messages for Billie.",
             "Return JSON only. Do not use markdown.",
             "Supported actions are create_bill, set_income, update_bill, mark_paid, unknown, and batch.",
             "For v1, only create_bill, set_income, and batch are supported.",
@@ -288,6 +311,93 @@ async function parseMessageWithOpenAI({ message, images }) {
   const content = data.choices?.[0]?.message?.content || "{}";
 
   return JSON.parse(content);
+}
+
+async function parseImageImportWithOpenAI({ message, image }) {
+  const userContent = [
+    {
+      type: "text",
+      text: [
+        "You are reading a screenshot of bills, direct debits, payments, subscriptions, or upcoming charges.",
+        "Extract every visible bill/payment row from the screenshot.",
+        "Do not stop after the first item.",
+        "Return all rows you can read.",
+        "If a row contains a name and an amount, include it even if the due date is uncertain.",
+        "If the date is visible, extract the due day/month.",
+        "If the date is not visible, set dueDay to null and dateText to the visible text or null.",
+        "Examples of list rows include: BT £31.99 - 13th, OpenAI £43.20 - 14th, Sendinblue £4.27 - 16th, Canva £18 - 19th.",
+        "Return strict JSON only.",
+      ].join(" "),
+    },
+  ];
+
+  if (message?.trim()) {
+    userContent.push({
+      type: "text",
+      text: `Extra user note: ${message.trim()}`,
+    });
+  }
+
+  userContent.push({
+    type: "image_url",
+    image_url: {
+      url: image.dataUrl,
+    },
+  });
+
+  const response = await fetch(OPENAI_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || MODEL,
+      temperature: 0,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You extract bill rows from screenshots for Billie.",
+            "Return JSON only.",
+            "Use this exact shape: {\"bills\":[{\"name\":\"BT\",\"amount\":31.99,\"currency\":\"GBP\",\"dueDay\":13,\"dateText\":\"13th\",\"rawText\":\"BT £31.99 - 13th\",\"confidence\":0.9}]}",
+            "All image import rows must be inside bills: [].",
+            "Do not return top-level name, amount, dueDay, action, or batch fields for image imports.",
+            "Return every visible bill row you can read, not just the first one.",
+            "Include rows with name and amount even when dueDay is uncertain; set dueDay null in that case.",
+            "Use GBP by default.",
+            "Ignore yearly, annual, every 2 months, every 6 months, quarterly, and last paid rows when clearly labelled that way.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: userContent,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const error = new Error(`OpenAI parse failed with status ${response.status}`);
+
+    error.status = response.status;
+    error.responseText = errorText;
+    throw error;
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || "{}";
+  const parsed = JSON.parse(content);
+  const bills = normaliseImageImportBills(parsed?.bills);
+
+  return {
+    ok: bills.length > 0,
+    mode: "image_import",
+    bills,
+    error: bills.length ? null : "Could not read this screenshot.",
+  };
 }
 
 function normaliseParsedResult(parsed, message, hasImage = false) {
@@ -669,9 +779,9 @@ function buildImageImportSuccess(bills) {
     ok: true,
     mode: "image_import",
     bills,
-    importedCount: bills.length,
+    importedCount: 0,
     skippedCount: 0,
-    message: bills.length === 1 ? "Imported 1 bill." : `Imported ${bills.length} bills.`,
+    message: bills.length === 1 ? "Extracted 1 bill." : `Extracted ${bills.length} bills.`,
   };
 }
 
@@ -710,7 +820,117 @@ function toImportBill(item) {
     amount: Number(item.amount),
     dueDay: Number(item.dueDay),
     currency: item.currency || "GBP",
+    dateText: item.dateText || (Number.isFinite(Number(item.dueDay)) ? formatOrdinal(item.dueDay) : null),
+    rawText: item.rawText || `${normaliseEntityName(item.name)} ${formatGBP(item.amount)}`,
+    confidence: Number(item.confidence ?? 0.85),
   };
+}
+
+function normaliseImageImportBills(items) {
+  return dedupeImageImportBills(
+    (Array.isArray(items) ? items : [])
+      .map((item) => {
+        const amount = Number(item?.amount);
+        const dueDay = item?.dueDay === null || item?.dueDay === undefined || item?.dueDay === ""
+          ? null
+          : Number(item.dueDay);
+        const name = normaliseEntityName(item?.name);
+
+        if (!name || !Number.isFinite(amount)) {
+          return null;
+        }
+
+        return {
+          name,
+          amount,
+          currency: item?.currency || "GBP",
+          dueDay: Number.isFinite(dueDay) ? dueDay : null,
+          dateText: item?.dateText || (Number.isFinite(dueDay) ? formatOrdinal(dueDay) : null),
+          rawText: item?.rawText || `${name} ${formatGBP(amount)}`,
+          confidence: clampConfidence(item?.confidence),
+        };
+      })
+      .filter(Boolean),
+  );
+}
+
+function dedupeImageImportBills(bills) {
+  const seen = new Set();
+  const result = [];
+
+  for (const bill of bills) {
+    const key = [
+      String(bill.name || "").toLowerCase(),
+      Number(bill.amount || 0).toFixed(2),
+      bill.dueDay ?? "null",
+    ].join("|");
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(bill);
+  }
+
+  return result;
+}
+
+function clampConfidence(value) {
+  const num = Number(value);
+
+  if (!Number.isFinite(num)) {
+    return 0.8;
+  }
+
+  return Math.max(0, Math.min(1, num));
+}
+
+async function collectOcrInsights(images) {
+  const textChunks = [];
+
+  for (const image of images) {
+    const buffer = dataUrlToBuffer(image.dataUrl);
+
+    if (!buffer) {
+      continue;
+    }
+
+    const result = await recognize(buffer, "eng", {
+      logger: () => undefined,
+    });
+    const text = String(result?.data?.text || "").trim();
+
+    if (text) {
+      textChunks.push(text);
+    }
+  }
+
+  const text = textChunks.join("\n").trim();
+
+  return {
+    text,
+    amountHintCount: countAmountHints(text),
+    bills: extractImageImportBillsFromRecurringText(text),
+  };
+}
+
+function countAmountHints(text) {
+  if (!text) {
+    return 0;
+  }
+
+  const matches = text.match(/(?:£|\bGBP\b)\s*\d{1,4}(?:\.\d{2})?/gi) || [];
+  return matches.length;
+}
+
+function mergeImageImportBills(primaryBills, fallbackBills) {
+  return dedupeImageImportBills([...(primaryBills || []), ...(fallbackBills || [])]);
+}
+
+function extractImageImportBillsFromRecurringText(text) {
+  const items = extractBillsFromRecurringText(text);
+  return items.map(toImportBill);
 }
 
 function dataUrlToBuffer(dataUrl) {

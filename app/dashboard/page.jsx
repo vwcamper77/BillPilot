@@ -36,6 +36,7 @@ import {
   formatDueLabel,
   formatGBP,
   formatOrdinal,
+  getTodayIso,
 } from "@/lib/billMath";
 
 export default function DashboardPage() {
@@ -257,6 +258,10 @@ export default function DashboardPage() {
     () => calculateDashboard(bills, displayIncome, displayAccount),
     [bills, displayAccount, displayIncome],
   );
+  const balanceSnapshotLabel = useMemo(
+    () => formatBalanceSnapshotLabel(displayAccount?.updatedAt),
+    [displayAccount?.updatedAt],
+  );
   const importLocked = isImporting;
   const importQueueFinished = importJobs.length > 0 && !isImporting && importJobs.some((job) => job.status !== "queued");
 
@@ -474,6 +479,7 @@ export default function DashboardPage() {
     }
 
     const parsedBills = Array.isArray(json.bills) ? json.bills : [];
+    console.log("[import-single] bills returned", parsedBills.length, parsedBills);
     let importedCount = 0;
     let skippedCount = 0;
     let saveErrorCount = 0;
@@ -586,7 +592,7 @@ export default function DashboardPage() {
     const parsedBalance = Number(balanceInput);
 
     if (!Number.isFinite(parsedBalance)) {
-      setBalanceError("Add your current account balance as a number.");
+      setBalanceError("Add your balance snapshot as a number.");
       return;
     }
 
@@ -595,7 +601,7 @@ export default function DashboardPage() {
     setPageNotice("");
     setOptimisticBalance(parsedBalance);
     setBalanceInput(parsedBalance.toString());
-    setPageNotice(`Balance updated to ${formatGBP(parsedBalance)}.`);
+    setPageNotice(`Balance snapshot updated to ${formatGBP(parsedBalance)}.`);
 
     setSavingBalance(false);
 
@@ -852,7 +858,7 @@ export default function DashboardPage() {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
-          <p className="eyebrow">BillPilot</p>
+          <p className="eyebrow">Billie</p>
           <h1>Firebase client setup is incomplete.</h1>
           <p>
             Add the public Firebase values to <code>.env.local</code>, then restart the dev server.
@@ -869,7 +875,7 @@ export default function DashboardPage() {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
-          <p className="eyebrow">BillPilot</p>
+          <p className="eyebrow">Billie</p>
           <h1>Sign in to track what is due before payday.</h1>
           <p>Use Google to keep your bills saved across refreshes and devices.</p>
           <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
@@ -889,8 +895,8 @@ export default function DashboardPage() {
     <main className="dashboard-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">BillPilot</p>
-          <h1 className="brand">Bill heads-up</h1>
+          <p className="eyebrow">Billie</p>
+          <h1 className="brand">Your payday heads-up for bills.</h1>
         </div>
         <div className="topbar-actions">
           <span className="user-id">
@@ -921,11 +927,11 @@ export default function DashboardPage() {
           value={`${formatGBP(dashboard.totalBeforePayday)} due before you get paid`}
         />
         <SummaryCard
-          label="Left for food and fun"
+          label="Balance snapshot"
           value={
             displayAccount?.currentBalance !== undefined
-              ? `${formatGBP(dashboard.leftBeforePayday)} after bills before payday`
-              : "Add your balance"
+              ? `Forecast: ~${formatGBP(dashboard.leftBeforePayday)} left after bills before payday`
+              : "Add your balance snapshot"
           }
         />
         <SummaryCard
@@ -945,11 +951,11 @@ export default function DashboardPage() {
       <section className="content-grid">
         <div className="stack">
           <section className="chat-panel">
-            <h2>Account balance</h2>
+            <h2>Balance snapshot</h2>
             <form className="chat-form" onSubmit={handleBalanceSave}>
               <div className="field-row">
                 <label className="field-label" htmlFor="account-balance">
-                  Current balance
+                  Balance snapshot
                 </label>
                 <div className="chat-input-row">
                   <input
@@ -958,7 +964,7 @@ export default function DashboardPage() {
                     value={balanceInput}
                     disabled={importLocked}
                     onChange={(event) => setBalanceInput(event.target.value)}
-                    placeholder="Current balance in GBP"
+                    placeholder="Balance snapshot in GBP"
                   />
                   <button className="secondary-button" type="submit" disabled={savingBalance || importLocked}>
                     {savingBalance ? "Saving..." : "Save"}
@@ -966,11 +972,23 @@ export default function DashboardPage() {
                 </div>
               </div>
             </form>
-            <p className="helper-text balance-copy">
-              {displayAccount?.currentBalance !== undefined
-                ? `${formatGBP(dashboard.currentBalance)} in the account. ${formatGBP(dashboard.leftBeforePayday)} left after bills due before payday.`
-                : "Add your current balance to see what is left after bills before payday."}
-            </p>
+            {displayAccount?.currentBalance !== undefined ? (
+              <div className="helper-text balance-copy">
+                <p>Balance snapshot: {formatGBP(dashboard.currentBalance)}</p>
+                <p>{balanceSnapshotLabel}</p>
+                <p>Forecast: ~{formatGBP(dashboard.leftBeforePayday)} left after bills before payday</p>
+                <p>Still around {formatGBP(dashboard.currentBalance)}? Update if this has changed.</p>
+              </div>
+            ) : (
+              <p className="helper-text balance-copy">
+                Enter your current balance. Billie will forecast what may be left after bills before payday.
+              </p>
+            )}
+            {displayAccount?.currentBalance === undefined ? (
+              <p className="helper-text balance-copy">
+                Add your balance snapshot to see what may be left before payday.
+              </p>
+            ) : null}
             {balanceError ? <p className="error">{balanceError}</p> : null}
           </section>
 
@@ -1599,4 +1617,48 @@ function buildBatchOutcomeMessage(outcome, sourceCount) {
   }
 
   return parts.join(" ");
+}
+
+function formatBalanceSnapshotLabel(timestamp) {
+  const snapshotDate = toDateMaybe(timestamp);
+
+  if (!snapshotDate) {
+    return "Entered recently";
+  }
+
+  const todayIso = getTodayIso();
+  const snapshotIso = getTodayIso(snapshotDate);
+  const timeLabel = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/London",
+  }).format(snapshotDate);
+
+  if (snapshotIso === todayIso) {
+    return `Entered today at ${timeLabel}`;
+  }
+
+  const dateLabel = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    timeZone: "Europe/London",
+  }).format(snapshotDate);
+
+  return `Entered ${dateLabel} at ${timeLabel}`;
+}
+
+function toDateMaybe(value) {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value.toDate === "function") {
+    return value.toDate();
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  return null;
 }
