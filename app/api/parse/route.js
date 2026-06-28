@@ -1,6 +1,7 @@
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { recognize } from "tesseract.js";
-import { formatGBP, formatOrdinal, normaliseEntityName } from "@/lib/billMath";
+import { formatGBP, formatOrdinal, isValidDueDay, normaliseBillName, normaliseEntityName } from "@/lib/billMath";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,15 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const MAX_IMAGE_DATA_URL_LENGTH = 6_000_000;
 const MAX_IMAGE_COUNT = 8;
+const TESSERACT_WORKER_PATH = path.join(
+  process.cwd(),
+  "node_modules",
+  "tesseract.js",
+  "src",
+  "worker-script",
+  "node",
+  "index.js",
+);
 
 export async function POST(request) {
   const contentType = request.headers.get("content-type") || "";
@@ -283,6 +293,9 @@ async function parseMessageWithOpenAI({ message, images }) {
             "If one message contains both bill and payday details, return action batch and items as an array of supported actions.",
             "For a bill, extract name, amount, dueDay, currency, frequency, reminderOffsetDays.",
             "For income/payday, extract name, amount, payDay, currency, frequency.",
+            "Bill names must contain only the merchant or bill name.",
+            "Do not include recurrence words, date words, or payment timing words in bill names.",
+            "Remove words or phrases like each, monthly, month, every month, each month, due, on, the, per month, on the 27th, and of each month from the bill name.",
             "If images are attached, read visible recurring payments and return one batch with all clear monthly bills.",
             "Do not invent amounts or due days. Ignore rows without both.",
             "Ignore duplicates across screenshots using name, amount, and due day.",
@@ -324,6 +337,9 @@ async function parseImageImportWithOpenAI({ message, image }) {
         "Return all rows you can read.",
         "If a row contains a name and an amount, include it even if the due date is uncertain.",
         "If the date is visible, extract the due day/month.",
+        "For every visible bill/payment row, extract the date from the same row.",
+        "The date may look like: 1st, 2nd, 13th, 22nd, Monthly on 13th, Due 13 Jul, 13 July, on the 20th of each month.",
+        "If a date is visible in the row, dueDay must be a number from 1 to 31.",
         "If the date is not visible, set dueDay to null and dateText to the visible text or null.",
         "Examples of list rows include: BT £31.99 - 13th, OpenAI £43.20 - 14th, Sendinblue £4.27 - 16th, Canva £18 - 19th.",
         "Return strict JSON only.",
@@ -365,9 +381,17 @@ async function parseImageImportWithOpenAI({ message, image }) {
             "All image import rows must be inside bills: [].",
             "Do not return top-level name, amount, dueDay, action, or batch fields for image imports.",
             "Return every visible bill row you can read, not just the first one.",
+            "For every row, extract the date from that same row whenever it is visible.",
+            "Bill names must contain only the merchant or bill name.",
+            "Do not include recurrence words, date words, or payment timing words in bill names.",
+            "If a date is visible, dueDay must be a number from 1 to 31.",
+            "If you are uncertain, keep the visible date string in dateText and rawText so the client can repair it.",
             "Include rows with name and amount even when dueDay is uncertain; set dueDay null in that case.",
             "Use GBP by default.",
             "Ignore yearly, annual, every 2 months, every 6 months, quarterly, and last paid rows when clearly labelled that way.",
+            "Extract all visible rows but do not invent missing values. If a row has a name but no visible amount, return it with amount null and confidence 0.3.",
+            "If a row has amount but no visible date, set dueDay null and dateText null.",
+            "The client will decide whether to import or skip each row based on quality.",
           ].join(" "),
         },
         {
@@ -448,15 +472,17 @@ function normaliseItem(item) {
       return missingResponse(missingFields);
     }
 
+    const cleanedName = normaliseBillName(item.name);
+
     return {
       action: "create_bill",
-      name: normaliseEntityName(item.name),
+      name: cleanedName,
       amount: Number(item.amount),
       currency: item.currency || "GBP",
       frequency: "monthly",
       dueDay: Number(item.dueDay),
       reminderOffsetDays: Number(item.reminderOffsetDays ?? 1),
-      responseMessage: `Logged. ${normaliseEntityName(item.name)} - ${formatGBP(item.amount)} - due on the ${formatOrdinal(item.dueDay)}. Reminder set for the day before.`,
+      responseMessage: `Logged. ${cleanedName} - ${formatGBP(item.amount)} - due on the ${formatOrdinal(item.dueDay)}. Reminder set for the day before.`,
     };
   }
 
@@ -600,7 +626,7 @@ function dedupeParsedItems(items) {
 }
 
 function buildBillKey(item) {
-  return `bill:${normaliseEntityName(item.name).toLowerCase()}|${Number(item.amount).toFixed(2)}|${Number(item.dueDay)}`;
+  return `bill:${normaliseBillName(item.name).toLowerCase()}|${Number(item.amount).toFixed(2)}|${Number(item.dueDay)}`;
 }
 
 function buildIncomeKey(item) {
@@ -699,12 +725,12 @@ function extractOrdinalDay(text) {
 }
 
 function extractCompactName(text) {
-  return normaliseEntityName(
+  return normaliseBillName(
     text
       .replace(/(?:£|\bgbp\b|\bpounds?\b)\s*\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?/gi, " ")
       .replace(/\b\d{1,5}(?:\.\d{1,2})?\b/g, " ")
       .replace(/\b([12]?\d|3[01])(st|nd|rd|th)\b/gi, " ")
-      .replace(/\b(my|the|is|due|on|every|month|monthly|bill|please|log|it|get|paid|payday)\b/gi, " ")
+      .replace(/\b(my|the|is|due|on|every|month|monthly|each|bill|please|log|it|get|paid|payday)\b/gi, " ")
       .replace(/\s+/g, " ")
       .trim(),
   );
@@ -734,6 +760,7 @@ async function parseImagesWithOcr(images) {
 
     const result = await recognize(buffer, "eng", {
       logger: () => undefined,
+      workerPath: TESSERACT_WORKER_PATH,
     });
     const text = String(result?.data?.text || "").trim();
 
@@ -775,6 +802,14 @@ function buildImageImportResponse(parsed) {
 }
 
 function buildImageImportSuccess(bills) {
+  console.log("[date-debug-api]", bills.map((bill) => ({
+    name: bill.name,
+    amount: bill.amount,
+    dueDay: bill.dueDay,
+    dateText: bill.dateText,
+    rawText: bill.rawText,
+  })));
+
   return {
     ok: true,
     mode: "image_import",
@@ -815,13 +850,25 @@ function extractBillsForImageImport(parsed) {
 }
 
 function toImportBill(item) {
+  const repairedDueDay = isValidDueDay(item?.dueDay)
+    ? Number(item.dueDay)
+    : parseDueDayFromText(
+      [
+        item?.dateText,
+        item?.rawText,
+        item?.name,
+      ].filter(Boolean).join(" "),
+    );
+
+  const cleanedName = normaliseBillName(item.name);
+
   return {
-    name: normaliseEntityName(item.name),
+    name: cleanedName,
     amount: Number(item.amount),
-    dueDay: Number(item.dueDay),
+    dueDay: isValidDueDay(repairedDueDay) ? Number(repairedDueDay) : null,
     currency: item.currency || "GBP",
-    dateText: item.dateText || (Number.isFinite(Number(item.dueDay)) ? formatOrdinal(item.dueDay) : null),
-    rawText: item.rawText || `${normaliseEntityName(item.name)} ${formatGBP(item.amount)}`,
+    dateText: item.dateText || (isValidDueDay(repairedDueDay) ? formatOrdinal(repairedDueDay) : null),
+    rawText: item.rawText || `${cleanedName} ${formatGBP(item.amount)}`,
     confidence: Number(item.confidence ?? 0.85),
   };
 }
@@ -830,28 +877,66 @@ function normaliseImageImportBills(items) {
   return dedupeImageImportBills(
     (Array.isArray(items) ? items : [])
       .map((item) => {
-        const amount = Number(item?.amount);
-        const dueDay = item?.dueDay === null || item?.dueDay === undefined || item?.dueDay === ""
-          ? null
-          : Number(item.dueDay);
-        const name = normaliseEntityName(item?.name);
+        const rawAmount = item?.amount;
+        const amount = rawAmount === null || rawAmount === undefined ? null : Number(rawAmount);
+        const name = normaliseBillName(item?.name);
+        const repairedDueDay = isValidDueDay(item?.dueDay)
+          ? Number(item.dueDay)
+          : parseDueDayFromText(
+            [
+              item?.dateText,
+              item?.rawText,
+              item?.name,
+            ].filter(Boolean).join(" "),
+          );
 
-        if (!name || !Number.isFinite(amount)) {
+        if (!name || name.trim().length < 2) {
           return null;
         }
 
+        const validAmount = amount !== null && Number.isFinite(amount) ? amount : null;
+
         return {
           name,
-          amount,
+          amount: validAmount,
           currency: item?.currency || "GBP",
-          dueDay: Number.isFinite(dueDay) ? dueDay : null,
-          dateText: item?.dateText || (Number.isFinite(dueDay) ? formatOrdinal(dueDay) : null),
-          rawText: item?.rawText || `${name} ${formatGBP(amount)}`,
+          dueDay: isValidDueDay(repairedDueDay) ? Number(repairedDueDay) : null,
+          dateText: item?.dateText || (isValidDueDay(repairedDueDay) ? formatOrdinal(repairedDueDay) : null),
+          rawText: item?.rawText || `${name}${validAmount !== null ? ` ${formatGBP(validAmount)}` : ""}`,
           confidence: clampConfidence(item?.confidence),
         };
       })
       .filter(Boolean),
   );
+}
+
+function parseDueDayFromText(value) {
+  if (!value) {
+    return null;
+  }
+
+  const text = String(value).toLowerCase();
+  const patterns = [
+    /\b([1-9]|[12][0-9]|3[01])\s*(st|nd|rd|th)\b/,
+    /\bmonthly\s+on\s+([1-9]|[12][0-9]|3[01])\b/,
+    /\bdue\s+([1-9]|[12][0-9]|3[01])\b/,
+    /\bon\s+the\s+([1-9]|[12][0-9]|3[01])\b/,
+    /\b([1-9]|[12][0-9]|3[01])\s+(jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december)\b/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+
+    if (match) {
+      const day = Number(match[1]);
+
+      if (day >= 1 && day <= 31) {
+        return day;
+      }
+    }
+  }
+
+  return null;
 }
 
 function dedupeImageImportBills(bills) {
@@ -861,7 +946,7 @@ function dedupeImageImportBills(bills) {
   for (const bill of bills) {
     const key = [
       String(bill.name || "").toLowerCase(),
-      Number(bill.amount || 0).toFixed(2),
+      bill.amount !== null && bill.amount !== undefined ? Number(bill.amount).toFixed(2) : "null",
       bill.dueDay ?? "null",
     ].join("|");
 
@@ -898,6 +983,7 @@ async function collectOcrInsights(images) {
 
     const result = await recognize(buffer, "eng", {
       logger: () => undefined,
+      workerPath: TESSERACT_WORKER_PATH,
     });
     const text = String(result?.data?.text || "").trim();
 
@@ -1024,7 +1110,7 @@ function extractNameFromRecurringText(firstLine, joined) {
     .trim();
 
   if (cleaned && cleaned.length > 1 && !/^Scheduled Payments$/i.test(cleaned)) {
-    return normaliseEntityName(cleaned);
+    return normaliseBillName(cleaned);
   }
 
   const fallback = String(joined || "")
@@ -1032,7 +1118,7 @@ function extractNameFromRecurringText(firstLine, joined) {
     .replace(/[£$€].*$/, "")
     .trim();
 
-  return fallback ? normaliseEntityName(fallback) : "";
+  return fallback ? normaliseBillName(fallback) : "";
 }
 
 function normaliseOpenAiError(error, hasImage) {
