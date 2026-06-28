@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -37,9 +38,9 @@ import {
   buildBillDocument,
   buildIncomeDocument,
   calculateDashboard,
+  formatCurrency,
   formatDisplayDate,
   formatDueLabel,
-  formatGBP,
   formatOrdinal,
   getTodayIso,
   isValidDueDay,
@@ -76,12 +77,12 @@ function isValidIncomeAmount(value) {
   return Number.isFinite(amount) && amount >= 0;
 }
 
-function getIncomeStatusText(income) {
+function getIncomeStatusText(income, currency = "GBP") {
   const hasValidAmount = isValidIncomeAmount(income?.amount);
   const hasValidPayday = isValidDueDay(income?.payDay);
 
   if (hasValidAmount && hasValidPayday) {
-    return `${formatGBP(income.amount)} on the ${formatOrdinal(income.payDay)} of each month.`;
+    return `${formatCurrency(income.amount, currency)} on the ${formatOrdinal(income.payDay)} of each month.`;
   }
 
   if (hasValidAmount) {
@@ -138,6 +139,10 @@ export default function DashboardPage() {
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
   const [firestoreTestState, setFirestoreTestState] = useState("idle");
+  const [displayCurrency, setDisplayCurrency] = useState("GBP");
+  const [setupDismissed, setSetupDismissed] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedBillIds, setSelectedBillIds] = useState(new Set());
   const balanceSaveRequestRef = useRef(0);
 
   useEffect(() => {
@@ -257,6 +262,11 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    const dismissed = localStorage.getItem("cleartill_setup_dismissed");
+    if (dismissed === "true") setSetupDismissed(true);
+  }, []);
+
+  useEffect(() => {
     if (!user || !db) {
       setBills([]);
       setIncome(null);
@@ -317,12 +327,19 @@ export default function DashboardPage() {
     const unsubscribeReminders = onSnapshot(remindersQuery, (snapshot) => {
       setReminders(snapshot.docs.map((reminderDoc) => ({ id: reminderDoc.id, ...reminderDoc.data() })));
     });
+    const unsubscribePreferences = onSnapshot(doc(db, "users", user.uid, "settings", "preferences"), (snapshot) => {
+      if (snapshot.exists()) {
+        const prefs = snapshot.data();
+        if (prefs.currency) setDisplayCurrency(prefs.currency);
+      }
+    });
 
     return () => {
       unsubscribeBills();
       unsubscribeIncome();
       unsubscribeAccount();
       unsubscribeReminders();
+      unsubscribePreferences();
     };
   }, [user]);
 
@@ -383,14 +400,83 @@ export default function DashboardPage() {
     return displayIncome;
   }, [displayIncome]);
   const dashboard = useMemo(
-    () => calculateDashboard(bills, incomeForDashboard, displayAccount),
-    [bills, displayAccount, incomeForDashboard],
+    () => calculateDashboard(bills, incomeForDashboard, displayAccount, undefined, displayCurrency),
+    [bills, displayAccount, displayCurrency, incomeForDashboard],
   );
   const hasBalanceSnapshot = displayAccount?.currentBalance !== undefined;
   const hasPayday = isValidDueDay(displayIncome?.payDay);
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
   const hasBills = bills.length > 0;
   const setupStep = !hasBalanceSnapshot ? 1 : !hasPayday ? 2 : !hasBills ? 3 : 4;
+
+  const clearTillStatus = (() => {
+    if (!hasBalanceSnapshot || !hasPayday) return "";
+    if (dashboard.leftBeforePayday < 0) return "negative";
+    if (dashboard.leftBeforePayday < 50) return "low";
+    return "ok";
+  })();
+
+  const clearTillValue = (() => {
+    if (!hasBalanceSnapshot) return "Add your balance snapshot";
+    const abs = Math.abs(dashboard.leftBeforePayday);
+    if (clearTillStatus === "negative") return `${formatCurrency(abs, displayCurrency)} short before payday`;
+    return `${formatCurrency(dashboard.leftBeforePayday, displayCurrency)} left until payday`;
+  })();
+
+  const clearTillHelper = (() => {
+    if (!hasBalanceSnapshot) return "Add your balance snapshot first so ClearTill can forecast what may be left.";
+    if (clearTillStatus === "negative") return "Bills before payday exceed your balance snapshot.";
+    if (clearTillStatus === "low") return "Low buffer before payday.";
+    return "Based on your balance snapshot minus bills before payday.";
+  })();
+
+  const billsBeforePaydayOverBudget =
+    hasBalanceSnapshot && hasPayday && hasBills &&
+    dashboard.totalBeforePayday > dashboard.currentBalance;
+
+  const monthlySpendingRoomStatus = (() => {
+    if (dashboard.monthlySpendingRoom === null || !hasIncomeAmount) return "";
+    if (dashboard.monthlySpendingRoom < 0) return "negative";
+    if (dashboard.monthlySpendingRoom < 100) return "low";
+    return "ok";
+  })();
+
+  const monthlySpendingRoomValue = (() => {
+    if (!hasIncomeAmount) return "Add expected income";
+    if (!hasBills) return "No bills logged yet";
+    const msr = dashboard.monthlySpendingRoom;
+    if (msr < 0) return `${formatCurrency(Math.abs(msr), displayCurrency)} short each month`;
+    return `${formatCurrency(msr, displayCurrency)} left each month`;
+  })();
+
+  const monthlySpendingRoomHelper = (() => {
+    if (!hasIncomeAmount || !hasBills) return "Set your expected income and bills to see monthly spending room.";
+    if (dashboard.monthlySpendingRoom < 0) return "Your regular bills exceed your expected monthly income.";
+    if (dashboard.monthlySpendingRoom < 100) return "Low margin after regular bills.";
+    return "After regular bills, from your expected monthly income.";
+  })();
+
+  const dailyLimitStatus = (() => {
+    if (!hasBalanceSnapshot || !hasPayday) return "";
+    if (dashboard.leftBeforePayday < 0) return "negative";
+    if (dashboard.dailyLimitTillPayday < 10) return "low";
+    return "ok";
+  })();
+
+  const dailyLimitValue = (() => {
+    if (!hasBalanceSnapshot) return "Add your balance snapshot";
+    if (!hasPayday) return "Set your payday date";
+    if (dashboard.leftBeforePayday < 0) return `${formatCurrency(Math.abs(dashboard.leftBeforePayday), displayCurrency)} short before payday`;
+    return `${formatCurrency(dashboard.dailyLimitTillPayday, displayCurrency)} per day`;
+  })();
+
+  const dailyLimitHelper = (() => {
+    if (!hasBalanceSnapshot) return "Add your balance snapshot to see your daily limit.";
+    if (!hasPayday) return "Set your payday date to calculate your daily limit.";
+    if (dashboard.leftBeforePayday < 0) return "Bills before payday exceed your balance snapshot.";
+    if (dashboard.dailyLimitTillPayday < 10) return "Low daily limit until payday.";
+    return `Based on your balance snapshot after bills, spread over ${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"}.`;
+  })();
   const balanceSnapshotLabel = useMemo(
     () => formatBalanceSnapshotLabel(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt),
     [displayAccount?.snapshotEnteredAt, displayAccount?.updatedAt],
@@ -602,18 +688,31 @@ export default function DashboardPage() {
           skippedTotal += result.skippedCount || 0;
           processedTotal += 1;
 
-          updateJob(job.id, {
-            status: result.importedCount > 0 ? "done" : "failed",
-            progressText: buildImportDoneMessage(result.importedCount, result.skippedCount),
-            importedCount: result.importedCount || 0,
-            skippedCount: result.skippedCount || 0,
-            totalBillsFound: result.totalBillsFound || 0,
-            billsSaved: result.importedCount || 0,
-            billsSkipped: result.skippedCount || 0,
-            currentBillIndex: result.totalBillsFound || 0,
-            errorMessage: "",
-            skippedRows: result.skippedRows || [],
-          });
+          {
+            const extractedCount = (result.bills || []).length || result.totalBillsFound || 0;
+            const qualitySkipped = (result.skippedRows || []).length;
+            const queueFinalStatus =
+              (result.importedCount || 0) > 0 || (extractedCount > 0 && (result.skippedCount || 0) > 0)
+                ? "done"
+                : "failed";
+            updateJob(job.id, {
+              status: queueFinalStatus,
+              progressText: buildImportDoneMessage(
+                result.importedCount || 0,
+                result.skippedCount || 0,
+                extractedCount,
+                qualitySkipped,
+              ),
+              importedCount: result.importedCount || 0,
+              skippedCount: result.skippedCount || 0,
+              totalBillsFound: result.totalBillsFound || 0,
+              billsSaved: result.importedCount || 0,
+              billsSkipped: result.skippedCount || 0,
+              currentBillIndex: result.totalBillsFound || 0,
+              errorMessage: "",
+              skippedRows: result.skippedRows || [],
+            });
+          }
           setCurrentImportStep("job_done");
 
           console.log("[import-queue] finished job", job.id, job.name, result);
@@ -621,11 +720,14 @@ export default function DashboardPage() {
           processedTotal += 1;
 
           const errMsg = error?.message || "Unknown import error";
+          const isTimeout = errMsg.toLowerCase().includes("timed out");
           setLastImportError(errMsg);
 
           updateJob(job.id, {
             status: "failed",
-            progressText: "Could not read this screenshot. Try again.",
+            progressText: isTimeout
+              ? "Timed out. Try a clearer screenshot."
+              : "Couldn't read enough from this screenshot.",
             totalBillsFound: 0,
             billsSaved: 0,
             billsSkipped: 0,
@@ -646,13 +748,13 @@ export default function DashboardPage() {
       setImportSummary(summary);
 
       const parts = [];
-      parts.push(
-        importedTotal === 1
-          ? "Import completed. Added 1 bill."
-          : `Import completed. Added ${importedTotal} bills.`,
-      );
-      if (skippedTotal === 1) parts.push("Skipped 1 duplicate.");
-      else if (skippedTotal > 1) parts.push(`Skipped ${skippedTotal} duplicates.`);
+      if (importedTotal > 0) {
+        parts.push(importedTotal === 1 ? "Import completed. Added 1 bill." : `Import completed. Added ${importedTotal} bills.`);
+        if (skippedTotal > 0) parts.push(`Skipped ${skippedTotal} row${skippedTotal === 1 ? "" : "s"}.`);
+      } else {
+        parts.push("Import completed. No new bills added.");
+        if (skippedTotal > 0) parts.push(`${skippedTotal} row${skippedTotal === 1 ? "" : "s"} were already imported or skipped.`);
+      }
       if (parts.length) setAssistantMessage(parts.join(" "));
 
       setIsImporting(false);
@@ -773,9 +875,10 @@ export default function DashboardPage() {
     }
 
     setCurrentImportStep("save_complete");
+    const finalStatus = importedCount > 0 || (bills.length > 0 && skippedCount > 0) ? "done" : "failed";
     updateJob(job.id, {
-      status: importedCount > 0 ? "done" : "failed",
-      progressText: buildImportDoneMessage(importedCount, skippedCount),
+      status: finalStatus,
+      progressText: buildImportDoneMessage(importedCount, skippedCount, bills.length, skippedRows.length),
       totalBillsFound: bills.length,
       billsSaved: importedCount,
       billsSkipped: skippedCount,
@@ -948,7 +1051,7 @@ export default function DashboardPage() {
     setOptimisticBalance(parsedBalance);
     setBalanceInput(parsedBalance.toString());
     setSavingBalance(false);
-    setPageNotice(`Balance snapshot updated to ${formatGBP(parsedBalance)}.`);
+    setPageNotice(`Balance snapshot updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
 
     const path = getBalanceDocPath(user.uid);
     const payload = {
@@ -978,7 +1081,7 @@ export default function DashboardPage() {
           uid: user.uid,
           path,
         });
-        setPageNotice(`Balance snapshot saved: ${formatGBP(parsedBalance)}.`);
+        setPageNotice(`Balance snapshot saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
       })
       .catch((saveError) => {
         if (balanceSaveRequestRef.current !== saveRequestId) {
@@ -1013,7 +1116,7 @@ export default function DashboardPage() {
       ),
         "Saving balance snapshot is taking too long. Check your connection and try again.",
       );
-      setPageNotice(`Balance snapshot saved: ${formatGBP(parsedBalance)}.`);
+      setPageNotice(`Balance snapshot saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
     } catch (saveError) {
       setOptimisticBalance(null);
       setPageNotice("");
@@ -1294,8 +1397,122 @@ export default function DashboardPage() {
     setCurrentImportJobId(null);
   }
 
+  async function handleBillDelete(billId) {
+    if (!user || !db) return;
+    if (!window.confirm("Remove this bill?")) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "bills", billId));
+    } catch {
+      setEditError("Could not delete that bill. Try again.");
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (!user || !db || selectedBillIds.size === 0) return;
+    const count = selectedBillIds.size;
+    if (!window.confirm(`Delete ${count} selected bill${count === 1 ? "" : "s"}?`)) return;
+    try {
+      const batch = writeBatch(db);
+      selectedBillIds.forEach((billId) => {
+        batch.delete(doc(db, "users", user.uid, "bills", billId));
+      });
+      await batch.commit();
+      setSelectedBillIds(new Set());
+      setSelectMode(false);
+    } catch {
+      setEditError("Could not delete the selected bills. Try again.");
+    }
+  }
+
+  function handleSetupDismiss() {
+    localStorage.setItem("cleartill_setup_dismissed", "true");
+    setSetupDismissed(true);
+  }
+
+  async function handleCurrencySave(currency) {
+    if (!user || !db) return;
+    setDisplayCurrency(currency);
+    try {
+      await setDoc(doc(db, "users", user.uid, "settings", "preferences"), { currency }, { merge: true });
+    } catch {
+      // Currency preference updated locally; Firestore sync failed silently
+    }
+  }
+
+  async function handleRetryImport(jobId) {
+    const job = importJobs.find((j) => j.id === jobId);
+    if (!job || isImporting) return;
+
+    if (!job.file) {
+      updateJob(jobId, { progressText: "Please choose this screenshot again." });
+      return;
+    }
+
+    setIsImporting(true);
+    setCurrentImportJobId(jobId);
+
+    try {
+      updateJob(jobId, {
+        status: "uploading",
+        progressText: "Uploading screenshot…",
+        importedCount: 0,
+        skippedCount: 0,
+        totalBillsFound: 0,
+        billsSaved: 0,
+        skippedRows: [],
+        errorMessage: "",
+      });
+
+      const result = await importSingleImage(job);
+
+      {
+        const retryExtractedCount = (result.bills || []).length || result.totalBillsFound || 0;
+        const retryQualitySkipped = (result.skippedRows || []).length;
+        const retryFinalStatus =
+          (result.importedCount || 0) > 0 || (retryExtractedCount > 0 && (result.skippedCount || 0) > 0)
+            ? "done"
+            : "failed";
+        updateJob(jobId, {
+          status: retryFinalStatus,
+          progressText: buildImportDoneMessage(
+            result.importedCount || 0,
+            result.skippedCount || 0,
+            retryExtractedCount,
+            retryQualitySkipped,
+          ),
+          importedCount: result.importedCount || 0,
+          skippedCount: result.skippedCount || 0,
+          totalBillsFound: result.totalBillsFound || 0,
+          billsSaved: result.importedCount || 0,
+          skippedRows: result.skippedRows || [],
+        });
+      }
+    } catch (error) {
+      const errMsg = error?.message || "Unknown import error";
+      const isTimeout = errMsg.toLowerCase().includes("timed out");
+      updateJob(jobId, {
+        status: "failed",
+        progressText: isTimeout
+          ? "Timed out. Try a clearer screenshot."
+          : "Couldn't read enough from this screenshot.",
+        errorMessage: errMsg,
+      });
+    } finally {
+      setIsImporting(false);
+      setCurrentImportJobId(null);
+      setCurrentImportStep("idle");
+    }
+  }
+
   if (!authReady) {
-    return <main className="dashboard-shell">Loading...</main>;
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <p className="eyebrow">ClearTill</p>
+          <h1>Loading your payday forecast…</h1>
+        </section>
+      </main>
+    );
   }
 
   if (!isFirebaseClientConfigured) {
@@ -1401,98 +1618,80 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      <section className="setup-card">
-        <div className="setup-progress">
-          <div>
-            <p className="eyebrow">Setup</p>
-            <h2>{setupMessage.title}</h2>
-            <p className="helper-text">{setupMessage.detail}</p>
+      {!setupDismissed ? (
+        <section className="setup-card">
+          <div className="setup-progress">
+            <div>
+              <p className="eyebrow">Setup</p>
+              <h2>{setupMessage.title}</h2>
+              <p className="helper-text">{setupMessage.detail}</p>
+            </div>
+            <div className="setup-chip-row" aria-label="Setup progress">
+              <button className={`setup-chip ${getSetupChipState(1, setupStep)}`} type="button">
+                <span>{setupStep > 1 ? "✓" : "1"}</span> Balance
+              </button>
+              <button className={`setup-chip ${getSetupChipState(2, setupStep)}`} type="button">
+                <span>{setupStep > 2 ? "✓" : "2"}</span> Payday
+              </button>
+              <button className={`setup-chip ${getSetupChipState(3, setupStep)}`} type="button">
+                <span>{setupStep > 3 ? "✓" : "3"}</span> Bills
+              </button>
+            </div>
           </div>
-          <div className="setup-chip-row" aria-label="Setup progress">
-            <button className={`setup-chip ${getSetupChipState(1, setupStep)}`} type="button">
-              <span>{setupStep > 1 ? "✓" : "1"}</span> Balance
-            </button>
-            <button className={`setup-chip ${getSetupChipState(2, setupStep)}`} type="button">
-              <span>{setupStep > 2 ? "✓" : "2"}</span> Payday
-            </button>
-            <button className={`setup-chip ${getSetupChipState(3, setupStep)}`} type="button">
-              <span>{setupStep > 3 ? "✓" : "3"}</span> Bills
-            </button>
+          <div className="setup-cta-row">
+            {setupStep === 1 ? <button className="primary-button" type="button">Add balance snapshot</button> : null}
+            {setupStep === 2 ? <button className="primary-button" type="button" onClick={() => setEditingIncome(true)}>Add payday</button> : null}
+            {setupStep === 3 ? <button className="primary-button" type="button">Add bills</button> : null}
+            {setupStep === 4 ? (
+              <>
+                <button className="secondary-button" type="button">Update snapshot</button>
+                <button className="primary-button" type="button">Add another bill</button>
+                <button className="secondary-button small-button setup-dismiss" type="button" onClick={handleSetupDismiss}>
+                  Dismiss
+                </button>
+              </>
+            ) : null}
           </div>
-        </div>
-        <div className="setup-cta-row">
-          {setupStep === 1 ? <button className="primary-button" type="button">Add balance snapshot</button> : null}
-          {setupStep === 2 ? <button className="primary-button" type="button" onClick={() => setEditingIncome(true)}>Add payday</button> : null}
-          {setupStep === 3 ? <button className="primary-button" type="button">Add bills</button> : null}
-          {setupStep === 4 ? (
-            <>
-              <button className="secondary-button" type="button">Update snapshot</button>
-              <button className="primary-button" type="button">Add another bill</button>
-            </>
-          ) : null}
-        </div>
-      </section>
+        </section>
+      ) : null}
 
       <section className="summary-grid" aria-label="Bill summary">
+        <SummaryCard
+          label="Balance snapshot"
+          value={hasBalanceSnapshot
+            ? `${formatCurrency(dashboard.currentBalance, displayCurrency)} in account`
+            : "Not set"}
+          muted={!hasBalanceSnapshot}
+          helper="Manual snapshot, not a live bank balance."
+        />
         <SummaryCard
           label="Bills before payday"
           value={
             dashboard.paydayDate
-              ? `${formatGBP(dashboard.totalBeforePayday)} due before payday`
-              : dashboard.upcomingBills.length
+              ? `${formatCurrency(dashboard.totalBeforePayday, displayCurrency)} due before payday`
+              : hasBills
                 ? `${dashboard.upcomingBills.length} upcoming bill${dashboard.upcomingBills.length === 1 ? "" : "s"}`
                 : "No upcoming bills"
           }
           muted={!hasBalanceSnapshot || !hasPayday || !hasBills}
-          helper="Bills landing before your next payday."
+          helper={billsBeforePaydayOverBudget ? "Bills before payday exceed your balance snapshot." : "Bills landing before your next payday."}
+          status={billsBeforePaydayOverBudget ? "negative" : ""}
         />
         <SummaryCard
           label="Clear till payday"
-          value={
-            displayAccount?.currentBalance !== undefined
-              ? `~${formatGBP(dashboard.leftBeforePayday)} remaining`
-              : "Add your balance snapshot"
-          }
+          value={clearTillValue}
           muted={false}
-          helper={hasBalanceSnapshot ? "Based on your balance snapshot minus bills before payday." : "Add your balance snapshot first so Billie can forecast what may be left."}
+          helper={clearTillHelper}
+          status={clearTillStatus}
         />
         <SummaryCard
-          label="Next bill"
-          value={
-            dashboard.nextBill
-              ? `${dashboard.nextBill.name} — ${formatGBP(dashboard.nextBill.amount)} ${dashboard.nextBill.nextDueDate ? `due ${formatDueLabel(dashboard.nextBill.nextDueDate)}` : "date not set"}`
-              : "No bills logged"
-          }
-          muted={!hasBills}
-          helper={hasBills ? "Sorted from today forward." : "Add bills to build your runway."}
-        />
-        <SummaryCard
-          label="Payday"
-          value={dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "Not set"}
-          muted={!hasBalanceSnapshot}
-          helper="Your next payday."
+          label="Daily limit till payday"
+          value={dailyLimitValue}
+          muted={!hasBalanceSnapshot || !hasPayday}
+          helper={dailyLimitHelper}
+          status={dailyLimitStatus}
         />
       </section>
-
-      {process.env.NODE_ENV !== "production" ? (
-        <section className="chat-panel">
-          <h2>Firestore diagnostics</h2>
-          <div className="helper-text" style={{ fontFamily: "monospace" }}>
-            <p>auth.currentUser.uid: {firestoreDiagnostics.uid}</p>
-            <p>NEXT_PUBLIC_FIREBASE_PROJECT_ID: {firestoreDiagnostics.envProjectId || "missing"}</p>
-            <p>Firebase app options.projectId: {firestoreDiagnostics.appProjectId || "missing"}</p>
-            <p>db exists: {String(firestoreDiagnostics.dbExists)}</p>
-            <p>balance path: {getBalanceDocPath(user.uid)}</p>
-            <p>income path: {getIncomeDocPath(user.uid)}</p>
-            <p>bills path: {getBillsCollectionPath(user.uid)}</p>
-            <p>reminders path: {getReminderDocPath(user.uid, "{reminderId}")}</p>
-            <p>test write: {firestoreTestState}</p>
-          </div>
-          <button className="secondary-button" type="button" onClick={handleFirestoreTestWrite}>
-            Test Firestore write
-          </button>
-        </section>
-      ) : null}
 
       <section className="content-grid">
         <div className="stack">
@@ -1510,7 +1709,7 @@ export default function DashboardPage() {
                     value={balanceInput}
                     disabled={importLocked}
                     onChange={(event) => setBalanceInput(event.target.value)}
-                    placeholder="Balance snapshot in GBP"
+                    placeholder="Balance snapshot"
                   />
                   <button className="secondary-button" type="submit" disabled={importLocked}>
                     Save
@@ -1520,14 +1719,17 @@ export default function DashboardPage() {
             </form>
             {displayAccount?.currentBalance !== undefined ? (
               <div className="helper-text balance-copy">
-                <p>Balance snapshot: {formatGBP(dashboard.currentBalance)}</p>
+                <p>Balance snapshot: {formatCurrency(dashboard.currentBalance, displayCurrency)}</p>
                 <p>{balanceSnapshotLabel}</p>
-                <p>Clear till payday: ~{formatGBP(dashboard.leftBeforePayday)} remaining</p>
-                <p>Still around {formatGBP(dashboard.currentBalance)}? Update if this has changed.</p>
+                {hasPayday && hasBills ? (
+                  <p>Bills before payday: {formatCurrency(dashboard.totalBeforePayday, displayCurrency)}</p>
+                ) : null}
+                <p>Clear till payday: {clearTillValue}</p>
+                <p>Still around {formatCurrency(dashboard.currentBalance, displayCurrency)}? Update if this has changed.</p>
               </div>
             ) : (
               <p className="helper-text balance-copy">
-                Enter your current balance. Billie will forecast what may be left after bills before payday.
+                Enter your current balance. ClearTill will forecast what may be left after bills before payday.
               </p>
             )}
             {displayAccount?.currentBalance === undefined ? (
@@ -1535,6 +1737,19 @@ export default function DashboardPage() {
                 Add your balance snapshot to see what may be left before payday.
               </p>
             ) : null}
+            <div className="field-row" style={{ marginTop: "14px" }}>
+              <label className="field-label" htmlFor="display-currency">Display currency</label>
+              <select
+                id="display-currency"
+                className="currency-select"
+                value={displayCurrency}
+                onChange={(e) => handleCurrencySave(e.target.value)}
+              >
+                <option value="GBP">GBP £</option>
+                <option value="EUR">EUR €</option>
+                <option value="USD">USD $</option>
+              </select>
+            </div>
             {balanceError ? <p className="error">{balanceError}</p> : null}
           </section>
 
@@ -1544,7 +1759,7 @@ export default function DashboardPage() {
               <p className="helper-text helper-tooltip">
                 {!hasBalanceSnapshot
                   ? "Bills can be added now, but the forecast works best after balance and payday are set."
-                  : "You can add bills now, but Billie needs your payday to show what lands before you get paid."}
+                  : "You can add bills now, but ClearTill needs your payday to show what lands before you get paid."}
               </p>
             ) : null}
             <form className="chat-form" onSubmit={handleSubmit}>
@@ -1616,9 +1831,11 @@ export default function DashboardPage() {
                         ) : null}
                         {(job.skippedRows || []).length > 0 ? (
                           <div className="skipped-rows-panel">
-                            <p className="helper-text">Skipped rows</p>
+                            <p className="helper-text">
+                              Skipped {job.skippedRows.length} unclear row{job.skippedRows.length === 1 ? "" : "s"}
+                            </p>
                             <ul className="skipped-rows-list">
-                              {(job.skippedRows || []).map((row, i) => (
+                              {job.skippedRows.map((row, i) => (
                                 <li key={i} className="helper-text">
                                   {row.name || row.rawText} — {row.reason}
                                 </li>
@@ -1627,32 +1844,28 @@ export default function DashboardPage() {
                           </div>
                         ) : null}
                       </div>
-                      <button
-                        className="secondary-button small-button"
-                        type="button"
-                        disabled={importLocked}
-                        onClick={() => removeSelectedImage(job.id)}
-                      >
-                        Remove
-                      </button>
+                      <div className="import-card-actions">
+                        {job.status === "failed" ? (
+                          <button
+                            className="secondary-button small-button"
+                            type="button"
+                            disabled={isImporting}
+                            onClick={() => handleRetryImport(job.id)}
+                          >
+                            Retry
+                          </button>
+                        ) : null}
+                        <button
+                          className="secondary-button small-button"
+                          type="button"
+                          disabled={importLocked}
+                          onClick={() => removeSelectedImage(job.id)}
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ))}
-                </div>
-              ) : null}
-              {process.env.NODE_ENV !== "production" && importJobs.length ? (
-                <div className="import-debug-panel" style={{ fontSize: "11px", fontFamily: "monospace", background: "#1a1a2e", color: "#a0d8ef", padding: "10px 12px", borderRadius: "6px", lineHeight: 1.7 }}>
-                  <strong style={{ color: "#e0e0e0" }}>Import Debug</strong>
-                  <div>queue started: {isImporting ? "true" : "false"}</div>
-                  <div>isImporting: {String(isImporting)}</div>
-                  <div>current job id: {currentImportJobId || "none"}</div>
-                  <div>current job name: {currentImportJobId ? (importJobs.find((j) => j.id === currentImportJobId)?.name ?? "?") : "none"}</div>
-                  <div>current job status: {currentImportJobId ? (importJobs.find((j) => j.id === currentImportJobId)?.status ?? "?") : "none"}</div>
-                  <div>current step: {currentImportStep || "none"}</div>
-                  <div>last completed job: {lastCompletedImportJobName || "none"}</div>
-                  <div>last error: {lastImportError || "none"}</div>
-                  <div>queued: {importJobs.filter((j) => j.status === "queued").length}</div>
-                  <div>done: {importJobs.filter((j) => j.status === "done").length}</div>
-                  <div>failed: {importJobs.filter((j) => j.status === "failed").length}</div>
                 </div>
               ) : null}
               <div className="chat-input-row">
@@ -1692,54 +1905,104 @@ export default function DashboardPage() {
             {chatError ? <p className="error">{chatError}</p> : null}
           </section>
 
-          <section className={`runway-panel ${!hasBills || !hasPayday ? "is-disabled-soft" : ""}`}>
+          <section className={`runway-panel ${!hasBills ? "is-disabled-soft" : ""}`}>
             <h2>{dashboard.runwayTitle}</h2>
-            {dashboard.runwayEvents.length ? (
-              <div className="runway" aria-label="Timeline of upcoming bills">
-                {dashboard.runwayEvents.map((event, index) => (
-                  <RunwayItem
-                    key={`${event.type}-${event.label}-${index}`}
-                    event={event}
-                    showDivider={index > 0}
-                  />
-                ))}
-              </div>
+            {hasBills ? (
+              <>
+                <div className="runway" aria-label="Timeline of upcoming bills">
+                  {dashboard.runwayEvents.map((event, index) => (
+                    <RunwayItem
+                      key={`${event.type}-${event.label}-${index}`}
+                      event={event}
+                      showDivider={index > 0}
+                    />
+                  ))}
+                  {dashboard.runwayMoreCount > 0 ? (
+                    <>
+                      <span className="runway-divider" aria-hidden="true">→</span>
+                      <span className="runway-item runway-item-more">+{dashboard.runwayMoreCount} more</span>
+                    </>
+                  ) : null}
+                </div>
+                <p className="runway-helper">Sorted from today forward.</p>
+              </>
             ) : (
-              <p className="empty">
-                {!hasBills
-                  ? "Add bills to build your runway."
-                  : !hasPayday
-                    ? "Add payday to see your full payday runway."
-                    : "No upcoming bills yet."}
-              </p>
+              <p className="empty">No upcoming bills found.</p>
             )}
-            {!hasBills || !hasPayday ? (
-              <p className="helper-text helper-tooltip">
-                {!hasBills
-                  ? "Your runway appears after you add bills."
-                  : "Your runway appears after you add payday and bills."}
-              </p>
-            ) : null}
           </section>
 
           <section className="reminders-panel">
-            <h2>In-app reminders</h2>
+            <h2>Reminders</h2>
             {reminders.length ? (
               <ul className="reminder-list">
-                {reminders.map((reminder) => (
-                  <li key={reminder.id}>
-                    <span>{reminder.message}</span>
-                  </li>
-                ))}
+                {reminders.map((reminder) => {
+                  const createdAt = reminder.createdAt?.toDate?.();
+                  const createdLabel = createdAt
+                    ? formatDisplayDate(createdAt.toISOString().slice(0, 10))
+                    : null;
+
+                  return (
+                    <li key={reminder.id}>
+                      <div className="bill-row-main">
+                        <span>{reminder.message}</span>
+                        {createdLabel ? (
+                          <span className="bill-meta">
+                            {createdLabel}{reminder.status ? ` — ${reminder.status}` : ""}
+                          </span>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             ) : (
-              <p className="empty">No reminders created yet.</p>
+              <p className="empty">ClearTill will show reminders here when bills are due soon.</p>
             )}
           </section>
         </div>
 
         <section className={`list-panel ${!hasBalanceSnapshot && !hasPayday && !hasBills ? "is-disabled-soft" : ""}`}>
-          <h2>Bill list</h2>
+          <div className="section-head">
+            <h2 style={{ margin: 0 }}>Bill list</h2>
+            {bills.length > 0 ? (
+              <div className="select-mode-controls">
+                <button
+                  className="secondary-button small-button"
+                  type="button"
+                  onClick={() => { setSelectMode((s) => !s); setSelectedBillIds(new Set()); }}
+                >
+                  {selectMode ? "Done" : "Select bills"}
+                </button>
+                {selectMode ? (
+                  <>
+                    <button
+                      className="secondary-button small-button"
+                      type="button"
+                      onClick={() => setSelectedBillIds(new Set(bills.map((b) => b.id)))}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      className="secondary-button small-button"
+                      type="button"
+                      onClick={() => setSelectedBillIds(new Set())}
+                    >
+                      Clear
+                    </button>
+                    {selectedBillIds.size > 0 ? (
+                      <button
+                        className="secondary-button small-button delete-button"
+                        type="button"
+                        onClick={handleBulkDelete}
+                      >
+                        Delete {selectedBillIds.size} selected
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
           <section className={`bill-section ${!hasBalanceSnapshot ? "is-disabled-soft" : ""}`}>
             <div className="section-head">
               <h3>Payday</h3>
@@ -1761,7 +2024,7 @@ export default function DashboardPage() {
                   disabled={importLocked}
                   value={incomeForm.amount}
                   onChange={(event) => setIncomeForm((current) => ({ ...current, amount: event.target.value }))}
-                  placeholder="Monthly income in GBP"
+                  placeholder="Monthly income"
                 />
                 <label className="field-label" htmlFor="payday-day">Payday</label>
                 <input
@@ -1780,18 +2043,29 @@ export default function DashboardPage() {
               </form>
             ) : (
               <>
-                <p className="helper-text">{getIncomeStatusText(displayIncome)}</p>
+                <p className="helper-text">{getIncomeStatusText(displayIncome, displayCurrency)}</p>
+                {displayIncome && hasIncomeAmount ? (
+                  <div className="helper-text helper-tooltip">
+                    <p>Expected monthly income: {formatCurrency(Number(displayIncome.amount), displayCurrency)}</p>
+                    {hasBills ? (
+                      <>
+                        <p>Monthly bills: {formatCurrency(dashboard.totalMonthlyBills, displayCurrency)}</p>
+                        <p>Monthly spending room: {monthlySpendingRoomValue}</p>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
                 {displayIncome && hasIncomeAmount && !hasPayday ? (
                   <p className="helper-text helper-tooltip">Add payday date</p>
                 ) : null}
                 {displayIncome && hasPayday && !hasIncomeAmount ? (
-                  <p className="helper-text helper-tooltip">Add income amount if you want Billie to show income context.</p>
+                  <p className="helper-text helper-tooltip">Add income amount if you want ClearTill to show monthly spending room.</p>
                 ) : null}
               </>
             )}
             {!hasBalanceSnapshot ? (
               <p className="helper-text helper-tooltip">
-                Add your balance snapshot first so Billie can forecast what may be left.
+                Add your balance snapshot first so ClearTill can forecast what may be left.
               </p>
             ) : null}
           </section>
@@ -1808,6 +2082,11 @@ export default function DashboardPage() {
                 onEditSave={handleBillEditSave}
                 savingEdit={savingEdit}
                 importLocked={importLocked}
+                onDelete={handleBillDelete}
+                selectMode={selectMode}
+                selectedBillIds={selectedBillIds}
+                onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
+                displayCurrency={displayCurrency}
               />
               <BillGroup
                 title="After payday"
@@ -1820,6 +2099,11 @@ export default function DashboardPage() {
                 onEditSave={handleBillEditSave}
                 savingEdit={savingEdit}
                 importLocked={importLocked}
+                onDelete={handleBillDelete}
+                selectMode={selectMode}
+                selectedBillIds={selectedBillIds}
+                onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
+                displayCurrency={displayCurrency}
               />
             </>
           ) : (
@@ -1834,6 +2118,11 @@ export default function DashboardPage() {
               onEditSave={handleBillEditSave}
               savingEdit={savingEdit}
               importLocked={importLocked}
+              onDelete={handleBillDelete}
+              selectMode={selectMode}
+              selectedBillIds={selectedBillIds}
+              onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
+              displayCurrency={displayCurrency}
             />
           )}
           {editingIncome || editingBillId ? (editError ? <p className="error">{editError}</p> : null) : null}
@@ -1843,9 +2132,10 @@ export default function DashboardPage() {
   );
 }
 
-function SummaryCard({ label, value, muted = false, helper = "" }) {
+function SummaryCard({ label, value, muted = false, helper = "", status = "" }) {
+  const statusClass = status ? `summary-card-${status}` : "";
   return (
-    <article className={`summary-card ${muted ? "is-disabled-soft" : ""}`}>
+    <article className={`summary-card ${muted ? "is-disabled-soft" : ""} ${statusClass}`.trim()}>
       <span>{label}</span>
       <strong>{value}</strong>
       {helper ? <p className="helper-text helper-tooltip">{helper}</p> : null}
@@ -1856,8 +2146,8 @@ function SummaryCard({ label, value, muted = false, helper = "" }) {
 function RunwayItem({ event, showDivider }) {
   return (
     <>
-      {showDivider ? <span className="runway-divider" aria-hidden="true" /> : null}
-      <span className="runway-item">
+      {showDivider ? <span className="runway-divider" aria-hidden="true">→</span> : null}
+      <span className={`runway-item runway-item-${event.type}`}>
         <strong>{event.label}</strong> {event.detail}
       </span>
     </>
@@ -1875,6 +2165,11 @@ function BillGroup({
   onEditSave,
   savingEdit,
   importLocked,
+  onDelete,
+  selectMode,
+  selectedBillIds,
+  onToggleSelect,
+  displayCurrency,
 }) {
   return (
     <div className="bill-section">
@@ -1898,7 +2193,7 @@ function BillGroup({
                     inputMode="decimal"
                     value={editingBillForm.amount}
                     onChange={(event) => onBillFormChange((current) => ({ ...current, amount: event.target.value }))}
-                    placeholder="Amount in GBP"
+                    placeholder="Amount"
                   />
                   <label className="field-label" htmlFor={`bill-due-day-${bill.id}`}>Day of month</label>
                   <input
@@ -1919,15 +2214,31 @@ function BillGroup({
                 </form>
               ) : (
                 <>
+                  {selectMode ? (
+                    <input
+                      type="checkbox"
+                      className="bill-checkbox"
+                      checked={selectedBillIds?.has(bill.id) ?? false}
+                      onChange={() => onToggleSelect?.(bill.id)}
+                      aria-label={`Select ${bill.name}`}
+                    />
+                  ) : null}
                   <div className="bill-row-main">
                     <span>{bill.name}</span>
                     <span className="bill-meta">
-                      {formatGBP(bill.amount)} - {isValidDueDay(bill.dueDay) ? formatOrdinal(bill.dueDay) : "date not set"}
+                      {formatCurrency(bill.amount, displayCurrency)} — {isValidDueDay(bill.dueDay) ? formatOrdinal(bill.dueDay) : "date not set"}
                     </span>
                   </div>
-                  <button className="secondary-button small-button" type="button" disabled={importLocked} onClick={() => onEditStart(bill)}>
-                    Edit
-                  </button>
+                  {!selectMode ? (
+                    <div className="edit-actions">
+                      <button className="secondary-button small-button" type="button" disabled={importLocked} onClick={() => onEditStart(bill)}>
+                        Edit
+                      </button>
+                      <button className="secondary-button small-button remove-button" type="button" disabled={importLocked} onClick={() => onDelete?.(bill.id)}>
+                        Remove
+                      </button>
+                    </div>
+                  ) : null}
                 </>
               )}
             </li>
@@ -2200,16 +2511,32 @@ function getImportJobProgress(job) {
   }
 }
 
-function buildImportDoneMessage(importedCount, skippedCount) {
-  if (importedCount > 0 && skippedCount > 0) {
-    return `Imported ${importedCount} bill${importedCount === 1 ? "" : "s"}. Skipped ${skippedCount} unclear row${skippedCount === 1 ? "" : "s"}.`;
+function buildImportDoneMessage(importedCount, skippedCount, extractedCount = 0, qualitySkippedCount = 0) {
+  const ic = importedCount || 0;
+  const sc = skippedCount || 0;
+  const ec = extractedCount || 0;
+  const qsc = qualitySkippedCount || 0;
+  const dupSkipped = Math.max(0, sc - qsc);
+
+  if (ic > 0 && sc > 0) {
+    const skipLabel = dupSkipped > qsc ? "duplicate" : "unclear row";
+    return `Imported ${ic} bill${ic === 1 ? "" : "s"}. Skipped ${sc} ${skipLabel}${sc === 1 ? "" : "s"}.`;
   }
 
-  if (importedCount > 0) {
-    return `Imported ${importedCount} bill${importedCount === 1 ? "" : "s"}.`;
+  if (ic > 0) {
+    return `Imported ${ic} bill${ic === 1 ? "" : "s"}.`;
   }
 
-  return "Couldn't read enough from this screenshot. Try a clearer screenshot showing bill name, amount and date.";
+  if (ec > 0 && sc > 0) {
+    const skipLabel = dupSkipped > qsc ? "duplicate" : "unclear row";
+    return `Read this screenshot. No new bills added. Skipped ${sc} ${skipLabel}${sc === 1 ? "" : "s"}.`;
+  }
+
+  if (ec > 0) {
+    return "Read this screenshot. No new bills added.";
+  }
+
+  return "Couldn't read enough from this screenshot.";
 }
 
 function buildImportSummaryMessage(summary) {
@@ -2228,7 +2555,11 @@ function buildImportSummaryMessage(summary) {
     return `Import completed. Added ${imported} bill${imported === 1 ? "" : "s"}.`;
   }
 
-  return "Import completed. No bills were added.";
+  if (skipped > 0) {
+    return `Import completed. No new bills added. ${skipped} row${skipped === 1 ? "" : "s"} were already imported or skipped.`;
+  }
+
+  return "Import completed. No new bills added.";
 }
 
 function getImportButtonLabel(isImporting, currentImportStep, importJobs, currentImportJobId) {
@@ -2275,14 +2606,14 @@ function getSetupMessage(setupStep) {
   if (setupStep === 1) {
     return {
       title: "Step 1 of 3 — Add your balance snapshot",
-      detail: "Billie works best when you start with a manual balance snapshot.",
+      detail: "ClearTill works best when you start with a manual balance snapshot.",
     };
   }
 
   if (setupStep === 2) {
     return {
       title: "Step 2 of 3 — Add your payday",
-      detail: "Once payday is set, Billie can show what lands before you get paid.",
+      detail: "Once payday is set, ClearTill can show what lands before you get paid.",
     };
   }
 
@@ -2294,7 +2625,7 @@ function getSetupMessage(setupStep) {
   }
 
   return {
-    title: "Setup complete — Billie can now show your payday forecast.",
+    title: "Setup complete — ClearTill can now show your payday forecast.",
     detail: "You can update your snapshot, payday, or bills any time.",
   };
 }

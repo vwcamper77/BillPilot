@@ -4,13 +4,13 @@ export default function HomePage() {
   return (
     <main className="home-shell">
       <section className="home-panel">
-        <p className="eyebrow">Billie</p>
-        <p className="helper-text">billie.money</p>
-        <h1>Your payday heads-up for bills.</h1>
+        <p className="eyebrow">ClearTill</p>
+        <p className="helper-text">cleartill.money</p>
+        <h1>Know you&apos;re clear till payday.</h1>
         <p>
-          Tell Billie your bills.
+          Tell ClearTill your bills.
           <br />
-          Tell Billie your payday.
+          Tell ClearTill your payday.
           <br />
           See what&apos;s coming before you get paid.
         </p>

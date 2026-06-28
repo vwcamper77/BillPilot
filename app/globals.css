@@ -298,6 +298,33 @@ h1 {
   margin-top: 10px;
 }
 
+.summary-card-negative {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+.summary-card-negative span,
+.summary-card-negative .helper-text {
+  color: #be123c;
+}
+
+.summary-card-low {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #78350f;
+}
+
+.summary-card-low span,
+.summary-card-low .helper-text {
+  color: #92400e;
+}
+
+.summary-card-ok {
+  background: rgba(240, 253, 244, 0.8);
+  border-color: rgba(134, 239, 172, 0.5);
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -484,7 +511,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 10px;
-  overflow-x: auto;
+  flex-wrap: wrap;
   padding: 12px 0 4px;
 }
 
@@ -494,13 +521,35 @@ h1 {
   border-radius: 999px;
   background: white;
   padding: 9px 12px;
-  white-space: nowrap;
 }
 
 .runway-divider {
-  flex: 0 0 36px;
-  height: 1px;
-  background: var(--line);
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+  user-select: none;
+  align-self: center;
+  padding: 0 2px;
+}
+
+.runway-item-today,
+.runway-item-payday {
+  background: var(--soft);
+  border-color: rgba(15, 118, 110, 0.3);
+  color: var(--accent-dark);
+}
+
+.runway-item-more {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.runway-helper {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .bill-section {
@@ -638,6 +687,62 @@ h1 {
 
 .auth-trust {
   font-size: 0.85rem;
+}
+
+.select-mode-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.delete-button {
+  color: var(--warn);
+  border-color: rgba(154, 52, 18, 0.25);
+}
+
+.remove-button {
+  color: var(--muted);
+  border-color: transparent;
+}
+
+.remove-button:hover,
+.remove-button:focus-visible {
+  color: var(--warn);
+  border-color: rgba(154, 52, 18, 0.25);
+}
+
+.import-card-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bill-checkbox {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  margin: 0;
+}
+
+.currency-select {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  padding: 0 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.setup-dismiss {
+  margin-left: auto;
+  color: var(--muted);
+  border-color: transparent;
 }
 
 .skipped-rows-panel {
