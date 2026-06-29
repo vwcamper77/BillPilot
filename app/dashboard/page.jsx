@@ -20,10 +20,12 @@ import {
 import {
   createUserWithEmailAndPassword,
   getRedirectResult,
+  linkWithPopup,
   linkWithRedirect,
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signInWithRedirect,
   signOut,
 } from "firebase/auth";
@@ -735,9 +737,42 @@ export default function DashboardPage() {
       await authPersistenceReady;
 
       if (auth.currentUser?.isAnonymous) {
+        try {
+          await linkWithPopup(auth.currentUser, googleProvider);
+          setStoredGoogleRedirectAction("");
+          return;
+        } catch (popupError) {
+          if (popupError?.code === "auth/credential-already-in-use") {
+            await auth.currentUser.delete().catch(() => signOut(auth));
+            await signInWithPopup(auth, googleProvider);
+            setStoredGoogleRedirectAction("");
+            return;
+          }
+
+          if (
+            popupError?.code !== "auth/popup-blocked"
+            && popupError?.code !== "auth/cancelled-popup-request"
+          ) {
+            throw popupError;
+          }
+        }
+
         setStoredGoogleRedirectAction("link-google");
         await linkWithRedirect(auth.currentUser, googleProvider);
         return;
+      }
+
+      try {
+        await signInWithPopup(auth, googleProvider);
+        setStoredGoogleRedirectAction("");
+        return;
+      } catch (popupError) {
+        if (
+          popupError?.code !== "auth/popup-blocked"
+          && popupError?.code !== "auth/cancelled-popup-request"
+        ) {
+          throw popupError;
+        }
       }
 
       setStoredGoogleRedirectAction("signin-google");
