@@ -68,7 +68,7 @@ async function handleRemindersRequest(request) {
           continue;
         }
 
-        const schedule = calculateBillSchedule(bill.dueDay, 1, todayIso);
+        const schedule = calculateBillSchedule(bill.dueDay, 1, bill.paidThroughDate || null, todayIso);
 
         if (bill.nextDueDate !== schedule.nextDueDate || bill.reminderDate !== schedule.reminderDate) {
           await bill.ref.update({
@@ -225,7 +225,7 @@ function buildInAppReminderMessage({ bill, allBills, income, balance, todayIso }
     .filter((otherBill) => otherBill.active !== false && otherBill.id !== bill.id && isValidDueDay(otherBill.dueDay))
     .map((otherBill) => ({
       ...otherBill,
-      ...calculateBillSchedule(otherBill.dueDay, 1, todayIso),
+      ...calculateBillSchedule(otherBill.dueDay, 1, otherBill.paidThroughDate || null, todayIso),
     }))
     .filter((otherBill) => otherBill.nextDueDate && otherBill.nextDueDate < paydayDate);
   const remainingTotal = remainingBills.reduce((total, otherBill) => total + (Number(otherBill.amount) || 0), 0);

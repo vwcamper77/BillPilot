@@ -1,0 +1,118 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e20]:
+      - generic [ref=e21]:
+        - paragraph [ref=e22]: Billie
+        - heading "Your payday heads-up for bills." [level=1] [ref=e23]
+      - generic [ref=e24]:
+        - generic [ref=e25]: Guest session
+        - button "Save with Google" [ref=e26] [cursor=pointer]
+        - button "Sign out" [ref=e27] [cursor=pointer]
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - paragraph [ref=e31]: Setup
+          - heading "Step 2 of 3 — Add your payday" [level=2] [ref=e120]
+          - paragraph [ref=e33]: Once payday is set, Billie can show what lands before you get paid.
+        - generic "Setup progress" [ref=e34]:
+          - button "✓ Balance" [ref=e121] [cursor=pointer]:
+            - generic [ref=e36]: ✓
+            - text: Balance
+          - button "2 Payday" [ref=e37] [cursor=pointer]:
+            - generic [ref=e38]: "2"
+            - text: Payday
+          - button "3 Bills" [ref=e39] [cursor=pointer]:
+            - generic [ref=e40]: "3"
+            - text: Bills
+      - button "Add payday" [ref=e122] [cursor=pointer]
+    - region "Bill summary" [ref=e43]:
+      - article [ref=e44]:
+        - generic [ref=e45]: Upcoming bills
+        - strong [ref=e46]: 1 upcoming bill
+        - paragraph [ref=e47]: Billie uses your balance snapshot, payday and bills to estimate what may be left.
+      - article [ref=e48]:
+        - generic [ref=e49]: Balance snapshot
+        - strong [ref=e50]: "Forecast: ~£1,234.56 left after bills before payday"
+        - paragraph [ref=e51]: Manual snapshot, not a live bank balance.
+      - article [ref=e52]:
+        - generic [ref=e53]: Next bill
+        - strong [ref=e54]: Claude Each - £18 due 27 July
+        - paragraph [ref=e55]: Sorted from today forward.
+      - article [ref=e56]:
+        - generic [ref=e57]: Payday
+        - strong [ref=e58]: Not set
+        - paragraph [ref=e59]: Set your payday so Billie can show what lands before you get paid.
+    - generic [ref=e60]:
+      - heading "Firestore diagnostics" [level=2] [ref=e61]
+      - generic [ref=e62]:
+        - paragraph [ref=e63]: "auth.currentUser.uid: EH8Gn5J2LcSfZdOgRsmuGLhsZ053"
+        - paragraph [ref=e64]: "NEXT_PUBLIC_FIREBASE_PROJECT_ID: billpilot-54c56"
+        - paragraph [ref=e65]: "Firebase app options.projectId: billpilot-54c56"
+        - paragraph [ref=e66]: "db exists: true"
+        - paragraph [ref=e67]: "balance path: users/EH8Gn5J2LcSfZdOgRsmuGLhsZ053/settings/balance"
+        - paragraph [ref=e68]: "income path: users/EH8Gn5J2LcSfZdOgRsmuGLhsZ053/income/main"
+        - paragraph [ref=e69]: "bills path: users/EH8Gn5J2LcSfZdOgRsmuGLhsZ053/bills"
+        - paragraph [ref=e70]: "reminders path: users/EH8Gn5J2LcSfZdOgRsmuGLhsZ053/reminders/{reminderId}"
+        - paragraph [ref=e71]: "test write: success"
+      - button "Test Firestore write" [ref=e72] [cursor=pointer]
+    - generic [ref=e73]:
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - heading "Balance snapshot" [level=2] [ref=e76]
+          - generic [ref=e78]:
+            - generic [ref=e79]: Balance snapshot
+            - generic [ref=e80]:
+              - textbox "Balance snapshot" [ref=e81]:
+                - /placeholder: Balance snapshot in GBP
+                - text: "1234.56"
+              - button "Save" [ref=e82] [cursor=pointer]
+          - generic [ref=e123]:
+            - paragraph [ref=e124]: "Balance snapshot: £1,234.56"
+            - paragraph [ref=e125]: Entered today at 22:23
+            - paragraph [ref=e126]: "Forecast: ~£1,234.56 left after bills before payday"
+            - paragraph [ref=e127]: Still around £1,234.56? Update if this has changed.
+        - generic [ref=e85]:
+          - heading "Add a bill or payday" [level=2] [ref=e86]
+          - paragraph [ref=e87]: You can add bills now, but Billie needs your payday to show what lands before you get paid.
+          - generic [ref=e88]:
+            - generic [ref=e89]:
+              - generic [ref=e90]:
+                - strong [ref=e91]: Add a screenshot or bill image
+                - paragraph [ref=e92]: Drag and drop one or more screenshots here, paste a screenshot, or choose files.
+              - button "Choose image" [ref=e94] [cursor=pointer]
+            - generic [ref=e95]:
+              - textbox "My rent is GBP 1,100 due on the 26th every month." [ref=e96]
+              - button "Mic" [ref=e97] [cursor=pointer]
+            - button "Log it" [ref=e98] [cursor=pointer]
+          - paragraph [ref=e148]: Logged 1 new bill.
+        - generic [ref=e99]:
+          - heading "Next bills" [level=2] [ref=e100]
+          - generic "Timeline of upcoming bills" [ref=e101]:
+            - generic [ref=e102]:
+              - strong [ref=e103]: Today
+              - text: 28 June
+            - generic [ref=e150]:
+              - strong [ref=e151]: Claude Each
+              - text: £18 due 27 July
+          - paragraph [ref=e104]: Your runway appears after you add payday and bills.
+        - generic [ref=e105]:
+          - heading "In-app reminders" [level=2] [ref=e106]
+          - paragraph [ref=e107]: No reminders created yet.
+      - generic [ref=e108]:
+        - heading "Bill list" [level=2] [ref=e109]
+        - generic [ref=e110]:
+          - generic [ref=e111]:
+            - heading "Payday" [level=3] [ref=e112]
+            - button "Edit" [ref=e146] [cursor=pointer]
+          - paragraph [ref=e147]: £3,000 on the date not set of each month.
+        - generic [ref=e116]:
+          - heading "Upcoming bills" [level=3] [ref=e117]
+          - list [ref=e152]:
+            - listitem [ref=e153]:
+              - generic [ref=e154]:
+                - generic [ref=e155]: Claude Each
+                - generic [ref=e156]: £18 - 27th
+              - button "Edit" [ref=e157] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=e15] [cursor=pointer]:
+    - img [ref=e16]
+  - alert [ref=e19]

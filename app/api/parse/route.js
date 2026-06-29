@@ -469,6 +469,29 @@ function normaliseItem(item) {
     const missingFields = getMissingFields(item, ["name", "amount", "dueDay"]);
 
     if (missingFields.length) {
+      if (
+        missingFields.length === 1 &&
+        missingFields[0] === "dueDay" &&
+        item.name &&
+        item.amount !== undefined &&
+        item.amount !== null &&
+        item.amount !== ""
+      ) {
+        const cleanedName = normaliseBillName(item.name);
+
+        return {
+          action: "create_bill",
+          name: cleanedName,
+          amount: Number(item.amount),
+          currency: item.currency || "GBP",
+          frequency: "monthly",
+          dueDay: null,
+          reminderOffsetDays: Number(item.reminderOffsetDays ?? 1),
+          needsDueDay: true,
+          responseMessage: `Saved ${cleanedName} for ${formatGBP(item.amount)}. What day of month is it due?`,
+        };
+      }
+
       return missingResponse(missingFields);
     }
 

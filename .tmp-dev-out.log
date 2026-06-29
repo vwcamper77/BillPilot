@@ -1,0 +1,18 @@
+
+> billpilot@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.19
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.68.106:3000
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1638ms
+ ○ Compiling / ...
+ ✓ Compiled / in 3.6s (640 modules)
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 1685ms (974 modules)
+ GET / 500 in 7906ms
+ GET / 500 in 283ms
+[?25h

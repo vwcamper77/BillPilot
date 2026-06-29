@@ -1,0 +1,126 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - paragraph [ref=e5]: Billie
+        - heading "Your payday heads-up for bills." [level=1] [ref=e6]
+      - generic [ref=e7]:
+        - generic [ref=e8]: Guest session
+        - button "Save with Google" [ref=e9] [cursor=pointer]
+        - button "Sign out" [ref=e10] [cursor=pointer]
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]:
+          - paragraph [ref=e14]: Setup
+          - heading "Step 2 of 3 — Add your payday" [level=2] [ref=e15]
+          - paragraph [ref=e16]: Once payday is set, Billie can show what lands before you get paid.
+        - generic "Setup progress" [ref=e17]:
+          - button "✓ Balance" [ref=e18] [cursor=pointer]:
+            - generic [ref=e19]: ✓
+            - text: Balance
+          - button "2 Payday" [ref=e20] [cursor=pointer]:
+            - generic [ref=e21]: "2"
+            - text: Payday
+          - button "3 Bills" [ref=e22] [cursor=pointer]:
+            - generic [ref=e23]: "3"
+            - text: Bills
+      - button "Add payday" [ref=e25] [cursor=pointer]
+    - region "Bill summary" [ref=e26]:
+      - article [ref=e27]:
+        - generic [ref=e28]: Upcoming bills
+        - strong [ref=e29]: 1 upcoming bill
+        - paragraph [ref=e30]: Billie uses your balance snapshot, payday and bills to estimate what may be left.
+      - article [ref=e31]:
+        - generic [ref=e32]: Balance snapshot
+        - strong [ref=e33]: "Forecast: ~£1,234.56 left after bills before payday"
+        - paragraph [ref=e34]: Manual snapshot, not a live bank balance.
+      - article [ref=e35]:
+        - generic [ref=e36]: Next bill
+        - strong [ref=e37]: Claude Each - £18 due 27 July
+        - paragraph [ref=e38]: Sorted from today forward.
+      - article [ref=e39]:
+        - generic [ref=e40]: Payday
+        - strong [ref=e41]: Not set
+        - paragraph [ref=e42]: Set your payday so Billie can show what lands before you get paid.
+    - generic [ref=e43]:
+      - heading "Firestore diagnostics" [level=2] [ref=e44]
+      - generic [ref=e45]:
+        - paragraph [ref=e46]: "auth.currentUser.uid: EH8Gn5J2LcSfZdOgRsmuGLhsZ053"
+        - paragraph [ref=e47]: "NEXT_PUBLIC_FIREBASE_PROJECT_ID: billpilot-54c56"
+        - paragraph [ref=e48]: "Firebase app options.projectId: billpilot-54c56"
+        - paragraph [ref=e49]: "db exists: true"
+        - paragraph [ref=e50]: "balance path: users/EH8Gn5J2LcSfZdOgRsmuGLhsZ053/settings/balance"
+        - paragraph [ref=e51]: "income path: users/EH8Gn5J2LcSfZdOgRsmuGLhsZ053/income/main"
+        - paragraph [ref=e52]: "bills path: users/EH8Gn5J2LcSfZdOgRsmuGLhsZ053/bills"
+        - paragraph [ref=e53]: "reminders path: users/EH8Gn5J2LcSfZdOgRsmuGLhsZ053/reminders/{reminderId}"
+        - paragraph [ref=e54]: "test write: idle"
+      - button "Test Firestore write" [ref=e55] [cursor=pointer]
+    - generic [ref=e56]:
+      - generic [ref=e57]:
+        - generic [ref=e58]:
+          - heading "Balance snapshot" [level=2] [ref=e59]
+          - generic [ref=e61]:
+            - generic [ref=e62]: Balance snapshot
+            - generic [ref=e63]:
+              - textbox "Balance snapshot" [ref=e64]:
+                - /placeholder: Balance snapshot in GBP
+                - text: "1234.56"
+              - button "Save" [ref=e65] [cursor=pointer]
+          - generic [ref=e66]:
+            - paragraph [ref=e67]: "Balance snapshot: £1,234.56"
+            - paragraph [ref=e68]: Entered today at 22:23
+            - paragraph [ref=e69]: "Forecast: ~£1,234.56 left after bills before payday"
+            - paragraph [ref=e70]: Still around £1,234.56? Update if this has changed.
+        - generic [ref=e71]:
+          - heading "Add a bill or payday" [level=2] [ref=e72]
+          - paragraph [ref=e73]: You can add bills now, but Billie needs your payday to show what lands before you get paid.
+          - generic [ref=e74]:
+            - generic [ref=e75]:
+              - generic [ref=e76]:
+                - strong [ref=e77]: Add a screenshot or bill image
+                - paragraph [ref=e78]: Drag and drop one or more screenshots here, paste a screenshot, or choose files.
+              - button "Choose image" [ref=e80] [cursor=pointer]
+            - generic [ref=e81]:
+              - textbox "My rent is GBP 1,100 due on the 26th every month." [ref=e82]
+              - button "Mic" [ref=e83] [cursor=pointer]
+            - button "Log it" [ref=e84] [cursor=pointer]
+        - generic [ref=e85]:
+          - heading "Next bills" [level=2] [ref=e86]
+          - generic "Timeline of upcoming bills" [ref=e87]:
+            - generic [ref=e88]:
+              - strong [ref=e89]: Today
+              - text: 28 June
+            - generic [ref=e91]:
+              - strong [ref=e92]: Claude Each
+              - text: £18 due 27 July
+          - paragraph [ref=e93]: Your runway appears after you add payday and bills.
+        - generic [ref=e94]:
+          - heading "In-app reminders" [level=2] [ref=e95]
+          - paragraph [ref=e96]: No reminders created yet.
+      - generic [ref=e97]:
+        - heading "Bill list" [level=2] [ref=e98]
+        - generic [ref=e99]:
+          - generic [ref=e100]:
+            - heading "Payday" [level=3] [ref=e101]
+            - button "Cancel" [active] [ref=e123] [cursor=pointer]
+          - generic [ref=e124]:
+            - generic [ref=e125]: Amount
+            - textbox "Amount" [ref=e126]:
+              - /placeholder: Monthly income in GBP
+              - text: "3000"
+            - generic [ref=e127]: Payday
+            - textbox "Payday" [ref=e128]:
+              - /placeholder: Day of month
+              - text: "0"
+            - button "Save" [ref=e130] [cursor=pointer]
+        - generic [ref=e105]:
+          - heading "Upcoming bills" [level=3] [ref=e106]
+          - list [ref=e107]:
+            - listitem [ref=e108]:
+              - generic [ref=e109]:
+                - generic [ref=e110]: Claude Each
+                - generic [ref=e111]: £18 - 27th
+              - button "Edit" [ref=e112] [cursor=pointer]
+  - button "Open Next.js Dev Tools" [ref=e118] [cursor=pointer]:
+    - img [ref=e119]
+  - alert [ref=e122]

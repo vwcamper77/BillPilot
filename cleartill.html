@@ -1,0 +1,390 @@
+<!-- ClearTill — polished UI pass -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClearTill</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#F4F1EA;
+    --card:#FFFFFF;
+    --ink:#1E2420;
+    --muted:#6F756F;
+    --faint:#9AA09A;
+    --line:#E7E3D9;
+    --line-soft:#EEEBE2;
+
+    --green:#2F7D5D;
+    --green-deep:#1F5F44;
+    --green-bg:#E9F3EC;
+    --green-bd:#CBE5D3;
+
+    --chip:#EFF4F0;
+    --chip-bd:#DCE7DF;
+
+    --field:#FFFFFF;
+    --field-bd:#D8D3C7;
+    --field-bd-focus:#2F7D5D;
+
+    --radius:14px;
+    --radius-sm:10px;
+    --shadow:0 1px 2px rgba(31,36,32,.04), 0 1px 1px rgba(31,36,32,.03);
+    --ring:0 0 0 3px rgba(47,125,93,.18);
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-size:15px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  .wrap{
+    max-width:1180px;
+    margin:0 auto;
+    padding:28px 24px 64px;
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.04fr);
+    gap:24px;
+    align-items:start;
+  }
+  .col{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:22px;
+  }
+
+  h2{font-size:20px;font-weight:700;letter-spacing:-.01em;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  .sub.tight{margin-bottom:14px}
+
+  /* ---------- Runway ---------- */
+  .runway{display:flex;flex-wrap:wrap;align-items:center;gap:8px 6px}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:7px 13px;
+    font-size:13.5px;
+    white-space:nowrap;
+    color:var(--ink);
+  }
+  .chip b{font-weight:600}
+  .chip .amt{font-weight:600}
+  .chip .due{color:var(--muted);font-weight:400}
+  .chip.accent{background:var(--green-bg);border-color:var(--green-bd);color:var(--green-deep)}
+  .chip.accent b{color:var(--green-deep)}
+  .arrow{color:var(--faint);font-size:14px;line-height:1}
+  .more{
+    background:none;border:none;color:var(--green);
+    font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;
+    padding:4px 0;margin-top:2px;
+  }
+  .more:hover{color:var(--green-deep);text-decoration:underline}
+  .foot{color:var(--faint);font-size:12.5px;margin:12px 0 0}
+
+  /* ---------- Form ---------- */
+  .field{margin-top:16px}
+  .field:first-of-type{margin-top:4px}
+  label{display:block;font-size:13px;font-weight:600;margin-bottom:7px;color:var(--ink)}
+  .control{
+    width:100%;
+    background:var(--field);
+    border:1px solid var(--field-bd);
+    border-radius:var(--radius-sm);
+    padding:11px 13px;
+    font:inherit;font-size:14.5px;color:var(--ink);
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .control::placeholder{color:var(--faint)}
+  .control:hover{border-color:#C3BDAF}
+  .control:focus{outline:none;border-color:var(--field-bd-focus);box-shadow:var(--ring)}
+
+  select.control{
+    -webkit-appearance:none;appearance:none;
+    background-image:url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236F756F' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 13px center;
+    padding-right:38px;cursor:pointer;
+  }
+  input[type=date].control{cursor:text}
+
+  .actions{display:flex;gap:10px;margin-top:22px}
+  .btn{
+    font:inherit;font-size:14.5px;font-weight:600;
+    border-radius:var(--radius-sm);
+    padding:11px 20px;cursor:pointer;border:1px solid transparent;
+    transition:background .15s,border-color .15s,box-shadow .15s;
+  }
+  .btn:focus-visible{outline:none;box-shadow:var(--ring)}
+  .btn-primary{background:var(--green);color:#fff}
+  .btn-primary:hover{background:var(--green-deep)}
+  .btn-ghost{background:transparent;color:var(--muted);border-color:var(--field-bd)}
+  .btn-ghost:hover{background:#F2EFE7;color:var(--ink)}
+
+  /* ---------- Bill card ---------- */
+  .bill{border-left:3px solid var(--green);padding-left:18px}
+  .bill-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .bill-name{font-size:17px;font-weight:700}
+  .badge{
+    display:inline-flex;align-items:center;
+    background:var(--green-bg);color:var(--green-deep);
+    border:1px solid var(--green-bd);
+    border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;
+  }
+  .bill-actions{margin-left:auto;display:flex;gap:16px}
+  .link{background:none;border:none;font:inherit;font-size:14px;font-weight:600;color:var(--green);cursor:pointer;padding:0}
+  .link:hover{color:var(--green-deep);text-decoration:underline}
+  .link.muted{color:var(--muted)}
+  .link.muted:hover{color:var(--ink)}
+  .bill-meta{display:flex;align-items:baseline;gap:8px;margin:12px 0 14px;flex-wrap:wrap}
+  .bill-amt{font-size:20px;font-weight:700}
+  .per{color:var(--muted);font-size:13.5px}
+  .bill-due{color:var(--ink);font-size:14px}
+  .bill-due .d{font-weight:600}
+  .tag{
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--chip);border:1px solid var(--chip-bd);
+    border-radius:999px;padding:5px 12px;font-size:13px;color:var(--ink);
+  }
+
+  .pager{display:flex;align-items:center;justify-content:space-between;margin-top:18px}
+  .pgbtn{
+    background:var(--card);border:1px solid var(--field-bd);
+    border-radius:var(--radius-sm);padding:8px 14px;
+    font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;
+    transition:background .15s,border-color .15s;
+  }
+  .pgbtn:hover{background:#F4F1EA;border-color:#C9C3B5}
+  .pginfo{color:var(--muted);font-size:13px}
+
+  /* ---------- Utilities tracker ---------- */
+  .track-head{display:flex;align-items:center;gap:9px;margin-bottom:2px}
+  .track-head .ico{font-size:18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+  .tile{
+    display:flex;align-items:center;gap:12px;
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:14px 14px;
+    min-height:66px;
+    background:var(--card);
+  }
+  .tile.added{background:var(--green-bg);border-color:var(--green-bd)}
+  .mark{
+    flex:0 0 auto;width:22px;height:22px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .tile.added .mark{background:var(--green);color:#fff}
+  .tile.added .mark svg{width:13px;height:13px}
+  .tile.missing .mark{border:1.5px dashed #C7C2B5;background:#FBFAF6}
+  .tx{min-width:0;flex:1 1 auto}
+  .tx .name{font-weight:600;font-size:14.5px;line-height:1.25}
+  .tx .state{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .tile.added .tx .state{color:var(--green-deep)}
+
+  /* the fix: Add button never wraps and never shrinks */
+  .add{
+    flex:0 0 auto;
+    white-space:nowrap;
+    background:var(--green);color:#fff;
+    border:none;border-radius:9px;
+    padding:8px 16px;
+    font:inherit;font-size:13.5px;font-weight:600;
+    cursor:pointer;
+    transition:background .15s,box-shadow .15s;
+  }
+  .add:hover{background:var(--green-deep)}
+  .add:focus-visible{outline:none;box-shadow:var(--ring)}
+
+  .add-row{margin-top:14px}
+  .add-utility{
+    display:inline-flex;align-items:center;gap:7px;
+    background:var(--card);border:1px solid var(--field-bd);
+    border-radius:999px;padding:9px 16px;
+    font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;
+    transition:background .15s,border-color .15s;
+  }
+  .add-utility:hover{background:#F4F1EA;border-color:#C9C3B5}
+  .add-utility .plus{color:var(--green);font-weight:700;font-size:15px;line-height:1}
+
+  @media (max-width:860px){
+    .wrap{grid-template-columns:1fr;gap:20px}
+    .grid{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <!-- LEFT COLUMN -->
+  <div class="col">
+
+    <!-- Runway -->
+    <section class="card">
+      <h2>Runway to payday</h2>
+      <div class="runway">
+        <span class="chip accent"><b>Today</b> <span class="due">29 June</span></span>
+        <span class="arrow">→</span>
+        <span class="chip"><b>Pc/Adrian Flux Ins</b> <span class="amt">£34.85</span> <span class="due">due today</span></span>
+        <span class="arrow">→</span>
+        <span class="chip"><b>Pc/Adrian Flux Ins</b> <span class="amt">£23.74</span> <span class="due">due today</span></span>
+        <span class="arrow">→</span>
+        <span class="chip"><b>Apple Storage</b> <span class="amt">£8.99</span> <span class="due">due today</span></span>
+        <span class="arrow">→</span>
+        <span class="chip"><b>O2</b> <span class="amt">£32.17</span> <span class="due">due 1 July</span></span>
+        <span class="arrow">→</span>
+        <span class="chip"><b>Council Tax</b> <span class="amt">£181</span> <span class="due">due 1 July</span></span>
+        <span class="arrow">→</span>
+        <span class="chip accent"><b>Payday</b> <span class="due">20 July</span></span>
+      </div>
+      <button class="more">+12 more</button>
+      <p class="foot">Sorted from today forward.</p>
+    </section>
+
+    <!-- Large upcoming costs -->
+    <section class="card">
+      <h2>Large upcoming costs</h2>
+      <p class="sub">Set aside about £2,000 per day across these costs.</p>
+
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" class="control" type="text" value="Greece">
+      </div>
+
+      <div class="field">
+        <label for="amount">Amount</label>
+        <input id="amount" class="control" type="text" value="2000">
+      </div>
+
+      <div class="field">
+        <label for="due">Due date</label>
+        <input id="due" class="control" type="date" value="2026-06-29">
+      </div>
+
+      <div class="field">
+        <label for="freq">Frequency</label>
+        <select id="freq" class="control">
+          <option selected>One-off</option>
+          <option>Weekly</option>
+          <option>Monthly</option>
+          <option>Yearly</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="cat">Category</label>
+        <select id="cat" class="control">
+          <option selected>✈️&nbsp; Holiday</option>
+          <option>🏠&nbsp; Household</option>
+          <option>🚗&nbsp; Transport</option>
+          <option>🍔&nbsp; Food</option>
+          <option>💡&nbsp; Bills</option>
+        </select>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary">Save changes</button>
+        <button class="btn btn-ghost">Cancel</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- RIGHT COLUMN -->
+  <div class="col">
+
+    <!-- Bill -->
+    <section class="card">
+      <div class="bill">
+        <div class="bill-top">
+          <span class="bill-name">BT</span>
+          <span class="badge">Recently added</span>
+          <span class="bill-actions">
+            <button class="link">Edit</button>
+            <button class="link muted">Remove</button>
+          </span>
+        </div>
+        <div class="bill-meta">
+          <span class="bill-amt">£31.99</span>
+          <span class="per">per month</span>
+          <span class="bill-due"><span class="d">13th</span> due date</span>
+        </div>
+        <span class="tag">🏠 Household</span>
+      </div>
+
+      <div class="pager">
+        <button class="pgbtn">← Previous</button>
+        <span class="pginfo">Page 3 of 3</span>
+        <button class="pgbtn">Next →</button>
+      </div>
+    </section>
+
+    <!-- Utilities tracker -->
+    <section class="card">
+      <div class="track-head">
+        <span class="ico">🏡</span>
+        <h2>Household utilities tracker</h2>
+      </div>
+      <p class="sub tight">ClearTill checks whether the main household bills are in your forecast.</p>
+
+      <div class="grid">
+        <div class="tile added">
+          <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div class="tx"><div class="name">Energy</div><div class="state">Added to forecast</div></div>
+        </div>
+
+        <div class="tile missing">
+          <span class="mark"></span>
+          <div class="tx"><div class="name">Water</div><div class="state">Missing from forecast</div></div>
+          <button class="add">Add</button>
+        </div>
+
+        <div class="tile missing">
+          <span class="mark"></span>
+          <div class="tx"><div class="name">Wastewater</div><div class="state">Missing from forecast</div></div>
+          <button class="add">Add</button>
+        </div>
+
+        <div class="tile added">
+          <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div class="tx"><div class="name">Council tax</div><div class="state">Added to forecast</div></div>
+        </div>
+
+        <div class="tile added">
+          <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div class="tx"><div class="name">Broadband</div><div class="state">Added to forecast</div></div>
+        </div>
+
+        <div class="tile added">
+          <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div class="tx"><div class="name">Mobile</div><div class="state">Added to forecast</div></div>
+        </div>
+
+        <div class="tile missing">
+          <span class="mark"></span>
+          <div class="tx"><div class="name">Home insurance</div><div class="state">Missing from forecast</div></div>
+          <button class="add">Add</button>
+        </div>
+
+        <div class="tile added">
+          <span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+          <div class="tx"><div class="name">Rent / mortgage</div><div class="state">Added to forecast</div></div>
+        </div>
+      </div>
+
+      <div class="add-row">
+        <button class="add-utility"><span class="plus">+</span> Add missing utility</button>
+      </div>
+    </section>
+  </div>
+</div>

@@ -1,0 +1,17 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - main [ref=e17]:
+      - generic [ref=e18]:
+        - paragraph [ref=e19]: ClearTill
+        - heading "Loading your payday forecast…" [level=1] [ref=e20]
+    - contentinfo [ref=e11]:
+      - generic [ref=e12]: © ClearTill
+      - generic [ref=e13]:
+        - link "Terms of Service" [ref=e14] [cursor=pointer]:
+          - /url: /terms
+        - generic [ref=e15]: ·
+        - link "Privacy Policy" [ref=e16] [cursor=pointer]:
+          - /url: /privacy
+  - button "Open Next.js Dev Tools" [ref=e26] [cursor=pointer]:
+    - img [ref=e27]
+  - alert [ref=e30]

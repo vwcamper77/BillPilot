@@ -19,12 +19,12 @@ import {
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
-  linkWithPopup,
+  getRedirectResult,
+  linkWithRedirect,
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
+  signInWithRedirect,
 } from "firebase/auth";
 import {
   app as firebaseApp,
@@ -39,15 +39,19 @@ import {
   buildBillDocument,
   buildIncomeDocument,
   buildLargeCostDocument,
+  calculateBillSchedule,
   calculateLargeCostImpact,
   calculateDashboard,
+  diffDays,
   formatCurrency,
   formatDisplayDate,
   formatDueLabel,
   formatOrdinal,
   getTodayIso,
   isValidDueDay,
+  normaliseLargeCostFundingStatus,
 } from "@/lib/billMath";
+import { analyseCsvText } from "@/lib/csvBillFinder";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
 
@@ -117,6 +121,7 @@ export default function DashboardPage() {
   const recognitionRef = useRef(null);
   const transcriptRef = useRef("");
   const imageInputRef = useRef(null);
+  const uploadInputRef = useRef(null);
   const addBillSectionRef = useRef(null);
   const messageInputRef = useRef(null);
   const balanceSectionRef = useRef(null);
@@ -156,6 +161,14 @@ export default function DashboardPage() {
   const [importSummary, setImportSummary] = useState(null);
   const [lastImportError, setLastImportError] = useState(null);
   const [dragActive, setDragActive] = useState(false);
+  const [csvPhase, setCsvPhase] = useState("idle");
+  const [csvSuggestions, setCsvSuggestions] = useState([]);
+  const [csvIgnored, setCsvIgnored] = useState(new Set());
+  const [csvEditingId, setCsvEditingId] = useState(null);
+  const [csvEditForm, setCsvEditForm] = useState({ name: "", amount: "", dueDay: "", category: "" });
+  const [csvSavingId, setCsvSavingId] = useState(null);
+  const [csvSavedCount, setCsvSavedCount] = useState(0);
+  const [csvError, setCsvError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
   const [authMode, setAuthMode] = useState("signin");
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
@@ -178,6 +191,7 @@ export default function DashboardPage() {
     dueDate: "",
     frequency: "one_off",
     category: "other",
+    fundingStatus: "unassigned",
   });
   const [largeCostError, setLargeCostError] = useState("");
   const [savingLargeCost, setSavingLargeCost] = useState(false);
@@ -185,6 +199,8 @@ export default function DashboardPage() {
   const [savingSavings, setSavingSavings] = useState(false);
   const [savingsError, setSavingsError] = useState("");
   const [highlightBalanceForm, setHighlightBalanceForm] = useState(false);
+  const [fundingEditorCostId, setFundingEditorCostId] = useState("");
+  const [fundingEditorForm, setFundingEditorForm] = useState({ fundingStatus: "unassigned", savingsAmount: "" });
   const balanceSaveRequestRef = useRef(0);
 
   useEffect(() => {
@@ -201,9 +217,17 @@ export default function DashboardPage() {
         return;
       }
 
+      getRedirectResult(auth).catch((redirectError) => {
+        if (redirectError?.code !== "auth/credential-already-in-use") {
+          setAuthError(friendlyAuthError(redirectError));
+        }
+        setSigningIn(false);
+      });
+
       unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         setUser(currentUser);
         setAuthReady(true);
+        setSigningIn(false);
       });
     });
 
@@ -462,7 +486,7 @@ export default function DashboardPage() {
     [bills, displayAccount, displayCurrency, incomeForDashboard],
   );
   const todayIso = getTodayIso();
-  const protectedSavingsTotal = Math.max(0, Number(savings?.totalSetAside) || 0);
+  const generalProtectedSavings = Math.max(0, Number(savings?.totalSetAside) || 0);
   const hasBalanceSnapshot = displayAccount?.currentBalance !== undefined;
   const hasPayday = isValidDueDay(displayIncome?.payDay);
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
@@ -476,6 +500,7 @@ export default function DashboardPage() {
     if (billListFilter === "before" && dashboard.paydayDate) return dashboard.beforePayday;
     if (billListFilter === "after" && dashboard.paydayDate) return dashboard.afterPayday;
     if (billListFilter === "recent") return combined.filter(isRecentlyAdded);
+    if (billListFilter === "paid") return combined.filter(isPaidBill);
     return combined;
   }, [dashboard, billListFilter]);
   const billListTotalPages = Math.max(1, Math.ceil(allBillsForList.length / BILLS_PER_PAGE));
@@ -484,38 +509,7 @@ export default function DashboardPage() {
   const beforePaydayIdSet = useMemo(() => new Set(dashboard.beforePayday.map((b) => b.id)), [dashboard.beforePayday]);
   const pagedBeforeGroup = pagedBills.filter((b) => beforePaydayIdSet.has(b.id));
   const pagedAfterGroup = pagedBills.filter((b) => !beforePaydayIdSet.has(b.id));
-
-  const clearTillStatus = (() => {
-    if (!hasBalanceSnapshot || !hasPayday) return "";
-    if (dashboard.leftBeforePayday < 0) return "negative";
-    if (dashboard.leftBeforePayday < 50) return "low";
-    return "ok";
-  })();
-
-  const clearTillValue = (() => {
-    if (!hasBalanceSnapshot) return "Add your balance snapshot";
-    const abs = Math.abs(dashboard.leftBeforePayday);
-    if (clearTillStatus === "negative") return `${formatCurrency(abs, displayCurrency)} short before payday`;
-    return `${formatCurrency(dashboard.leftBeforePayday, displayCurrency)} left until payday`;
-  })();
-
-  const clearTillHelper = (() => {
-    if (!hasBalanceSnapshot) return "Add your balance snapshot first so ClearTill can forecast what may be left.";
-    if (clearTillStatus === "negative") return "Bills before payday exceed your balance snapshot.";
-    if (clearTillStatus === "low") return "Low buffer before payday.";
-    return "Based on your balance snapshot minus bills before payday.";
-  })();
-
-  const billsBeforePaydayOverBudget =
-    hasBalanceSnapshot && hasPayday && hasBills &&
-    dashboard.totalBeforePayday > dashboard.currentBalance;
-
-  const monthlySpendingRoomStatus = (() => {
-    if (dashboard.monthlySpendingRoom === null || !hasIncomeAmount) return "";
-    if (dashboard.monthlySpendingRoom < 0) return "negative";
-    if (dashboard.monthlySpendingRoom < 100) return "low";
-    return "ok";
-  })();
+  const totalMonthlyBills = bills.reduce((sum, b) => sum + (b.amount || 0), 0);
 
   const monthlySpendingRoomValue = (() => {
     if (!hasIncomeAmount) return "Add expected income";
@@ -525,79 +519,89 @@ export default function DashboardPage() {
     return `${formatCurrency(msr, displayCurrency)} left each month`;
   })();
 
-  const monthlySpendingRoomHelper = (() => {
-    if (!hasIncomeAmount || !hasBills) return "Set your expected income and bills to see monthly spending room.";
-    if (dashboard.monthlySpendingRoom < 0) return "Your regular bills exceed your expected monthly income.";
-    if (dashboard.monthlySpendingRoom < 100) return "Low margin after regular bills.";
-    return "After regular bills, from your expected monthly income.";
-  })();
-
   const largeCostImpact = useMemo(
-    () => calculateLargeCostImpact(largeCosts, protectedSavingsTotal, dashboard.dailyLimitTillPayday || 0, dashboard.daysTillPayday || 0, todayIso),
-    [dashboard.dailyLimitTillPayday, dashboard.daysTillPayday, largeCosts, protectedSavingsTotal, todayIso],
+    () => calculateLargeCostImpact(largeCosts, generalProtectedSavings, dashboard.dailyLimitTillPayday || 0, dashboard.daysTillPayday || 0, todayIso),
+    [dashboard.dailyLimitTillPayday, dashboard.daysTillPayday, largeCosts, generalProtectedSavings, todayIso],
   );
-  const normalDailyBudgetBeforeBigCosts = largeCostImpact.normalDailyBudgetBeforeBigCosts;
-  const bigCostDailyNeedAfterSavings = largeCostImpact.bigCostDailyNeedAfterSavings;
-  const safeDailyBudgetAfterBigCosts = largeCostImpact.safeDailyBudgetAfterBigCosts;
-  const bigCostDailyShortfall = largeCostImpact.bigCostDailyShortfall;
-  const bigCostsStillToFund = largeCostImpact.bigCostsStillToFund;
+  const bigCostsDueBeforePayday = useMemo(() => {
+    if (!dashboard.paydayDate) {
+      return 0;
+    }
 
-  const dailyLimitStatus = (() => {
-    if (!hasBalanceSnapshot || !hasPayday) return "";
-    if (dashboard.leftBeforePayday < 0) return "negative";
-    if (safeDailyBudgetAfterBigCosts < 10) return "low";
+    return largeCostImpact.costs.reduce((total, cost) => {
+      if (!cost.nextDueDate || cost.nextDueDate >= dashboard.paydayDate) {
+        return total;
+      }
+
+      return total + (Number(cost.currentAccountAmount) || 0);
+    }, 0);
+  }, [dashboard.paydayDate, largeCostImpact.costs]);
+  const unassignedCostsBeforePayday = useMemo(() => {
+    if (!dashboard.paydayDate) {
+      return 0;
+    }
+
+    return largeCostImpact.costs.reduce((total, cost) => {
+      if (!cost.nextDueDate || cost.nextDueDate >= dashboard.paydayDate) {
+        return total;
+      }
+      if (cost.fundingStatus !== "unassigned") {
+        return total;
+      }
+      return total + (Number(cost.amount) || 0);
+    }, 0);
+  }, [dashboard.paydayDate, largeCostImpact.costs]);
+  const totalProtectedSavings = largeCostImpact.totalProtectedSavings;
+  const spendingRoomUntilPayday = hasBalanceSnapshot
+    ? dashboard.currentBalance - dashboard.totalBeforePayday - bigCostsDueBeforePayday
+    : null;
+  const dailySpendingRoom = hasPayday && dashboard.daysTillPayday && spendingRoomUntilPayday !== null
+    ? spendingRoomUntilPayday / dashboard.daysTillPayday
+    : null;
+  const spendingRoomStatus = (() => {
+    if (!hasBalanceSnapshot || !hasPayday || spendingRoomUntilPayday === null) return "";
+    if (spendingRoomUntilPayday < 0) return "negative";
+    if (spendingRoomUntilPayday < 50) return "low";
     return "ok";
   })();
-
-  const dailyLimitValue = (() => {
-    if (!hasBalanceSnapshot) return "Add your balance snapshot";
-    if (!hasPayday) return "Set your payday date";
-    if (dashboard.leftBeforePayday < 0) return `${formatCurrency(Math.abs(dashboard.leftBeforePayday), displayCurrency)} short before payday`;
-    return `${formatCurrency(safeDailyBudgetAfterBigCosts, displayCurrency)} per day`;
+  const spendingRoomValue = (() => {
+    if (!hasBalanceSnapshot) return "Add your current balance";
+    if (!hasPayday) return "Set your payday";
+    if (spendingRoomUntilPayday === null) return "—";
+    if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
+    return formatCurrency(spendingRoomUntilPayday, displayCurrency);
   })();
-
-  const dailyLimitHelper = (() => {
-    if (!hasBalanceSnapshot) return "Add your balance snapshot to see your daily limit.";
-    if (!hasPayday) return "Set your payday date to calculate your daily limit.";
-    if (dashboard.leftBeforePayday < 0) return "Bills before payday exceed your balance snapshot.";
-    if (bigCostsStillToFund <= 0 && largeCostImpact.totalBigCosts > 0) {
-      return "Big costs are fully covered by protected savings.";
-    }
-    if (bigCostDailyShortfall > 0) {
-      return `Your big costs need ${formatCurrency(bigCostDailyShortfall, displayCurrency)}/day more than your current runway allows.`;
-    }
-    if (safeDailyBudgetAfterBigCosts < 10) return "Low daily limit until payday.";
-    if (bigCostDailyNeedAfterSavings > 0) {
-      return `Before big costs: ${formatCurrency(normalDailyBudgetBeforeBigCosts, displayCurrency)}/day. Big costs still need: ${formatCurrency(bigCostDailyNeedAfterSavings, displayCurrency)}/day.`;
-    }
-    return `Based on your balance snapshot after bills, spread over ${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"}.`;
+  const spendingRoomSummary = (() => {
+    if (!hasBalanceSnapshot) return "Add your current balance";
+    if (!hasPayday) return "Set your payday";
+    if (spendingRoomUntilPayday === null) return "Spending room unavailable";
+    if (spendingRoomUntilPayday < 0) return `You're ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} short before payday`;
+    return `You're clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
   })();
-  const dailyLimitBreakdown = useMemo(() => {
-    if (!hasBalanceSnapshot || !hasPayday || dashboard.leftBeforePayday < 0) {
-      return [];
+  const spendingRoomHelper = (() => {
+    if (!hasBalanceSnapshot) return "Update your current balance to see what is still safe to spend.";
+    if (!hasPayday) return "Set your payday so ClearTill can work to that date.";
+    if (dailySpendingRoom === null) return "";
+    if (spendingRoomUntilPayday < 0) {
+      if (bigCostsDueBeforePayday > 0) {
+        return `This is mainly because ${formatCurrency(bigCostsDueBeforePayday, displayCurrency)} of big costs are coming from your current account.`;
+      }
+      return `You need ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} more before payday.`;
     }
-
-    const lines = [
-      `Before big costs: ${formatCurrency(normalDailyBudgetBeforeBigCosts, displayCurrency)}/day`,
-    ];
-
-    if (largeCostImpact.totalBigCosts <= 0) {
-      return [];
+    return `About ${formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day until payday.`;
+  })();
+  const spendingRoomFallbackCopy = (() => {
+    if (!hasBalanceSnapshot || !hasPayday || spendingRoomUntilPayday === null || spendingRoomUntilPayday >= 0 || totalProtectedSavings <= 0) {
+      return "Not counted as daily spending money.";
     }
+    return "Your savings now could cover this, but ClearTill does not count savings as daily spending money.";
+  })();
+  const clearTillStatus = spendingRoomStatus;
+  const paydayCountdownLabel = dashboard.paydayDate
+    ? `${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"} to payday`
+    : "Payday not set";
+  const beforePaydayPreviewBills = dashboard.beforePayday.slice(0, 4);
 
-    if (bigCostsStillToFund <= 0 && largeCostImpact.totalBigCosts > 0) {
-      lines.push("Big costs are covered by protected savings.");
-      lines.push(`Big costs still need: ${formatCurrency(0, displayCurrency)}/day`);
-    } else if (bigCostDailyShortfall > 0) {
-      lines.push(`Big costs still need: ${formatCurrency(bigCostDailyNeedAfterSavings, displayCurrency)}/day`);
-      lines.push(`Shortfall: ${formatCurrency(bigCostDailyShortfall, displayCurrency)}/day`);
-    } else {
-      lines.push(`Big costs still need: ${formatCurrency(bigCostDailyNeedAfterSavings, displayCurrency)}/day`);
-      lines.push(`Safe after big costs: ${formatCurrency(safeDailyBudgetAfterBigCosts, displayCurrency)}/day`);
-    }
-
-    return lines;
-  }, [bigCostDailyNeedAfterSavings, bigCostDailyShortfall, bigCostsStillToFund, dashboard.leftBeforePayday, displayCurrency, hasBalanceSnapshot, hasPayday, largeCostImpact.totalBigCosts, normalDailyBudgetBeforeBigCosts, safeDailyBudgetAfterBigCosts]);
   const largeCostsWithStatus = useMemo(
     () => [...largeCostImpact.costs]
       .sort((a, b) => {
@@ -608,7 +612,10 @@ export default function DashboardPage() {
       })
       .map((cost) => ({
         ...cost,
+        fundingMeta: LARGE_COST_FUNDING_META[cost.fundingStatus] || LARGE_COST_FUNDING_META.unassigned,
         statusBadge: (() => {
+          if (cost.fundingStatus === "unassigned") return "Choose funding";
+          if (cost.fundingStatus === "savings") return "Covered";
           if (cost.status === "overdue") return "Overdue";
           if (cost.status === "due_now") return "Due now";
           if (largeCostImpact.normalDailyBudget <= 0) return "At risk";
@@ -618,6 +625,10 @@ export default function DashboardPage() {
         })(),
       })),
     [largeCostImpact],
+  );
+  const dueBeforePaydayLargeCosts = useMemo(
+    () => largeCostsWithStatus.filter((cost) => cost.nextDueDate && dashboard.paydayDate && cost.nextDueDate < dashboard.paydayDate),
+    [dashboard.paydayDate, largeCostsWithStatus],
   );
   const balanceSnapshotLabel = useMemo(
     () => formatBalanceSnapshotLabel(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt),
@@ -666,20 +677,13 @@ export default function DashboardPage() {
       await authPersistenceReady;
 
       if (auth.currentUser?.isAnonymous) {
-        try {
-          await linkWithPopup(auth.currentUser, googleProvider);
-          return;
-        } catch (linkError) {
-          if (linkError?.code !== "auth/credential-already-in-use") {
-            throw linkError;
-          }
-        }
+        await linkWithRedirect(auth.currentUser, googleProvider);
+        return;
       }
 
-      await signInWithPopup(auth, googleProvider);
+      await signInWithRedirect(auth, googleProvider);
     } catch (signInError) {
       setAuthError(friendlyAuthError(signInError));
-    } finally {
       setSigningIn(false);
     }
   }
@@ -775,6 +779,35 @@ export default function DashboardPage() {
 
         const parsedWithContext = applyQuickAddContext(parsed, quickAddContext);
         const outcome = await applyParsedActions(user.uid, parsedWithContext, Boolean(displayIncome), bills);
+        if (outcome.savedBills?.length) {
+          setBills((current) => {
+            const next = [...current];
+
+            outcome.savedBills.forEach((savedBill) => {
+              if (next.some((existingBill) => existingBill.id === savedBill.id)) {
+                return;
+              }
+              next.push(savedBill);
+            });
+
+            return next;
+          });
+          billsRef.current = mergeOutcomeBills(billsRef.current || bills, {
+            action: "batch",
+            items: outcome.savedBills.map((savedBill) => ({
+              action: "create_bill",
+              ...savedBill,
+            })),
+          });
+        }
+
+        const draftBill = outcome.savedBills?.find((savedBill) => !isValidDueDay(savedBill.dueDay));
+        if (draftBill) {
+          setBillListFilter("all");
+          setBillListPage(0);
+          startBillEdit(draftBill);
+          setPageNotice("Bill saved without a due date. Add the day in the bill list.");
+        }
         setAssistantMessage(buildOutcomeMessage(parsedWithContext, outcome));
       }
 
@@ -1306,17 +1339,20 @@ export default function DashboardPage() {
     setPageNotice("");
 
     try {
+      const existingBill = bills.find((bill) => bill.id === billId);
       const updatedBill = buildBillDocument({
         name: editingBillForm.name.trim(),
         amount,
         dueDay,
         currency: "GBP",
         reminderOffsetDays: 1,
+        paidThroughDate: existingBill?.paidThroughDate || null,
       });
       const path = getBillDocPath(user.uid, billId);
       const payload = {
         ...updatedBill,
         category: editingBillForm.category || null,
+        lastPaidAt: existingBill?.lastPaidAt || null,
         updatedAt: serverTimestamp(),
       };
       console.log("[firestore-bill-save] writing", {
@@ -1486,16 +1522,220 @@ export default function DashboardPage() {
     event.target.value = "";
   }
 
-  function handleDrop(event) {
-    event.preventDefault();
-    setDragActive(false);
+  function isImageUploadFile(file) {
+    const fileName = (file?.name || "").toLowerCase();
+
+    return file?.type?.startsWith("image/")
+      || [".png", ".jpg", ".jpeg", ".webp", ".gif"].some((ext) => fileName.endsWith(ext));
+  }
+
+  function isCsvUploadFile(file) {
+    const fileName = (file?.name || "").toLowerCase();
+    const fileType = String(file?.type || "").toLowerCase();
+
+    return fileName.endsWith(".csv") || fileType === "text/csv" || fileType.includes("comma");
+  }
+
+  function handleImportedFiles(fileList) {
     if (importLocked) {
       return;
     }
-    void handleImageFiles(event.dataTransfer.files);
+
+    const files = Array.from(fileList || []).filter(Boolean);
+
+    if (!files.length) {
+      return;
+    }
+
+    const imageFiles = files.filter(isImageUploadFile);
+
+    if (imageFiles.length) {
+      void handleImageFiles(imageFiles);
+      return;
+    }
+
+    const csvFile = files.find(isCsvUploadFile);
+
+    if (csvFile) {
+      handleCsvFile(csvFile);
+      return;
+    }
+
+    setChatError("Please upload a CSV, PNG, JPG, WEBP, or GIF file.");
+  }
+
+  function handleUploadChange(event) {
+    handleImportedFiles(event.target.files);
+    event.target.value = "";
+  }
+
+  function handleCsvFile(file) {
+    setCsvError("");
+    setCsvPhase("parsing");
+    setCsvSuggestions([]);
+    setCsvIgnored(new Set());
+    setCsvEditingId(null);
+    setCsvSavedCount(0);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const result = analyseCsvText(e.target.result || "");
+        if (result.error === "no_columns") {
+          setCsvError("We could not find date, description and amount columns in this CSV.");
+          setCsvPhase("error");
+        } else if (result.error) {
+          setCsvError("We could not read this CSV. Try exporting it again from your banking app.");
+          setCsvPhase("error");
+        } else if (!result.suggestions || result.suggestions.length === 0) {
+          setCsvPhase("empty");
+        } else {
+          setCsvSuggestions(result.suggestions);
+          setCsvPhase("reviewing");
+        }
+      } catch {
+        setCsvError("We could not read this CSV. Try exporting it again from your banking app.");
+        setCsvPhase("error");
+      }
+    };
+    reader.onerror = () => {
+      setCsvError("We could not read this CSV. Try exporting it again from your banking app.");
+      setCsvPhase("error");
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
+  async function handleCsvAddBill(suggestion) {
+    if (!user || !db) return;
+    setCsvSavingId(suggestion.id);
+    setCsvError("");
+    try {
+      const todayIso = getTodayIso();
+      const billDoc = buildBillDocument({
+        name: suggestion.merchantName,
+        amount: suggestion.averageAmount,
+        dueDay: suggestion.usualPaymentDay,
+        currency: "GBP",
+      }, todayIso);
+      const billRef = doc(collection(db, "users", user.uid, "bills"));
+      await setDoc(billRef, {
+        ...billDoc,
+        source: "csv_detected",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const saved = { ...billDoc, id: billRef.id, source: "csv_detected" };
+      setBills((current) => current.some((b) => b.id === saved.id) ? current : [...current, saved]);
+      billsRef.current = [...(billsRef.current || []), saved];
+      setCsvSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+      setCsvSavedCount((n) => n + 1);
+    } catch {
+      setCsvError("Could not save that bill. Try again.");
+    } finally {
+      setCsvSavingId(null);
+    }
+  }
+
+  function startCsvEdit(suggestion) {
+    setCsvEditingId(suggestion.id);
+    setCsvError("");
+    setCsvEditForm({
+      name: suggestion.merchantName,
+      amount: String(suggestion.averageAmount),
+      dueDay: String(suggestion.usualPaymentDay),
+      category: "",
+    });
+  }
+
+  async function handleCsvEditSave(suggestion) {
+    if (!user || !db) return;
+    const amount = parseFloat(csvEditForm.amount);
+    const dueDay = parseInt(csvEditForm.dueDay, 10);
+    if (!csvEditForm.name.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setCsvError("Enter a valid name and amount before saving.");
+      return;
+    }
+    setCsvSavingId(suggestion.id);
+    setCsvError("");
+    try {
+      const todayIso = getTodayIso();
+      const billDoc = buildBillDocument({
+        name: csvEditForm.name.trim(),
+        amount,
+        dueDay: isValidDueDay(dueDay) ? dueDay : null,
+        currency: "GBP",
+        category: csvEditForm.category || null,
+      }, todayIso);
+      const billRef = doc(collection(db, "users", user.uid, "bills"));
+      await setDoc(billRef, {
+        ...billDoc,
+        source: "csv_detected",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const saved = { ...billDoc, id: billRef.id, source: "csv_detected" };
+      setBills((current) => current.some((b) => b.id === saved.id) ? current : [...current, saved]);
+      billsRef.current = [...(billsRef.current || []), saved];
+      setCsvSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+      setCsvEditingId(null);
+      setCsvSavedCount((n) => n + 1);
+    } catch {
+      setCsvError("Could not save that bill. Try again.");
+    } finally {
+      setCsvSavingId(null);
+    }
+  }
+
+  function resetCsv() {
+    setCsvPhase("idle");
+    setCsvSuggestions([]);
+    setCsvIgnored(new Set());
+    setCsvEditingId(null);
+    setCsvSavedCount(0);
+    setCsvError("");
+  }
+
+  function hasDraggedFiles(dataTransfer) {
+    if (!dataTransfer) {
+      return false;
+    }
+
+    return Array.from(dataTransfer.items || []).some((item) => item.kind === "file")
+      || Array.from(dataTransfer.types || []).includes("Files");
+  }
+
+  function handleDragOver(event) {
+    if (!hasDraggedFiles(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDragActive(true);
+  }
+
+  function handleDragLeave(event) {
+    if (event.currentTarget.contains(event.relatedTarget)) {
+      return;
+    }
+
+    setDragActive(false);
+  }
+
+  function handleDrop(event) {
+    if (!hasDraggedFiles(event.dataTransfer)) {
+      return;
+    }
+
+    event.preventDefault();
+    setDragActive(false);
+    handleImportedFiles(event.dataTransfer.files);
   }
 
   function handlePaste(event) {
+    if (importLocked) {
+      return;
+    }
+
     const imageItem = Array.from(event.clipboardData?.items || []).find((item) =>
       item.type?.startsWith("image/"));
 
@@ -1550,6 +1790,94 @@ export default function DashboardPage() {
       await deleteDoc(doc(db, "users", user.uid, "bills", billId));
     } catch {
       setEditError("Could not delete that bill. Try again.");
+    }
+  }
+
+  async function handleBillPaidToggle(bill) {
+    if (!user || !db) {
+      return;
+    }
+
+    if (isPaidBill(bill)) {
+      const previousPaidThroughDate = bill.paidThroughDate || null;
+      const previousLastPaidAt = bill.lastPaidAt || null;
+
+      setEditError("");
+      setPageNotice(`${bill.name} reactivated.`);
+      setBills((current) => current.map((entry) => (
+        entry.id === bill.id
+          ? { ...entry, paidThroughDate: null, lastPaidAt: null }
+          : entry
+      )));
+
+      try {
+        await runWithTimeout(
+          setDoc(
+            doc(db, "users", user.uid, "bills", bill.id),
+            {
+              paidThroughDate: null,
+              lastPaidAt: null,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true },
+          ),
+          "Saving the paid status is taking too long. Check your connection and try again.",
+        );
+      } catch (saveError) {
+        setBills((current) => current.map((entry) => (
+          entry.id === bill.id
+            ? { ...entry, paidThroughDate: previousPaidThroughDate, lastPaidAt: previousLastPaidAt }
+            : entry
+        )));
+        setPageNotice("");
+        setEditError(saveError.message || "Could not reactivate that bill.");
+      }
+      return;
+    }
+
+    const cycleDate = bill.nextDueDate || calculateBillSchedule(
+      bill.dueDay,
+      bill.reminderOffsetDays,
+      bill.paidThroughDate || null,
+      todayIso,
+    ).nextDueDate;
+
+    if (!cycleDate) {
+      setEditError("Add a due day before marking this bill as paid.");
+      return;
+    }
+
+    const previousPaidThroughDate = bill.paidThroughDate || null;
+
+    setEditError("");
+    setPageNotice(`${bill.name} marked as paid.`);
+    setBills((current) => current.map((entry) => (
+      entry.id === bill.id
+        ? { ...entry, paidThroughDate: cycleDate }
+        : entry
+    )));
+
+    try {
+      await runWithTimeout(
+        setDoc(
+          doc(db, "users", user.uid, "bills", bill.id),
+          {
+            paidThroughDate: cycleDate,
+            lastPaidAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        ),
+        "Saving the paid status is taking too long. Check your connection and try again.",
+      );
+    } catch (saveError) {
+      setBills((current) => current.map((entry) => (
+        entry.id === bill.id
+          ? { ...entry, paidThroughDate: previousPaidThroughDate }
+          : entry
+      )));
+      setPageNotice("");
+      setEditError(saveError.message || "Could not mark that bill as paid.");
     }
   }
 
@@ -1609,6 +1937,7 @@ export default function DashboardPage() {
       dueDate: "",
       frequency: "one_off",
       category: "other",
+      fundingStatus: "unassigned",
     });
     setEditingLargeCostId("");
     setLargeCostError("");
@@ -1625,6 +1954,7 @@ export default function DashboardPage() {
       dueDate: todayIso,
       frequency: "one_off",
       category: "other",
+      fundingStatus: "unassigned",
     });
     setShowLargeCostForm(true);
   }
@@ -1639,6 +1969,7 @@ export default function DashboardPage() {
       dueDate: cost.dueDate || todayIso,
       frequency: cost.frequency || "one_off",
       category: cost.category || "other",
+      fundingStatus: normaliseLargeCostFundingStatus(cost.fundingStatus),
     });
     setShowLargeCostForm(true);
   }
@@ -1676,6 +2007,7 @@ export default function DashboardPage() {
           dueDate: largeCostForm.dueDate,
           frequency: largeCostForm.frequency,
           category: largeCostForm.category,
+          fundingStatus: largeCostForm.fundingStatus,
           currency: "GBP",
         }, todayIso),
         updatedAt: serverTimestamp(),
@@ -1710,6 +2042,50 @@ export default function DashboardPage() {
     }
   }
 
+  function openFundingEditor(cost) {
+    setFundingEditorCostId(cost.id);
+    setFundingEditorForm({
+      fundingStatus: normaliseLargeCostFundingStatus(cost.fundingStatus),
+      savingsAmount: String(cost.amountAlreadySaved ?? ""),
+    });
+  }
+
+  function closeFundingEditor() {
+    setFundingEditorCostId("");
+    setFundingEditorForm({ fundingStatus: "unassigned", savingsAmount: "" });
+  }
+
+  async function saveFundingEditor(cost) {
+    if (!user || !db) return;
+
+    const amount = Number(cost.amount) || 0;
+    const fundingStatus = normaliseLargeCostFundingStatus(fundingEditorForm.fundingStatus);
+    let amountAlreadySaved = 0;
+
+    if (fundingStatus === "savings") {
+      amountAlreadySaved = amount;
+    } else if (fundingStatus === "split") {
+      amountAlreadySaved = Number(fundingEditorForm.savingsAmount || 0);
+      if (!Number.isFinite(amountAlreadySaved) || amountAlreadySaved < 0 || amountAlreadySaved > amount) {
+        setLargeCostError("Savings amount must be between 0 and the total cost.");
+        return;
+      }
+    }
+
+    setLargeCostError("");
+
+    try {
+      await setDoc(doc(db, "users", user.uid, "largeCosts", cost.id), {
+        fundingStatus,
+        amountAlreadySaved,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      closeFundingEditor();
+    } catch {
+      setLargeCostError("Could not update how that cost is funded. Try again.");
+    }
+  }
+
   async function handleSavingsSave(event) {
     event.preventDefault();
 
@@ -1720,7 +2096,7 @@ export default function DashboardPage() {
     const totalSetAside = Number(savingsInput || 0);
 
     if (!Number.isFinite(totalSetAside) || totalSetAside < 0) {
-      setSavingsError("Savings set aside must be zero or more.");
+      setSavingsError("Savings not assigned to a big cost must be zero or more.");
       return;
     }
 
@@ -1734,11 +2110,11 @@ export default function DashboardPage() {
           updatedAt: serverTimestamp(),
           ...(savings?.id ? {} : { createdAt: serverTimestamp() }),
         }, { merge: true }),
-        "Saving your protected savings is taking too long. Check your connection and try again.",
+        "Saving your extra savings is taking too long. Check your connection and try again.",
       );
-      setPageNotice("Savings set aside updated.");
+      setPageNotice("Savings not assigned to a big cost updated.");
     } catch (saveError) {
-      setSavingsError(saveError.message || "Could not save your protected savings.");
+      setSavingsError(saveError.message || "Could not save your extra savings.");
     } finally {
       setSavingSavings(false);
     }
@@ -1933,9 +2309,7 @@ export default function DashboardPage() {
               Save with Google
             </button>
           ) : null}
-          <button className="secondary-button" type="button" onClick={() => signOut(auth)}>
-            Sign out
-          </button>
+          <Link className="secondary-button" href="/account">Account</Link>
         </div>
       </header>
 
@@ -1986,13 +2360,22 @@ export default function DashboardPage() {
         status={clearTillStatus}
         headline={(() => {
           if (!hasBalanceSnapshot) return "Add your balance snapshot to get started";
-          if (clearTillStatus === "negative") return `Not quite — ${formatCurrency(Math.abs(dashboard.leftBeforePayday), displayCurrency)} short`;
-          if (clearTillStatus === "low") return `Almost clear — ${formatCurrency(dashboard.leftBeforePayday, displayCurrency)} left`;
-          return `You're clear — ${formatCurrency(dashboard.leftBeforePayday, displayCurrency)} left`;
+          if (spendingRoomUntilPayday === null) return "Set your payday to get started";
+          if (clearTillStatus === "negative") return `You're short - ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
+          if (clearTillStatus === "low") return `Almost clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
+          return `You're clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
         })()}
-        subLine={hasBalanceSnapshot && hasPayday && dashboard.dailyLimitTillPayday !== null
-          ? `about ${formatCurrency(Math.max(0, dashboard.dailyLimitTillPayday), displayCurrency)}/day until payday on ${formatDisplayDate(dashboard.paydayDate)}`
-          : null}
+        subLine={(() => {
+          if (!(hasBalanceSnapshot && hasPayday)) return null;
+          if (spendingRoomUntilPayday === null) return null;
+          if (spendingRoomUntilPayday < 0) {
+            return totalProtectedSavings > 0
+              ? "Your savings now could cover this, but ClearTill does not count savings as daily spending money."
+              : "You need to use savings or find another way to fund this before payday.";
+          }
+          if (dailySpendingRoom === null) return null;
+          return `about ${formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day until payday on ${formatDisplayDate(dashboard.paydayDate)}`;
+        })()}
         onUpdateBalance={focusBalanceSnapshotForm}
       />
 
@@ -2003,11 +2386,21 @@ export default function DashboardPage() {
         </span>
         <span className="stat-chip">
           <strong>{hasBalanceSnapshot && hasPayday ? formatCurrency(dashboard.totalBeforePayday, displayCurrency) : "—"}</strong>
-          {" before payday"}
+          {" bills before payday"}
         </span>
         <span className="stat-chip">
           {"Payday "}
           <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "not set"}</strong>
+        </span>
+        {hasBills ? (
+          <span className="stat-chip">
+            <strong>{formatCurrency(totalMonthlyBills, displayCurrency)}</strong>
+            {" total monthly bills"}
+          </span>
+        ) : null}
+        <span className="stat-chip">
+          {"Today "}
+          <strong>{formatDisplayDate(todayIso)}</strong>
         </span>
       </div>
 
@@ -2015,14 +2408,24 @@ export default function DashboardPage() {
         <div className="stack">
           <section
             ref={balanceSectionRef}
-            className={`chat-panel ${setupStep !== 1 ? "" : "setup-current"} ${highlightBalanceForm ? "form-highlight" : ""}`}
+            className={`chat-panel balance-action-card ${setupStep !== 1 ? "" : "setup-current"} ${highlightBalanceForm ? "form-highlight" : ""}`}
           >
-            <h2>Balance snapshot</h2>
-            <p className="helper-text balance-copy">Update this whenever your bank balance changes.</p>
+            <div className="section-head">
+              <div>
+                <h2 style={{ margin: 0 }}>Current balance</h2>
+                <p className="helper-text balance-copy">Update this first. ClearTill uses it to work out what is still safe to spend until payday.</p>
+              </div>
+              <button className="secondary-button small-button" type="button" onClick={focusBalanceSnapshotForm}>
+                Update
+              </button>
+            </div>
+            <p className="balance-action-value">
+              {hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "Add your current balance"}
+            </p>
             <form className="chat-form" onSubmit={handleBalanceSave}>
               <div className="field-row">
                 <label className="field-label" htmlFor="account-balance">
-                  Balance snapshot
+                  Current balance
                 </label>
                 <div className="chat-input-row">
                   <input
@@ -2032,7 +2435,7 @@ export default function DashboardPage() {
                     value={balanceInput}
                     disabled={importLocked}
                     onChange={(event) => setBalanceInput(event.target.value)}
-                    placeholder="Balance snapshot"
+                    placeholder="Current balance"
                   />
                   <button className="secondary-button" type="submit" disabled={importLocked}>
                     Update
@@ -2042,22 +2445,17 @@ export default function DashboardPage() {
             </form>
             {displayAccount?.currentBalance !== undefined ? (
               <div className="helper-text balance-copy">
-                <p>Balance snapshot: {formatCurrency(dashboard.currentBalance, displayCurrency)}</p>
                 <p>{balanceSnapshotLabel}</p>
-                {hasPayday && hasBills ? (
-                  <p>Bills before payday: {formatCurrency(dashboard.totalBeforePayday, displayCurrency)}</p>
-                ) : null}
-                <p>Clear till payday: {clearTillValue}</p>
-                <p>Still around {formatCurrency(dashboard.currentBalance, displayCurrency)}? Update if this has changed.</p>
+                <p>Still around {formatCurrency(dashboard.currentBalance, displayCurrency)}? Update it whenever that changes.</p>
               </div>
             ) : (
               <p className="helper-text balance-copy">
-                Enter your current balance. ClearTill will forecast what may be left after bills before payday.
+                Enter your current balance and ClearTill will show what is safe to spend before payday.
               </p>
             )}
             {displayAccount?.currentBalance === undefined ? (
               <p className="helper-text balance-copy">
-                Add your balance snapshot to see what may be left before payday.
+                Add your balance to unlock the payday forecast.
               </p>
             ) : null}
             <div className="field-row" style={{ marginTop: "14px" }}>
@@ -2076,181 +2474,129 @@ export default function DashboardPage() {
             {balanceError ? <p className="error">{balanceError}</p> : null}
           </section>
 
-          <section
-            ref={addBillSectionRef}
-            className={`chat-panel ${setupStep === 3 ? "setup-current" : ""} ${!hasBalanceSnapshot ? "is-disabled-soft" : ""}`}
-          >
-            <h2>Add a bill or payday</h2>
-            {!hasBalanceSnapshot || !hasPayday ? (
-              <p className="helper-text helper-tooltip">
-                {!hasBalanceSnapshot
-                  ? "Bills can be added now, but the forecast works best after balance and payday are set."
-                  : "You can add bills now, but ClearTill needs your payday to show what lands before you get paid."}
-              </p>
-            ) : null}
-            {quickAddContext ? (
-              <div className="quick-add-note" role="status" aria-live="polite">
-                <div className="quick-add-copy">
-                  <strong>Adding missing utility: {quickAddContext.name}</strong>
-                  <span>
-                    Category set to Household. Add the amount and due day, then log it.
-                  </span>
+          <section className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || !hasPayday) ? "is-disabled-soft" : ""}`}>
+            <div className="section-head">
+              <div>
+                <h2 style={{ margin: 0 }}>Spending room until payday</h2>
+                <p className="helper-text">This uses current account money only, after bills and large costs due before payday.</p>
+              </div>
+            </div>
+            <div className="forecast-header">
+              <div>
+                <span className="forecast-label">Payday countdown</span>
+                <p className="forecast-countdown">{paydayCountdownLabel}</p>
+                <div className="forecast-meta-list">
+                  <span className="forecast-meta-chip">Payday: <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "Not set"}</strong></span>
+                  <span className="forecast-meta-chip">Expected pay: <strong>{hasIncomeAmount ? formatCurrency(Number(displayIncome.amount), displayCurrency) : "Not set"}</strong></span>
                 </div>
                 <button
-                  className="quick-add-clear"
+                  className="secondary-button small-button forecast-settings-button"
                   type="button"
-                  onClick={() => setQuickAddContext(null)}
+                  disabled={importLocked}
+                  onClick={() => setEditingIncome((current) => !current)}
                 >
-                  Clear
+                  {editingIncome ? "Close forecast settings" : "Edit forecast settings"}
                 </button>
               </div>
-            ) : null}
-            <form className="chat-form" onSubmit={handleSubmit}>
-              <div
-                className={`upload-panel${dragActive ? " is-dragging" : ""}`}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  setDragActive(true);
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setDragActive(true);
-                }}
-                onDragLeave={(event) => {
-                  event.preventDefault();
-                  if (!event.currentTarget.contains(event.relatedTarget)) {
-                    setDragActive(false);
-                  }
-                }}
-                onDrop={handleDrop}
-              >
-                <div>
-                  <strong>Add a screenshot or bill image</strong>
-                  <p className="helper-text upload-copy">
-                    Drag and drop one or more screenshots here, paste a screenshot, or choose files.
-                  </p>
-                </div>
-                <div className="upload-actions">
-                  <button
-                    className="secondary-button small-button"
-                    type="button"
-                    disabled={importLocked}
-                    onClick={() => imageInputRef.current?.click()}
-                  >
-                    Choose image
-                  </button>
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    multiple
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    hidden
-                    onChange={handleImagePickerChange}
-                  />
-                </div>
+              <div className={`forecast-total-block${spendingRoomUntilPayday !== null && spendingRoomUntilPayday < 0 ? " is-negative" : ""}`}>
+                <span className="forecast-label">Spending room</span>
+                <p className="forecast-summary-headline">
+                  {spendingRoomSummary}
+                </p>
+                <p className="forecast-support">{spendingRoomHelper}</p>
+                {spendingRoomUntilPayday !== null && spendingRoomUntilPayday < 0 && bigCostsDueBeforePayday > 0 ? (
+                  <Link className="secondary-button small-button forecast-review-button" href="/big-costs">
+                    Review big costs
+                  </Link>
+                ) : null}
               </div>
-              {importJobs.length ? (
-                <div className="selected-image-list">
-                  {importJobs.map((job) => (
-                    <div
-                      key={job.id}
-                      className={`selected-image-card${getImportJobClass(job)}`}
-                    >
-                      <div>
-                        <div className="selected-image-head">
-                          <img className="selected-image-preview" src={job.previewUrl} alt="" />
-                          <strong>{job.name}</strong>
-                        </div>
-                        <p className="helper-text image-meta">
-                          {job.progressText}
-                        </p>
-                        {job.status !== "queued" ? (
-                          <div className="image-progress" aria-hidden="true">
-                            <span
-                              className="image-progress-bar"
-                              style={{ width: `${getImportJobProgress(job)}%` }}
-                            />
-                          </div>
-                        ) : null}
-                        {(job.skippedRows || []).length > 0 ? (
-                          <div className="skipped-rows-panel">
-                            <p className="helper-text">
-                              Skipped {job.skippedRows.length} unclear row{job.skippedRows.length === 1 ? "" : "s"}
-                            </p>
-                            <ul className="skipped-rows-list">
-                              {job.skippedRows.map((row, i) => (
-                                <li key={i} className="helper-text">
-                                  {row.name || row.rawText} — {row.reason}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="import-card-actions">
-                        {job.status === "failed" ? (
-                          <button
-                            className="secondary-button small-button"
-                            type="button"
-                            disabled={isImporting}
-                            onClick={() => handleRetryImport(job.id)}
-                          >
-                            Retry
-                          </button>
-                        ) : null}
-                        <button
-                          className="secondary-button small-button"
-                          type="button"
-                          disabled={importLocked}
-                          onClick={() => removeSelectedImage(job.id)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              <div className="chat-input-row">
-                <textarea
-                  ref={messageInputRef}
-                  value={message}
+            </div>
+            {editingIncome ? (
+              <form className="edit-form forecast-settings-drawer" onSubmit={handleIncomeSave}>
+                <label className="field-label" htmlFor="forecast-payday-amount">Expected pay</label>
+                <input
+                  id="forecast-payday-amount"
+                  inputMode="decimal"
                   disabled={importLocked}
-                  onChange={(event) => setMessage(event.target.value)}
-                  onPaste={handlePaste}
-                  placeholder={
-                    quickAddContext
-                      ? `Example: ${quickAddContext.name} is GBP 28 due on the 14th each month.`
-                      : "My rent is GBP 1,100 due on the 26th every month."
-                  }
+                  value={incomeForm.amount}
+                  onChange={(event) => setIncomeForm((current) => ({ ...current, amount: event.target.value }))}
+                  placeholder="Monthly income"
                 />
-                <button
-                  className={`secondary-button mic-button${listening ? " is-listening" : ""}`}
-                  type="button"
+                <label className="field-label" htmlFor="forecast-payday-day">Payday</label>
+                <input
+                  id="forecast-payday-day"
+                  inputMode="numeric"
                   disabled={importLocked}
-                  onClick={handleVoiceToggle}
-                  aria-pressed={listening}
-                >
-                  {listening ? "Stop" : "Mic"}
-                </button>
+                  value={incomeForm.payDay}
+                  onChange={(event) => setIncomeForm((current) => ({ ...current, payDay: event.target.value }))}
+                  placeholder="Day of month"
+                />
+                <div className="edit-actions">
+                  <button className="primary-button small-button" type="submit" disabled={savingEdit || importLocked}>
+                    {savingEdit ? "Saving..." : "Save forecast settings"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
+            <div className="forecast-breakdown">
+              <h3>Explain this number</h3>
+              <div className="forecast-breakdown-list">
+                <div className="forecast-breakdown-row">
+                  <span>Current balance</span>
+                  <strong>{hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "—"}</strong>
+                </div>
+                <div className="forecast-breakdown-row">
+                  <span>Less bills before payday</span>
+                  <strong>-{hasPayday ? formatCurrency(dashboard.totalBeforePayday, displayCurrency) : "—"}</strong>
+                </div>
+                <div className="forecast-breakdown-row">
+                  <span>Big costs hitting current account</span>
+                  <strong>-{hasPayday ? formatCurrency(bigCostsDueBeforePayday, displayCurrency) : "—"}</strong>
+                </div>
+                <div className="forecast-breakdown-row total">
+                  <span>Spending room until payday</span>
+                  <strong>{spendingRoomValue}</strong>
+                </div>
               </div>
-              <button className="primary-button" type="submit" disabled={submitting || importLocked}>
-                {importLocked ? importButtonLabel : submitting ? "Reading..." : "Log it"}
-              </button>
-            </form>
-            {importQueueFinished ? (
-              <button className="secondary-button small-button" type="button" onClick={clearImports}>
-                Clear imports
-              </button>
-            ) : null}
-            {importSummary ? (
-              <p className="assistant-message">
-                {buildImportSummaryMessage(importSummary)}
-              </p>
-            ) : null}
-            {voiceMessage ? <p className="helper-text voice-status">{voiceMessage}</p> : null}
-            {assistantMessage ? <p className="assistant-message">{assistantMessage}</p> : null}
-            {chatError ? <p className="error">{chatError}</p> : null}
+              <ProtectedSavingsEditor
+                value={savingsInput}
+                onChange={setSavingsInput}
+                onSave={handleSavingsSave}
+                saving={savingSavings}
+                error={savingsError}
+                displayCurrency={displayCurrency}
+                protectedTotal={largeCostImpact.totalProtectedSavings}
+                generalSavings={generalProtectedSavings}
+                assignedSavings={largeCostImpact.totalCostSpecificSaved}
+                assignedSavingsByCost={largeCostImpact.costs}
+                bigCostsCoveredBySavings={largeCostImpact.bigCostsCoveredBySavings}
+                fallbackCopy={spendingRoomFallbackCopy}
+              />
+            </div>
+            <ForecastLargeCostsSection
+              costs={dueBeforePaydayLargeCosts}
+              allCosts={largeCostsWithStatus}
+              displayCurrency={displayCurrency}
+              showForm={showLargeCostForm}
+              editingId={editingLargeCostId}
+              form={largeCostForm}
+              onFormChange={setLargeCostForm}
+              onStartAdd={startLargeCostCreate}
+              onEditStart={startLargeCostEdit}
+              onCancel={resetLargeCostForm}
+              onSave={handleLargeCostSave}
+              onDelete={handleLargeCostDelete}
+              saving={savingLargeCost}
+              error={largeCostError}
+              hasPayday={hasPayday}
+              unassignedAmount={unassignedCostsBeforePayday}
+              fundingEditorCostId={fundingEditorCostId}
+              fundingEditorForm={fundingEditorForm}
+              onFundingEditorChange={setFundingEditorForm}
+              onFundingEditorOpen={openFundingEditor}
+              onFundingEditorClose={closeFundingEditor}
+              onFundingEditorSave={saveFundingEditor}
+            />
           </section>
 
           <section className={`runway-panel ${!hasBills ? "is-disabled-soft" : ""}`}>
@@ -2279,12 +2625,6 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <OverviewLinksSection
-            costsTotal={largeCostImpact.totalBigCosts}
-            savingsTotal={protectedSavingsTotal}
-            displayCurrency={displayCurrency}
-          />
-
           <section className="reminders-panel">
             <h2>Reminders</h2>
             {reminders.length ? (
@@ -2294,7 +2634,6 @@ export default function DashboardPage() {
                   const createdLabel = createdAt
                     ? formatDisplayDate(createdAt.toISOString().slice(0, 10))
                     : null;
-
                   return (
                     <li key={reminder.id}>
                       <div className="bill-row-main">
@@ -2310,7 +2649,7 @@ export default function DashboardPage() {
                 })}
               </ul>
             ) : (
-              <p className="empty">ClearTill will show reminders here when bills are due soon.</p>
+              <p className="empty">No reminders yet — ClearTill will show upcoming due bills here.</p>
             )}
           </section>
         </div>
@@ -2428,6 +2767,7 @@ export default function DashboardPage() {
               {[
                 { key: "all", label: "All" },
                 ...(dashboard.paydayDate ? [{ key: "before", label: "Before payday" }, { key: "after", label: "After payday" }] : []),
+                { key: "paid", label: "Paid" },
                 { key: "recent", label: "Recently added" },
               ].map((tab) => (
                 <button
@@ -2464,6 +2804,7 @@ export default function DashboardPage() {
                   savingEdit={savingEdit}
                   importLocked={importLocked}
                   onDelete={handleBillDelete}
+                  onMarkPaid={handleBillPaidToggle}
                   selectMode={selectMode}
                   selectedBillIds={selectedBillIds}
                   onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
@@ -2483,6 +2824,7 @@ export default function DashboardPage() {
                   savingEdit={savingEdit}
                   importLocked={importLocked}
                   onDelete={handleBillDelete}
+                  onMarkPaid={handleBillPaidToggle}
                   selectMode={selectMode}
                   selectedBillIds={selectedBillIds}
                   onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
@@ -2497,7 +2839,8 @@ export default function DashboardPage() {
                 billListFilter === "before" ? "Before payday"
                 : billListFilter === "after" ? "After payday"
                 : billListFilter === "recent" ? "Recently added"
-                : "Upcoming bills"
+                : billListFilter === "paid" ? "Paid bills"
+                : "All bills"
               }
               bills={pagedBills}
               editingBillId={editingBillId}
@@ -2509,6 +2852,7 @@ export default function DashboardPage() {
               savingEdit={savingEdit}
               importLocked={importLocked}
               onDelete={handleBillDelete}
+              onMarkPaid={handleBillPaidToggle}
               selectMode={selectMode}
               selectedBillIds={selectedBillIds}
               onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
@@ -2526,9 +2870,260 @@ export default function DashboardPage() {
           ) : null}
 
           {editingIncome || editingBillId ? (editError ? <p className="error">{editError}</p> : null) : null}
-          <HouseholdTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} />
+
+          {/* Add bills — unified card: type, speak, or upload (CSV/image) */}
+          <section
+            ref={addBillSectionRef}
+            className={`chat-panel add-bills-card ${setupStep === 3 ? "setup-current" : ""} ${!hasBalanceSnapshot ? "is-disabled-soft" : ""} ${dragActive ? "is-dragging" : ""}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <h2>Add bills</h2>
+            {!hasBalanceSnapshot || !hasPayday ? (
+              <p className="helper-text helper-tooltip">
+                {!hasBalanceSnapshot
+                  ? "Bills can be added now, but the forecast works best after balance and payday are set."
+                  : "You can add bills now, but ClearTill needs your payday to show what lands before you get paid."}
+              </p>
+            ) : null}
+            <p className="helper-text helper-tooltip">Type, speak, paste a screenshot, drag one here, or upload a statement. ClearTill will find regular payments.</p>
+            <p className="helper-text add-bills-drop-hint">
+              Paste a screenshot into the box below, or drag an image onto this card.
+            </p>
+            {quickAddContext ? (
+              <div className="quick-add-note" role="status" aria-live="polite">
+                <div className="quick-add-copy">
+                  <strong>Adding missing utility: {quickAddContext.name}</strong>
+                  <span>Category set to Household. Add the amount and due day, then log it.</span>
+                </div>
+                <button className="quick-add-clear" type="button" onClick={() => setQuickAddContext(null)}>
+                  Clear
+                </button>
+              </div>
+            ) : null}
+            <form className="chat-form" onSubmit={handleSubmit} onPaste={handlePaste}>
+              <textarea
+                ref={messageInputRef}
+                value={message}
+                disabled={submitting || importLocked}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder={
+                  quickAddContext
+                    ? `Example: ${quickAddContext.name} is £28 due on the 14th each month.`
+                    : "My rent is £1,100 on the 26th every month."
+                }
+              />
+              <div className="add-bills-actions">
+                <button className="primary-button" type="submit" disabled={submitting || importLocked}>
+                  {submitting ? "Reading..." : importJobs.length ? "Find regular payments" : "Log it"}
+                </button>
+                <button
+                  className={`secondary-button${listening ? " is-listening" : ""}`}
+                  type="button"
+                  disabled={submitting || importLocked}
+                  onClick={handleVoiceToggle}
+                  aria-pressed={listening}
+                >
+                  {listening ? "Stop listening" : "Speak"}
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={submitting || importLocked || csvPhase === "parsing"}
+                  onClick={() => uploadInputRef.current?.click()}
+                >
+                  Upload
+                </button>
+              </div>
+              <input
+                ref={uploadInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif,.csv,text/csv"
+                hidden
+                onChange={handleUploadChange}
+              />
+            </form>
+
+            {/* Image import queue */}
+            {importJobs.length ? (
+              <div className="selected-image-list">
+                {importJobs.map((job) => (
+                  <div key={job.id} className={`selected-image-card${getImportJobClass(job)}`}>
+                    <div>
+                      <div className="selected-image-head">
+                        <img className="selected-image-preview" src={job.previewUrl} alt="" />
+                        <strong>{job.name}</strong>
+                      </div>
+                      <p className="helper-text image-meta">
+                        {job.status === "queued" ? "Ready to scan" : job.progressText}
+                      </p>
+                      {job.status !== "queued" ? (
+                        <div className="image-progress" aria-hidden="true">
+                          <span className="image-progress-bar" style={{ width: `${getImportJobProgress(job)}%` }} />
+                        </div>
+                      ) : null}
+                      {(job.skippedRows || []).length > 0 ? (
+                        <div className="skipped-rows-panel">
+                          <p className="helper-text">
+                            Skipped {job.skippedRows.length} unclear row{job.skippedRows.length === 1 ? "" : "s"}
+                          </p>
+                          <ul className="skipped-rows-list">
+                            {job.skippedRows.map((row, i) => (
+                              <li key={i} className="helper-text">{row.name || row.rawText} — {row.reason}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="import-card-actions">
+                      {job.status === "failed" ? (
+                        <button className="secondary-button small-button" type="button" disabled={isImporting} onClick={() => handleRetryImport(job.id)}>
+                          Retry
+                        </button>
+                      ) : null}
+                      <button className="secondary-button small-button" type="button" disabled={importLocked} onClick={() => removeSelectedImage(job.id)}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {importQueueFinished ? (
+              <button className="secondary-button small-button" type="button" onClick={clearImports}>Clear imports</button>
+            ) : null}
+            {importSummary ? (
+              <p className="assistant-message">{buildImportSummaryMessage(importSummary)}</p>
+            ) : null}
+
+            {/* CSV review (shown after CSV upload) */}
+            {csvPhase === "parsing" ? (
+              <p className="helper-text" style={{ marginTop: "12px" }}>Checking your CSV...</p>
+            ) : null}
+            {csvPhase === "empty" ? (
+              <div style={{ marginTop: "12px" }}>
+                <p className="helper-text">We could not find clear regular payments in this CSV. You can still type a bill above.</p>
+                <button className="secondary-button small-button" type="button" style={{ marginTop: "10px" }} onClick={resetCsv}>Try another file</button>
+              </div>
+            ) : null}
+            {(csvPhase === "error") && csvError ? (
+              <p className="error" style={{ marginTop: "10px" }}>{csvError}</p>
+            ) : null}
+            {csvPhase === "reviewing" ? (() => {
+              const visibleSuggestions = csvSuggestions.filter((s) => !csvIgnored.has(s.id));
+              const CONF_LABEL = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" };
+              return (
+                <div className="csv-review-section">
+                  <div className="csv-review-header">
+                    <p><strong>We found {csvSuggestions.length} possible regular payment{csvSuggestions.length === 1 ? "" : "s"}.</strong></p>
+                    <p className="helper-text">Review each one before adding it to your bills.</p>
+                    {csvSavedCount > 0 ? <p className="helper-text">{csvSavedCount} bill{csvSavedCount === 1 ? "" : "s"} added so far.</p> : null}
+                  </div>
+                  {visibleSuggestions.length === 0 ? (
+                    <div>
+                      <p className="helper-text">All suggestions reviewed.</p>
+                      <div className="csv-suggestion-actions" style={{ marginTop: "10px" }}>
+                        <button className="secondary-button small-button" type="button" onClick={() => uploadInputRef.current?.click()}>Try another file</button>
+                        <button className="secondary-button small-button" type="button" onClick={resetCsv}>Start over</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="csv-suggestions-list">
+                        {visibleSuggestions.map((s) => (
+                          <div key={s.id} className="csv-suggestion-card">
+                            <div className="csv-suggestion-head">
+                              <div>
+                                <strong className="csv-suggestion-name">{s.merchantName}</strong>
+                                <span className={`csv-confidence-pill csv-pill-${s.confidence}`}>{CONF_LABEL[s.confidence]}</span>
+                              </div>
+                              <div className="csv-suggestion-amount">
+                                <strong>{formatCurrency(s.averageAmount, displayCurrency)}</strong>
+                                <span className="csv-suggestion-freq">{s.frequency}</span>
+                              </div>
+                            </div>
+                            <div className="csv-suggestion-meta">
+                              <span>Last paid {formatDisplayDate(s.lastPaidDate)}</span>
+                              <span>Next {formatDisplayDate(s.nextExpectedDate)}</span>
+                              <span>{s.detectedTransactionsCount} found</span>
+                            </div>
+                            {csvEditingId === s.id ? (
+                              <div className="csv-edit-form">
+                                <div className="field-row">
+                                  <label className="field-label" htmlFor={`csv-name-${s.id}`}>Bill name</label>
+                                  <input id={`csv-name-${s.id}`} value={csvEditForm.name} onChange={(e) => setCsvEditForm((f) => ({ ...f, name: e.target.value }))} placeholder="Bill name" />
+                                </div>
+                                <div className="field-row">
+                                  <label className="field-label" htmlFor={`csv-amount-${s.id}`}>Amount</label>
+                                  <input id={`csv-amount-${s.id}`} inputMode="decimal" value={csvEditForm.amount} onChange={(e) => setCsvEditForm((f) => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+                                </div>
+                                <div className="field-row">
+                                  <label className="field-label" htmlFor={`csv-day-${s.id}`}>Due day (1–31)</label>
+                                  <input id={`csv-day-${s.id}`} inputMode="numeric" value={csvEditForm.dueDay} onChange={(e) => setCsvEditForm((f) => ({ ...f, dueDay: e.target.value }))} placeholder="e.g. 1" />
+                                </div>
+                                <div className="field-row">
+                                  <label className="field-label" htmlFor={`csv-cat-${s.id}`}>Category</label>
+                                  <select id={`csv-cat-${s.id}`} className="category-select" value={csvEditForm.category} onChange={(e) => setCsvEditForm((f) => ({ ...f, category: e.target.value }))}>
+                                    <option value="">Auto-detect</option>
+                                    <option value="household">Household</option>
+                                    <option value="subscription">Subscription</option>
+                                    <option value="vehicle">Vehicle</option>
+                                    <option value="debt">Debt / repayment</option>
+                                    <option value="family">Children / family</option>
+                                    <option value="work_side_project">Work / side project</option>
+                                    <option value="other">Other</option>
+                                  </select>
+                                </div>
+                                <div className="csv-suggestion-actions">
+                                  <button className="primary-button small-button" type="button" disabled={csvSavingId === s.id} onClick={() => handleCsvEditSave(s)}>
+                                    {csvSavingId === s.id ? "Saving..." : "Save bill"}
+                                  </button>
+                                  <button className="secondary-button small-button" type="button" onClick={() => setCsvEditingId(null)}>Cancel</button>
+                                </div>
+                                {csvError ? <p className="error">{csvError}</p> : null}
+                              </div>
+                            ) : (
+                              <div className="csv-suggestion-actions">
+                                <button className="secondary-button small-button" type="button" disabled={!!csvSavingId} onClick={() => handleCsvAddBill(s)}>
+                                  {csvSavingId === s.id ? "Adding..." : "Add as bill"}
+                                </button>
+                                <button className="secondary-button small-button" type="button" disabled={!!csvSavingId} onClick={() => startCsvEdit(s)}>Edit</button>
+                                <button className="secondary-button small-button" type="button" onClick={() => setCsvIgnored((prev) => new Set([...prev, s.id]))}>Ignore</button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="csv-suggestion-actions" style={{ marginTop: "12px" }}>
+                        <button className="secondary-button small-button" type="button" onClick={resetCsv}>Start over</button>
+                      </div>
+                      {csvError ? <p className="error">{csvError}</p> : null}
+                    </>
+                  )}
+                </div>
+              );
+            })() : null}
+
+            {voiceMessage ? <p className="helper-text voice-status">{voiceMessage}</p> : null}
+            {assistantMessage ? <p className="assistant-message">{assistantMessage}</p> : null}
+            {chatError ? <p className="error">{chatError}</p> : null}
+          </section>
+
+          <div className="stack">
+            <HouseholdTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} />
+            <SpendCurveCard
+              dashboard={dashboard}
+              dueBeforePaydayLargeCosts={dueBeforePaydayLargeCosts}
+              dailySpendingRoom={dailySpendingRoom}
+              hasBalanceSnapshot={hasBalanceSnapshot}
+              todayIso={todayIso}
+              displayCurrency={displayCurrency}
+            />
+          </div>
         </section>
       </section>
+
     </main>
   );
 }
@@ -2539,6 +3134,10 @@ function isRecentlyAdded(bill) {
     ? bill.createdAt.toMillis()
     : new Date(bill.createdAt).getTime();
   return Date.now() - t < 48 * 60 * 60 * 1000;
+}
+
+function isPaidBill(bill) {
+  return Boolean(bill?.paidThroughDate);
 }
 
 const CATEGORY_META = {
@@ -2653,6 +3252,108 @@ function BillCategoryPill({ bill }) {
   );
 }
 
+function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoom, hasBalanceSnapshot, todayIso, displayCurrency }) {
+  const { currentBalance, paydayDate, beforePayday } = dashboard;
+
+  if (!paydayDate || !hasBalanceSnapshot) return null;
+
+  // Group bills + account-funded large costs into 4 weekly buckets
+  const weekTotals = [0, 0, 0, 0];
+  for (const bill of beforePayday) {
+    if (bill.nextDueDate && bill.amount > 0) {
+      const day = Math.max(0, diffDays(todayIso, bill.nextDueDate));
+      weekTotals[Math.min(3, Math.floor(day / 7))] += bill.amount;
+    }
+  }
+  for (const cost of dueBeforePaydayLargeCosts) {
+    const acctAmt = Number(cost.currentAccountAmount) || 0;
+    if (acctAmt > 0 && cost.nextDueDate) {
+      const day = Math.max(0, diffDays(todayIso, cost.nextDueDate));
+      weekTotals[Math.min(3, Math.floor(day / 7))] += acctAmt;
+    }
+  }
+
+  const totalBills = weekTotals.reduce((a, b) => a + b, 0);
+  const lowestBal = currentBalance - totalBills;
+  const goesNegative = lowestBal < 0;
+  const maxWeek = Math.max(...weekTotals, 100);
+
+  // SVG layout
+  const W = 400, H = 120;
+  const PL = 34, PR = 10, PT = 10, PB = 22;
+  const chartW = W - PL - PR;
+  const chartH = H - PT - PB;
+  const baseY = PT + chartH;
+  const numBars = 4;
+  const barGap = 10;
+  const barW = (chartW - (numBars - 1) * barGap) / numBars;
+
+  const toBarH = (amt) => (amt / maxWeek) * chartH;
+  const toBarX = (i) => PL + i * (barW + barGap);
+
+  // £100 reference line
+  const ref100Y = baseY - toBarH(100);
+  const sym = displayCurrency === "EUR" ? "€" : displayCurrency === "USD" ? "$" : "£";
+
+  return (
+    <section className="spend-curve-card">
+      <h2 className="spend-curve-title">Bills per week to payday</h2>
+      <div className="spend-curve-summary">
+        <span className="curve-stat">
+          <span className="curve-stat-label">Today</span>
+          <strong>{formatCurrency(currentBalance, displayCurrency)}</strong>
+        </span>
+        <span className="curve-stat">
+          <span className="curve-stat-label">After bills</span>
+          <strong className={goesNegative ? "curve-negative" : ""}>{formatCurrency(lowestBal, displayCurrency)}</strong>
+        </span>
+        {dailySpendingRoom !== null ? (
+          <span className="curve-stat">
+            <span className="curve-stat-label">Safe daily</span>
+            <strong>{formatCurrency(dailySpendingRoom, displayCurrency)}/day</strong>
+          </span>
+        ) : null}
+        <span className="curve-stat">
+          <span className="curve-stat-label">Payday</span>
+          <strong>{formatDisplayDate(paydayDate)}</strong>
+        </span>
+      </div>
+      {goesNegative ? (
+        <p className="spend-curve-warning">You may go below £0 before payday.</p>
+      ) : null}
+      <svg viewBox={`0 0 ${W} ${H}`} className="spend-curve-svg" role="img" aria-label="Bills per week to payday">
+        {/* £100 reference line */}
+        {ref100Y > PT && ref100Y < baseY ? (
+          <>
+            <line x1={PL} y1={ref100Y} x2={PL + chartW} y2={ref100Y} stroke="var(--line)" strokeWidth="0.8" strokeDasharray="3 3" />
+            <text x={PL - 4} y={ref100Y + 3.5} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}100</text>
+          </>
+        ) : null}
+        {/* Bars */}
+        {weekTotals.map((total, i) => {
+          const bh = Math.max(toBarH(total), total > 0 ? 2 : 0);
+          return (
+            <rect
+              key={i}
+              x={toBarX(i).toFixed(1)}
+              y={(baseY - bh).toFixed(1)}
+              width={barW.toFixed(1)}
+              height={bh.toFixed(1)}
+              fill="var(--accent)"
+              opacity={total > 0 ? 0.72 : 0.12}
+              rx="3"
+            />
+          );
+        })}
+        {/* Baseline */}
+        <line x1={PL} y1={baseY} x2={PL + chartW} y2={baseY} stroke="var(--line)" strokeWidth="1" />
+        {/* Payday label under last bar */}
+        <text x={(toBarX(3) + barW / 2).toFixed(1)} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--muted)">Payday</text>
+      </svg>
+    </section>
+  );
+}
+
 function HouseholdTracker({ bills, onAddMissingUtility }) {
   const checks = TRACKER_CHECKS.map((check) => ({
     ...check,
@@ -2716,9 +3417,32 @@ const LARGE_COST_FREQUENCY_LABELS = {
   yearly: "Yearly",
 };
 
-function LargeUpcomingCostsCard({
+const LARGE_COST_FUNDING_META = {
+  unassigned: {
+    label: "Unassigned",
+    shortLabel: "Unassigned",
+    note: "Choose how this will be paid.",
+  },
+  current_account: {
+    label: "Current account",
+    shortLabel: "Current account",
+    note: "Hits current account. Reduces daily spending room.",
+  },
+  savings: {
+    label: "Savings",
+    shortLabel: "Savings",
+    note: "Covered by savings. Not counted as daily spending money.",
+  },
+  split: {
+    label: "Split",
+    shortLabel: "Split",
+    note: "Partly covered by savings. Only the remaining amount affects daily spending room.",
+  },
+};
+
+function ForecastLargeCostsSection({
   costs,
-  reserve,
+  allCosts,
   displayCurrency,
   showForm,
   editingId,
@@ -2731,46 +3455,29 @@ function LargeUpcomingCostsCard({
   onDelete,
   saving,
   error,
-  overReserved,
-  shortfall,
-  baseDailyBudget,
-  savingsCovered,
+  hasPayday,
+  unassignedAmount,
+  fundingEditorCostId,
+  fundingEditorForm,
+  onFundingEditorChange,
+  onFundingEditorOpen,
+  onFundingEditorClose,
+  onFundingEditorSave,
 }) {
   return (
-    <section className="large-costs-card">
+    <section className="forecast-large-costs">
       <div className="section-head">
         <div>
-          <h2 style={{ margin: 0 }}>Large upcoming costs</h2>
-          {costs.length ? (
-            <p className="large-costs-sub">
-              {reserve > 0 ? `Set aside about ${formatCurrency(reserve, displayCurrency)} per day across these costs.` : "Quietly priced into your daily limit."}
-            </p>
-          ) : null}
-          {costs.length ? (
-            <p className="large-costs-calm-note">
-              {savingsCovered
-                ? "Your big costs are fully covered by protected savings."
-                : overReserved
-                ? `Your big costs need ${formatCurrency(shortfall, displayCurrency)}/day more than your current runway allows.`
-                : `Your big costs still fit inside your current runway of ${formatCurrency(baseDailyBudget, displayCurrency)}/day.`}
-            </p>
-          ) : null}
+          <h3 style={{ margin: 0 }}>Large costs before payday</h3>
+          <p className="helper-text">Only costs hitting the current account change daily spending room.</p>
         </div>
-        {!showForm ? (
-          <button className="secondary-button small-button" type="button" onClick={onStartAdd}>
-            Add cost
-          </button>
-        ) : null}
+        <button className="secondary-button small-button" type="button" onClick={showForm ? onCancel : onStartAdd}>
+          {showForm ? "Cancel" : "Add large cost"}
+        </button>
       </div>
 
-      {!showForm && !costs.length ? (
-        <p className="empty large-costs-empty">
-          Add holidays, car repairs, school trips, boiler repairs, quarterly bills or anything big that could hit your cashflow.
-        </p>
-      ) : null}
-
       {showForm ? (
-        <form className="edit-form large-cost-form" onSubmit={onSave}>
+        <form className="edit-form large-cost-form forecast-inline-form" onSubmit={onSave}>
           <label className="field-label" htmlFor="large-cost-name">Name</label>
           <input
             id="large-cost-name"
@@ -2823,57 +3530,135 @@ function LargeUpcomingCostsCard({
               <option key={value} value={value}>{meta.icon} {meta.label}</option>
             ))}
           </select>
+          <div className="field-row">
+            <label className="field-label">Funding source</label>
+            <div className="funding-toggle-row">
+              {Object.entries(LARGE_COST_FUNDING_META).map(([value, meta]) => (
+                <button
+                  key={value}
+                  className={`funding-toggle${form.fundingStatus === value ? " is-active" : ""}`}
+                  type="button"
+                  onClick={() => onFormChange((current) => ({ ...current, fundingStatus: value }))}
+                >
+                  {meta.shortLabel}
+                </button>
+              ))}
+            </div>
+            <p className="helper-text">{(LARGE_COST_FUNDING_META[form.fundingStatus] || LARGE_COST_FUNDING_META.unassigned).note}</p>
+          </div>
           <div className="edit-actions">
             <button className="primary-button small-button" type="submit" disabled={saving}>
               {saving ? "Saving..." : editingId ? "Save changes" : "Save"}
-            </button>
-            <button className="secondary-button small-button" type="button" onClick={onCancel}>
-              Cancel
             </button>
           </div>
           {error ? <p className="error">{error}</p> : null}
         </form>
       ) : null}
 
-      {costs.length ? (
-        <ul className="large-cost-list">
-          {costs.map((cost) => {
-            const category = LARGE_COST_CATEGORY_META[cost.category] || LARGE_COST_CATEGORY_META.other;
+      {hasPayday ? (
+        <>
+          {unassignedAmount > 0 ? (
+            <p className="forecast-unassigned-warning">
+              You have {formatCurrency(unassignedAmount, displayCurrency)} of upcoming costs not assigned to a funding source. Your daily spending room may change.
+            </p>
+          ) : null}
+          {costs.length ? (
+          <ul className="forecast-compact-list">
+            {costs.map((cost) => {
+              const isEditingFunding = fundingEditorCostId === cost.id;
+              const fundingLabel = cost.fundingMeta?.label || "Unassigned";
+              const primaryLabel = cost.fundingStatus === "unassigned" ? "Choose funding" : "Change funding";
 
-            return (
-              <li key={cost.id} className="large-cost-row">
-                <div className="large-cost-row-main">
-                  <div className="large-cost-topline">
-                    <span className="large-cost-name">{category.icon} {cost.name}</span>
-                    <strong className="large-cost-amount">{formatCurrency(cost.amount, displayCurrency)}</strong>
+              return (
+              <li key={cost.id} className="forecast-compact-row">
+                <div className="forecast-compact-main">
+                  <div className="forecast-cost-summary-row">
+                    <span className="forecast-compact-name">{cost.name}</span>
+                    <strong className="forecast-cost-amount">{formatCurrency(cost.amount, displayCurrency)}</strong>
                   </div>
-                  <p className="large-cost-line">
-                    <strong>Set aside {formatCurrency(cost.adjustedPerDayRaw, displayCurrency)}/day</strong>
-                    <span className="large-cost-inline-sep">•</span>
-                    <span>{cost.dueLabel}</span>
-                  </p>
-                  <div className="large-cost-footer">
-                    <span className="bill-category-pill">{category.icon} {category.label}</span>
-                    <span className={`large-cost-badge large-cost-badge-${cost.statusBadge.toLowerCase().replace(/\s+/g, "-")}`}>
-                      {cost.statusBadge}
+                  <div className="forecast-cost-summary-row forecast-cost-summary-row-secondary">
+                    <span className="forecast-compact-meta">Due {cost.nextDueDate ? formatDisplayDate(cost.nextDueDate) : cost.dueLabel}</span>
+                    <span className="forecast-funding-status">{fundingLabel}</span>
+                  </div>
+                  <span className="forecast-compact-note">{cost.fundingMeta.note}</span>
+                  {cost.fundingStatus === "split" ? (
+                    <span className="forecast-compact-meta">
+                      {formatCurrency(cost.currentAccountAmount || 0, displayCurrency)} hits current account
                     </span>
+                  ) : null}
+                  <div className="forecast-cost-actions">
+                    <button className="secondary-button small-button forecast-funding-button" type="button" onClick={() => onFundingEditorOpen(cost)}>
+                      {primaryLabel}
+                    </button>
+                    <div className="forecast-secondary-actions">
+                      <button className="bill-action-button bill-action-edit" type="button" onClick={() => onEditStart(cost)}>
+                        Edit
+                      </button>
+                      <button className="bill-action-button bill-action-remove" type="button" onClick={() => onDelete(cost.id)}>
+                        Remove
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="bill-actions">
-                  <button className="bill-action-button bill-action-edit" type="button" onClick={() => onEditStart(cost)}>
-                    Edit
-                  </button>
-                  <button className="bill-action-button bill-action-remove" type="button" onClick={() => onDelete(cost.id)}>
-                    Remove
-                  </button>
+                  {isEditingFunding ? (
+                    <div className="forecast-funding-editor">
+                      <h4>How will you pay for {cost.name}?</h4>
+                      <div className="funding-toggle-row">
+                        {[
+                          ["current_account", "Current account"],
+                          ["savings", "Savings"],
+                          ["split", "Split"],
+                          ["unassigned", "Not sure yet"],
+                        ].map(([value, label]) => (
+                          <button
+                            key={`${cost.id}-${value}-editor`}
+                            className={`funding-toggle${fundingEditorForm.fundingStatus === value ? " is-active" : ""}`}
+                            type="button"
+                            onClick={() => onFundingEditorChange((current) => ({ ...current, fundingStatus: value }))}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {fundingEditorForm.fundingStatus === "split" ? (
+                        <div className="field-row" style={{ marginTop: "12px" }}>
+                          <label className="field-label" htmlFor={`funding-savings-${cost.id}`}>Amount from savings</label>
+                          <input
+                            id={`funding-savings-${cost.id}`}
+                            inputMode="decimal"
+                            value={fundingEditorForm.savingsAmount}
+                            onChange={(event) => onFundingEditorChange((current) => ({ ...current, savingsAmount: event.target.value }))}
+                            placeholder="0"
+                          />
+                          <p className="helper-text">
+                            Amount from current account: {formatCurrency(Math.max(0, (Number(cost.amount) || 0) - (Number(fundingEditorForm.savingsAmount || 0) || 0)), displayCurrency)}
+                          </p>
+                        </div>
+                      ) : null}
+                      <div className="edit-actions">
+                        <button className="primary-button small-button" type="button" onClick={() => onFundingEditorSave(cost)}>
+                          Save
+                        </button>
+                        <button className="secondary-button small-button" type="button" onClick={onFundingEditorClose}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </li>
-            );
-          })}
-        </ul>
-      ) : null}
+            )})}
+          </ul>
+          ) : (
+            <p className="empty large-costs-empty">None due before payday.</p>
+          )}
+        </>
+      ) : (
+        <p className="empty large-costs-empty">
+          Set your payday first, then ClearTill will show which large costs land before it.
+        </p>
+      )}
 
-      {costs.length ? (
+      {allCosts.length ? (
         <Link className="summary-card-link" href="/big-costs">
           View big cost plan →
         </Link>
@@ -2882,14 +3667,430 @@ function LargeUpcomingCostsCard({
   );
 }
 
-function SavingsSetAsideCard({ value, onChange, onSave, saving, error, displayCurrency, protectedTotal }) {
+// CsvBillFinder is now inlined into DashboardPage — this stub is unused.
+function CsvBillFinder({ userId, bills, displayCurrency, onBillSaved }) { // eslint-disable-line no-unused-vars
+  const fileInputRef = useRef(null);
+  const [phase, setPhase] = useState("idle"); // idle | parsing | reviewing | empty | error
+  const [suggestions, setSuggestions] = useState([]);
+  const [ignored, setIgnored] = useState(new Set());
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: "", amount: "", dueDay: "", category: "" });
+  const [savingId, setSavingId] = useState(null);
+  const [savedCount, setSavedCount] = useState(0);
+  const [csvError, setCsvError] = useState("");
+
+  function handleFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const name = (file.name || "").toLowerCase();
+    if (!name.endsWith(".csv") && file.type !== "text/csv" && !file.type.includes("comma")) {
+      setCsvError("Please upload a CSV file.");
+      setPhase("error");
+      return;
+    }
+
+    setCsvError("");
+    setPhase("parsing");
+    setSuggestions([]);
+    setIgnored(new Set());
+    setEditingId(null);
+    setSavedCount(0);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const result = analyseCsvText(e.target.result || "");
+        if (result.error === "no_columns") {
+          setCsvError("We could not find date, description and amount columns in this CSV.");
+          setPhase("error");
+        } else if (result.error) {
+          setCsvError("We could not read this CSV. Try exporting it again from your banking app.");
+          setPhase("error");
+        } else if (!result.suggestions || result.suggestions.length === 0) {
+          setPhase("empty");
+        } else {
+          setSuggestions(result.suggestions);
+          setPhase("reviewing");
+        }
+      } catch {
+        setCsvError("We could not read this CSV. Try exporting it again from your banking app.");
+        setPhase("error");
+      }
+    };
+    reader.onerror = () => {
+      setCsvError("We could not read this CSV. Try exporting it again from your banking app.");
+      setPhase("error");
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
+  async function handleAddBill(suggestion) {
+    if (!userId || !db) return;
+    setSavingId(suggestion.id);
+    setCsvError("");
+    try {
+      const todayIso = getTodayIso();
+      const billDoc = buildBillDocument({
+        name: suggestion.merchantName,
+        amount: suggestion.averageAmount,
+        dueDay: suggestion.usualPaymentDay,
+        currency: "GBP",
+      }, todayIso);
+      const billRef = doc(collection(db, "users", userId, "bills"));
+      await setDoc(billRef, {
+        ...billDoc,
+        source: "csv_detected",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const saved = { ...billDoc, id: billRef.id, source: "csv_detected" };
+      onBillSaved(saved);
+      setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+      setSavedCount((n) => n + 1);
+    } catch {
+      setCsvError("Could not save that bill. Try again.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  function startEdit(suggestion) {
+    setEditingId(suggestion.id);
+    setCsvError("");
+    setEditForm({
+      name: suggestion.merchantName,
+      amount: String(suggestion.averageAmount),
+      dueDay: String(suggestion.usualPaymentDay),
+      category: "",
+    });
+  }
+
+  async function handleEditSave(suggestion) {
+    if (!userId || !db) return;
+    const amount = parseFloat(editForm.amount);
+    const dueDay = parseInt(editForm.dueDay, 10);
+    if (!editForm.name.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setCsvError("Enter a valid name and amount before saving.");
+      return;
+    }
+    setSavingId(suggestion.id);
+    setCsvError("");
+    try {
+      const todayIso = getTodayIso();
+      const billDoc = buildBillDocument({
+        name: editForm.name.trim(),
+        amount,
+        dueDay: isValidDueDay(dueDay) ? dueDay : null,
+        currency: "GBP",
+        category: editForm.category || null,
+      }, todayIso);
+      const billRef = doc(collection(db, "users", userId, "bills"));
+      await setDoc(billRef, {
+        ...billDoc,
+        source: "csv_detected",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      const saved = { ...billDoc, id: billRef.id, source: "csv_detected" };
+      onBillSaved(saved);
+      setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+      setEditingId(null);
+      setSavedCount((n) => n + 1);
+    } catch {
+      setCsvError("Could not save that bill. Try again.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  function reset() {
+    setPhase("idle");
+    setSuggestions([]);
+    setIgnored(new Set());
+    setEditingId(null);
+    setSavedCount(0);
+    setCsvError("");
+  }
+
+  const visibleSuggestions = suggestions.filter((s) => !ignored.has(s.id));
+  const CONF_LABEL = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" };
+
   return (
-    <section className="tracker-card savings-card">
-      <h3>💷 Savings set aside</h3>
-      <p className="tracker-sub">Money already put aside for holidays, car repairs, school costs or emergencies.</p>
-      <form className="chat-form" onSubmit={onSave}>
+    <section className="chat-panel csv-finder-panel">
+      <h2>Find bills from CSV</h2>
+
+      {phase === "idle" || phase === "error" ? (
+        <>
+          <p className="helper-text helper-tooltip">
+            Upload a CSV bank export for the last 3 months. ClearTill will spot possible recurring payments — nothing is added until you approve it.
+          </p>
+          <div className="csv-privacy-note">
+            <p className="helper-text">Your CSV is only used to find possible regular payments. We only save bills you confirm.</p>
+            <p className="helper-text">Your CSV is checked on your device. We do not store the original file.</p>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            style={{ marginTop: "12px" }}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Upload CSV
+          </button>
+          <p className="helper-text" style={{ marginTop: "6px", fontSize: "0.82rem" }}>Upload CSV, PDF, or screenshot — CSV only for now</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={handleFileChange}
+          />
+          {csvError ? <p className="error">{csvError}</p> : null}
+        </>
+      ) : null}
+
+      {phase === "parsing" ? (
+        <p className="helper-text" style={{ marginTop: "10px" }}>Checking your CSV...</p>
+      ) : null}
+
+      {phase === "empty" ? (
+        <>
+          <p className="helper-text" style={{ marginTop: "10px" }}>
+            We could not find clear regular payments in this CSV. You can still add bills manually above.
+          </p>
+          <button className="secondary-button small-button" type="button" style={{ marginTop: "12px" }} onClick={reset}>
+            Try another file
+          </button>
+        </>
+      ) : null}
+
+      {phase === "reviewing" ? (
+        <>
+          <div className="csv-review-header">
+            <p><strong>We found {suggestions.length} possible regular payment{suggestions.length === 1 ? "" : "s"}.</strong></p>
+            <p className="helper-text">Review each one before adding it to your bills.</p>
+            {savedCount > 0 ? (
+              <p className="helper-text">{savedCount} bill{savedCount === 1 ? "" : "s"} added so far.</p>
+            ) : null}
+          </div>
+
+          {visibleSuggestions.length === 0 ? (
+            <>
+              <p className="helper-text" style={{ marginTop: "10px" }}>All suggestions reviewed.</p>
+              <button className="secondary-button small-button" type="button" style={{ marginTop: "12px" }} onClick={reset}>
+                Try another file
+              </button>
+            </>
+          ) : (
+            <div className="csv-suggestions-list">
+              {visibleSuggestions.map((s) => (
+                <div key={s.id} className="csv-suggestion-card">
+                  <div className="csv-suggestion-head">
+                    <div>
+                      <strong className="csv-suggestion-name">{s.merchantName}</strong>
+                      <span className={`csv-confidence-pill csv-pill-${s.confidence}`}>
+                        {CONF_LABEL[s.confidence]}
+                      </span>
+                    </div>
+                    <div className="csv-suggestion-amount">
+                      <strong>{formatCurrency(s.averageAmount, displayCurrency)}</strong>
+                      <span className="csv-suggestion-freq">{s.frequency}</span>
+                    </div>
+                  </div>
+
+                  <div className="csv-suggestion-meta">
+                    <span>Last paid {formatDisplayDate(s.lastPaidDate)}</span>
+                    <span>Next {formatDisplayDate(s.nextExpectedDate)}</span>
+                    <span>{s.detectedTransactionsCount} found</span>
+                  </div>
+
+                  {editingId === s.id ? (
+                    <div className="csv-edit-form">
+                      <div className="field-row">
+                        <label className="field-label" htmlFor={`csv-name-${s.id}`}>Bill name</label>
+                        <input
+                          id={`csv-name-${s.id}`}
+                          value={editForm.name}
+                          onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                          placeholder="Bill name"
+                        />
+                      </div>
+                      <div className="field-row">
+                        <label className="field-label" htmlFor={`csv-amount-${s.id}`}>Amount</label>
+                        <input
+                          id={`csv-amount-${s.id}`}
+                          inputMode="decimal"
+                          value={editForm.amount}
+                          onChange={(e) => setEditForm((f) => ({ ...f, amount: e.target.value }))}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div className="field-row">
+                        <label className="field-label" htmlFor={`csv-day-${s.id}`}>Due day (1–31)</label>
+                        <input
+                          id={`csv-day-${s.id}`}
+                          inputMode="numeric"
+                          value={editForm.dueDay}
+                          onChange={(e) => setEditForm((f) => ({ ...f, dueDay: e.target.value }))}
+                          placeholder="e.g. 1"
+                        />
+                      </div>
+                      <div className="field-row">
+                        <label className="field-label" htmlFor={`csv-cat-${s.id}`}>Category</label>
+                        <select
+                          id={`csv-cat-${s.id}`}
+                          className="category-select"
+                          value={editForm.category}
+                          onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                        >
+                          <option value="">Auto-detect</option>
+                          <option value="household">Household</option>
+                          <option value="subscription">Subscription</option>
+                          <option value="vehicle">Vehicle</option>
+                          <option value="debt">Debt / repayment</option>
+                          <option value="family">Children / family</option>
+                          <option value="work_side_project">Work / side project</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div className="csv-suggestion-actions">
+                        <button
+                          className="primary-button small-button"
+                          type="button"
+                          disabled={savingId === s.id}
+                          onClick={() => handleEditSave(s)}
+                        >
+                          {savingId === s.id ? "Saving..." : "Save bill"}
+                        </button>
+                        <button
+                          className="secondary-button small-button"
+                          type="button"
+                          onClick={() => setEditingId(null)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="csv-suggestion-actions">
+                      <button
+                        className="secondary-button small-button"
+                        type="button"
+                        disabled={!!savingId}
+                        onClick={() => handleAddBill(s)}
+                      >
+                        {savingId === s.id ? "Adding..." : "Add as bill"}
+                      </button>
+                      <button
+                        className="secondary-button small-button"
+                        type="button"
+                        disabled={!!savingId}
+                        onClick={() => startEdit(s)}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="secondary-button small-button"
+                        type="button"
+                        onClick={() => setIgnored((prev) => new Set([...prev, s.id]))}
+                      >
+                        Ignore
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ marginTop: "14px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button className="secondary-button small-button" type="button" onClick={reset}>
+              Start over
+            </button>
+          </div>
+          {csvError ? <p className="error">{csvError}</p> : null}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={handleFileChange}
+          />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ProtectedSavingsEditor({
+  value,
+  onChange,
+  onSave,
+  saving,
+  error,
+  displayCurrency,
+  protectedTotal,
+  generalSavings = 0,
+  assignedSavings = 0,
+  assignedSavingsByCost = [],
+  bigCostsCoveredBySavings = 0,
+  fallbackCopy = "Not counted as daily spending money.",
+}) {
+  const costsWithSavings = assignedSavingsByCost.filter((cost) => (cost.amountAlreadySaved || 0) > 0);
+  const underfundedCosts = costsWithSavings
+    .map((cost) => ({
+      ...cost,
+      stillNeededAmount: Math.max(0, (Number(cost.amount) || 0) - (Number(cost.amountAlreadySaved) || 0)),
+    }))
+    .filter((cost) => cost.stillNeededAmount > 0);
+  const savingsLeftAfterCosts = protectedTotal - bigCostsCoveredBySavings;
+
+  return (
+    <div className="forecast-support-block">
+      <h3 className="savings-section-label">Savings</h3>
+      <p className="helper-text forecast-support-copy">Savings now means your total available savings.</p>
+      <div className="savings-main-total">
+        <span>Savings now</span>
+        <strong>{formatCurrency(protectedTotal, displayCurrency)}</strong>
+      </div>
+      <div className="savings-breakdown-list">
+        <div className="savings-breakdown-row">
+          <span>Savings not assigned to a big cost</span>
+          <strong>{formatCurrency(generalSavings, displayCurrency)}</strong>
+        </div>
+        {costsWithSavings.map((cost) => (
+          <div key={cost.id} className="savings-breakdown-row">
+            <span>Saved for {cost.name}</span>
+            <strong>{formatCurrency(cost.amountAlreadySaved || 0, displayCurrency)}</strong>
+          </div>
+        ))}
+        {bigCostsCoveredBySavings > 0 ? (
+          <>
+            <div className="savings-breakdown-row savings-deduction">
+              <span>Planned big costs paid from savings</span>
+              <strong>-{formatCurrency(bigCostsCoveredBySavings, displayCurrency)}</strong>
+            </div>
+            <div className="savings-breakdown-row savings-total">
+              <span>Savings left after planned costs</span>
+              <strong>{formatCurrency(savingsLeftAfterCosts, displayCurrency)}</strong>
+            </div>
+          </>
+        ) : null}
+        {underfundedCosts.map((cost) => (
+          <div key={`needed-${cost.id}`} className="savings-breakdown-row savings-needed">
+            <span>Still needed for {cost.name}</span>
+            <strong>{formatCurrency(cost.stillNeededAmount || 0, displayCurrency)}</strong>
+          </div>
+        ))}
+      </div>
+      <p className="helper-text forecast-support-copy">
+        Savings not assigned to a big cost means money you have saved but have not linked to a specific planned cost.
+      </p>
+      <p className="helper-text forecast-support-copy">{fallbackCopy}</p>
+      <form className="chat-form forecast-inline-form" onSubmit={onSave}>
         <div className="field-row">
-          <label className="field-label" htmlFor="savings-set-aside">Savings set aside</label>
+          <label className="field-label" htmlFor="savings-set-aside">Savings not assigned to a big cost</label>
           <div className="chat-input-row">
             <input
               id="savings-set-aside"
@@ -2899,14 +4100,13 @@ function SavingsSetAsideCard({ value, onChange, onSave, saving, error, displayCu
               placeholder="2000"
             />
             <button className="secondary-button" type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Save"}
+              {saving ? "Updating..." : "Update savings"}
             </button>
           </div>
         </div>
       </form>
-      <p className="large-costs-calm-note">{formatCurrency(protectedTotal, displayCurrency)} protected for big costs.</p>
       {error ? <p className="error">{error}</p> : null}
-    </section>
+    </div>
   );
 }
 
@@ -2985,7 +4185,7 @@ function HeroCard({ status, headline, subLine, onUpdateBalance }) {
   );
 }
 
-function OverviewLinksSection({ costsTotal, savingsTotal, displayCurrency }) {
+function OverviewLinksSection({ costsTotal, savingsTotal, generalSavings, assignedSavings, displayCurrency }) {
   return (
     <div className="overview-rows">
       <Link className="overview-row" href="/big-costs">
@@ -2997,8 +4197,15 @@ function OverviewLinksSection({ costsTotal, savingsTotal, displayCurrency }) {
       </Link>
       <Link className="overview-row" href="/big-costs">
         <span className="overview-row-label">Savings set aside</span>
-        <span style={{ display: "flex", alignItems: "center" }}>
-          <span className="overview-row-value">{savingsTotal > 0 ? `${formatCurrency(savingsTotal, displayCurrency)} protected` : "None set"}</span>
+        <span style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <span className="overview-row-value">
+            {savingsTotal > 0 ? `${formatCurrency(savingsTotal, displayCurrency)} protected` : "None set"}
+          </span>
+          {(generalSavings > 0 || assignedSavings > 0) ? (
+            <span className="overview-row-value">
+              {`${formatCurrency(generalSavings, displayCurrency)} general pot + ${formatCurrency(assignedSavings, displayCurrency)} assigned`}
+            </span>
+          ) : null}
           <span className="overview-row-arrow">→</span>
         </span>
       </Link>
@@ -3038,6 +4245,7 @@ function BillGroup({
   savingEdit,
   importLocked,
   onDelete,
+  onMarkPaid,
   selectMode,
   selectedBillIds,
   onToggleSelect,
@@ -3115,6 +4323,7 @@ function BillGroup({
                     <div className="bill-row-head">
                       <span className="bill-row-title">{bill.name}</span>
                       {isRecentlyAdded(bill) ? <span className="bill-new-tag">Recently added</span> : null}
+                      {isPaidBill(bill) ? <span className="bill-paid-tag">Paid</span> : null}
                     </div>
                     <div className="bill-row-details">
                       <span className="bill-meta-pair">
@@ -3125,11 +4334,25 @@ function BillGroup({
                         <strong>{isValidDueDay(bill.dueDay) ? formatOrdinal(bill.dueDay) : "Date not set"}</strong>
                         <span className="bill-meta">due date</span>
                       </span>
+                      {isPaidBill(bill) ? (
+                        <span className="bill-meta-pair">
+                          <strong>{formatDisplayDate(bill.paidThroughDate)}</strong>
+                          <span className="bill-meta">paid through</span>
+                        </span>
+                      ) : null}
                     </div>
                     <BillCategoryPill bill={bill} />
                   </div>
                   {!selectMode ? (
                     <div className="bill-actions">
+                      <button
+                        className="bill-action-button bill-action-paid"
+                        type="button"
+                        disabled={importLocked || (!bill.nextDueDate && !isPaidBill(bill))}
+                        onClick={() => onMarkPaid?.(bill)}
+                      >
+                        {isPaidBill(bill) ? "Undo paid" : "Paid"}
+                      </button>
                       <button className="bill-action-button bill-action-edit" type="button" disabled={importLocked} onClick={() => onEditStart(bill)}>
                         Edit
                       </button>
@@ -3210,7 +4433,7 @@ function applyQuickAddContext(parsed, quickAddContext) {
 }
 
 async function applyParsedActions(userId, parsed, hasExistingIncome, existingBills = []) {
-  const outcome = { createdBills: 0, skippedBills: 0, savedIncome: false };
+  const outcome = { createdBills: 0, skippedBills: 0, savedIncome: false, savedBills: [] };
   const items = parsed.action === "batch" ? parsed.items || [] : [parsed];
   const billItems = dedupeBillItems(
     items.filter((item) => item.action === "create_bill"),
@@ -3239,10 +4462,16 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
           payload,
         });
         batch.set(billRef, payload);
-        return batch.commit();
+        return batch.commit().then(() => ({
+          id: billRef.id,
+          ...payload,
+        }));
       }),
     );
     outcome.createdBills = saveResults.filter((r) => r.status === "fulfilled").length;
+    outcome.savedBills = saveResults
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
     saveResults.forEach((result, index) => {
       const item = billItems.toCreate[index];
 
@@ -3674,14 +4903,19 @@ function buildOutcomeMessage(parsed, outcome) {
     return parsed.responseMessage;
   }
 
+  const hasDraftBill = Boolean(parsed?.needsDueDay);
   const parts = [];
 
   if (outcome.createdBills > 0) {
-    parts.push(
-      outcome.createdBills === 1
-        ? "Logged 1 new bill."
-        : `Logged ${outcome.createdBills} new bills.`,
-    );
+    if (hasDraftBill && outcome.createdBills === 1) {
+      parts.push("Saved 1 bill draft.");
+    } else {
+      parts.push(
+        outcome.createdBills === 1
+          ? "Logged 1 new bill."
+          : `Logged ${outcome.createdBills} new bills.`,
+      );
+    }
   }
 
   if (outcome.skippedBills > 0) {
@@ -3694,6 +4928,10 @@ function buildOutcomeMessage(parsed, outcome) {
 
   if (outcome.savedIncome) {
     parts.push("Payday updated.");
+  }
+
+  if (parsed.responseMessage) {
+    parts.push(parsed.responseMessage);
   }
 
   return parts.join(" ") || parsed.responseMessage;

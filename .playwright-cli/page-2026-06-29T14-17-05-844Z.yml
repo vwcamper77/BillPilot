@@ -1,0 +1,28 @@
+- generic [ref=e2]:
+  - main [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - paragraph [ref=e7]: ClearTill
+        - heading "Billing & payments" [level=1] [ref=e8]
+      - generic [ref=e9]:
+        - link "Back to account" [ref=e10] [cursor=pointer]:
+          - /url: /account
+        - link "Dashboard" [ref=e11] [cursor=pointer]:
+          - /url: /dashboard
+    - generic [ref=e12]:
+      - paragraph [ref=e13]: ClearTill payments and subscription management will appear here.
+      - paragraph [ref=e14]: "Future Stripe integration will allow you to:"
+      - list [ref=e15]:
+        - listitem [ref=e16]: view payment history
+        - listitem [ref=e17]: manage your subscription
+        - listitem [ref=e18]: update payment method
+        - listitem [ref=e19]: cancel your plan
+      - paragraph [ref=e20]: This is a placeholder for future billing controls.
+  - contentinfo [ref=e21]:
+    - generic [ref=e22]: © ClearTill
+    - generic [ref=e23]:
+      - link "Terms of Service" [ref=e24] [cursor=pointer]:
+        - /url: /terms
+      - generic [ref=e25]: ·
+      - link "Privacy Policy" [ref=e26] [cursor=pointer]:
+        - /url: /privacy
