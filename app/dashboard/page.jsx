@@ -25,6 +25,7 @@ import {
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithRedirect,
+  signOut,
 } from "firebase/auth";
 import {
   app as firebaseApp,
@@ -54,6 +55,7 @@ import {
 import { analyseCsvText } from "@/lib/csvBillFinder";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
+const GOOGLE_REDIRECT_ACTION_KEY = "billpilot_google_redirect_action";
 
 function getBalanceDocPath(userId) {
   return `users/${userId}/settings/balance`;
@@ -89,6 +91,35 @@ function getReminderDocPath(userId, reminderId) {
 
 function getDebugDocPath(userId) {
   return `users/${userId}/debug/test`;
+}
+
+function getStoredGoogleRedirectAction() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    return window.sessionStorage.getItem(GOOGLE_REDIRECT_ACTION_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function setStoredGoogleRedirectAction(action) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    if (action) {
+      window.sessionStorage.setItem(GOOGLE_REDIRECT_ACTION_KEY, action);
+      return;
+    }
+
+    window.sessionStorage.removeItem(GOOGLE_REDIRECT_ACTION_KEY);
+  } catch {
+    // Ignore storage failures; auth can still continue without redirect intent recovery.
+  }
 }
 
 function isValidIncomeAmount(value) {
@@ -217,12 +248,39 @@ export default function DashboardPage() {
         return;
       }
 
-      getRedirectResult(auth).catch((redirectError) => {
-        if (redirectError?.code !== "auth/credential-already-in-use") {
+      getRedirectResult(auth)
+        .then(() => {
+          setStoredGoogleRedirectAction("");
+        })
+        .catch(async (redirectError) => {
+          const pendingAction = getStoredGoogleRedirectAction();
+
+          if (
+            pendingAction === "link-google"
+            && redirectError?.code === "auth/credential-already-in-use"
+          ) {
+            try {
+              if (auth.currentUser?.isAnonymous) {
+                await auth.currentUser.delete().catch(() => signOut(auth));
+              } else {
+                await signOut(auth);
+              }
+
+              setStoredGoogleRedirectAction("signin-google");
+              await signInWithRedirect(auth, googleProvider);
+              return;
+            } catch (retryError) {
+              setStoredGoogleRedirectAction("");
+              setAuthError(friendlyAuthError(retryError));
+              setSigningIn(false);
+              return;
+            }
+          }
+
+          setStoredGoogleRedirectAction("");
           setAuthError(friendlyAuthError(redirectError));
-        }
-        setSigningIn(false);
-      });
+          setSigningIn(false);
+        });
 
       unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         setUser(currentUser);
@@ -677,12 +735,15 @@ export default function DashboardPage() {
       await authPersistenceReady;
 
       if (auth.currentUser?.isAnonymous) {
+        setStoredGoogleRedirectAction("link-google");
         await linkWithRedirect(auth.currentUser, googleProvider);
         return;
       }
 
+      setStoredGoogleRedirectAction("signin-google");
       await signInWithRedirect(auth, googleProvider);
     } catch (signInError) {
+      setStoredGoogleRedirectAction("");
       setAuthError(friendlyAuthError(signInError));
       setSigningIn(false);
     }
