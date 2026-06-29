@@ -110,7 +110,7 @@ export default function DashboardPage() {
   const [message, setMessage] = useState("");
   const [balanceInput, setBalanceInput] = useState("");
   const [editingBillId, setEditingBillId] = useState("");
-  const [editingBillForm, setEditingBillForm] = useState({ name: "", amount: "", dueDay: "" });
+  const [editingBillForm, setEditingBillForm] = useState({ name: "", amount: "", dueDay: "", category: "" });
   const [editingIncome, setEditingIncome] = useState(false);
   const [incomeForm, setIncomeForm] = useState({ amount: "", payDay: "" });
   const [assistantMessage, setAssistantMessage] = useState("");
@@ -1132,13 +1132,14 @@ export default function DashboardPage() {
       name: bill.name || "",
       amount: bill.amount?.toString() || "",
       dueDay: bill.dueDay?.toString() || "",
+      category: bill.category || "",
     });
     setEditError("");
   }
 
   function cancelBillEdit() {
     setEditingBillId("");
-    setEditingBillForm({ name: "", amount: "", dueDay: "" });
+    setEditingBillForm({ name: "", amount: "", dueDay: "", category: "" });
   }
 
   async function handleBillEditSave(event, billId) {
@@ -1171,6 +1172,7 @@ export default function DashboardPage() {
       const path = getBillDocPath(user.uid, billId);
       const payload = {
         ...updatedBill,
+        category: editingBillForm.category || null,
         updatedAt: serverTimestamp(),
       };
       console.log("[firestore-bill-save] writing", {
@@ -2126,9 +2128,153 @@ export default function DashboardPage() {
             />
           )}
           {editingIncome || editingBillId ? (editError ? <p className="error">{editError}</p> : null) : null}
+          <HouseholdTracker bills={bills} />
         </section>
       </section>
     </main>
+  );
+}
+
+function isRecentlyAdded(bill) {
+  if (!bill?.createdAt) return false;
+  const t = typeof bill.createdAt.toMillis === "function"
+    ? bill.createdAt.toMillis()
+    : new Date(bill.createdAt).getTime();
+  return Date.now() - t < 48 * 60 * 60 * 1000;
+}
+
+const CATEGORY_META = {
+  household: { icon: "🏠", label: "Household" },
+  subscription: { icon: "🔁", label: "Subscription" },
+  work_side_project: { icon: "💼", label: "Work / side project" },
+  vehicle: { icon: "🚗", label: "Vehicle" },
+  debt: { icon: "💳", label: "Debt / repayment" },
+  family: { icon: "🧒", label: "Children / family" },
+  other: { icon: "📌", label: "Other" },
+};
+
+function classifyBill(bill) {
+  const raw = `${bill.name || ""} ${bill.description || ""}`.toLowerCase();
+
+  function has(kw) {
+    if (kw.length <= 3) {
+      return new RegExp("\\b" + kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(raw);
+    }
+    return raw.includes(kw);
+  }
+
+  function any(kws) { return kws.some(has); }
+
+  if (any(["google workspace"])) return { category: "work_side_project", subCategory: "software_subscription", confidence: "medium", needsReview: true, reason: "google workspace" };
+
+  if (any(["octopus", "british gas", "e.on", "edf", "ovo energy", "shell energy", "scottish power"])) return { category: "household", subCategory: "energy", confidence: "high", needsReview: false, reason: "energy supplier" };
+  if (has("eon")) return { category: "household", subCategory: "energy", confidence: "high", needsReview: false, reason: "eon energy" };
+  if (any(["electricity", "electric", "energy bill", "gas bill"])) return { category: "household", subCategory: "energy", confidence: "high", needsReview: false, reason: "energy keyword" };
+  if (any(["energy", "gas", "electric"])) return { category: "household", subCategory: "energy", confidence: "medium", needsReview: false, reason: "energy keyword" };
+
+  if (any(["southern water", "thames water", "severn trent", "united utilities", "yorkshire water", "affinity water", "south east water"])) return { category: "household", subCategory: "water", confidence: "high", needsReview: false, reason: "water supplier" };
+  if (any(["wastewater", "waste water", "sewerage", "sewage", "drainage"])) return { category: "household", subCategory: "wastewater", confidence: "high", needsReview: false, reason: "wastewater keyword" };
+  if (any(["water"])) return { category: "household", subCategory: "water", confidence: "medium", needsReview: false, reason: "water keyword" };
+
+  if (any(["council tax", "council rates"])) return { category: "household", subCategory: "council_tax", confidence: "high", needsReview: false, reason: "council tax" };
+  if (any(["council"])) return { category: "household", subCategory: "council_tax", confidence: "medium", needsReview: false, reason: "council keyword" };
+
+  if (any(["broadband", "wifi", "wi-fi", "internet", "virgin media", "sky broadband", "talktalk", "plusnet", "vodafone broadband", "ee broadband"])) return { category: "household", subCategory: "broadband", confidence: "high", needsReview: false, reason: "broadband keyword" };
+  if (has("bt")) return { category: "household", subCategory: "broadband", confidence: "medium", needsReview: false, reason: "bt broadband" };
+
+  if (any(["home insurance", "contents insurance", "buildings insurance", "compare the market"])) return { category: "household", subCategory: "home_insurance", confidence: "high", needsReview: false, reason: "insurance keyword" };
+  if (any(["aviva", "direct line", "admiral", "churchill"])) return { category: "household", subCategory: "home_insurance", confidence: "high", needsReview: false, reason: "insurance provider" };
+
+  if (any(["mortgage", "landlord", "letting agent", "santander mortgage", "barclays mortgage"])) return { category: "household", subCategory: "rent_mortgage", confidence: "high", needsReview: false, reason: "mortgage/rent keyword" };
+  if (any(["rent"])) return { category: "household", subCategory: "rent_mortgage", confidence: "high", needsReview: false, reason: "rent keyword" };
+  if (any(["halifax", "nationwide"])) return { category: "household", subCategory: "rent_mortgage", confidence: "low", needsReview: true, reason: "bank could be mortgage" };
+
+  if (any(["giffgaff", "lebara", "voxi"])) return { category: "household", subCategory: "mobile", confidence: "high", needsReview: false, reason: "mobile provider" };
+  if (has("o2")) return { category: "household", subCategory: "mobile", confidence: "high", needsReview: false, reason: "o2 mobile" };
+  if (any(["three mobile", "three network", "three sim"])) return { category: "household", subCategory: "mobile", confidence: "high", needsReview: false, reason: "three mobile" };
+  if (any(["mobile", "phone plan", "sim plan", "sim only"])) return { category: "household", subCategory: "mobile", confidence: "medium", needsReview: false, reason: "mobile keyword" };
+  if (has("ee")) return { category: "household", subCategory: "mobile", confidence: "medium", needsReview: true, reason: "ee could be mobile or broadband" };
+  if (any(["vodafone"])) return { category: "household", subCategory: "mobile", confidence: "medium", needsReview: true, reason: "vodafone could be mobile or broadband" };
+
+  if (any(["netflix"])) return { category: "subscription", subCategory: "streaming", confidence: "high", needsReview: false, reason: "netflix" };
+  if (any(["spotify"])) return { category: "subscription", subCategory: "streaming", confidence: "high", needsReview: false, reason: "spotify" };
+  if (any(["disney+", "disney plus", "disney"])) return { category: "subscription", subCategory: "streaming", confidence: "high", needsReview: false, reason: "disney" };
+  if (any(["youtube premium", "youtube music"])) return { category: "subscription", subCategory: "streaming", confidence: "high", needsReview: false, reason: "youtube" };
+  if (any(["amazon prime", "prime video"])) return { category: "subscription", subCategory: "streaming", confidence: "high", needsReview: false, reason: "prime streaming" };
+  if (any(["prime"])) return { category: "subscription", subCategory: "streaming", confidence: "high", needsReview: false, reason: "prime subscription" };
+
+  if (any(["apple storage", "icloud"])) return { category: "subscription", subCategory: "cloud_storage", confidence: "high", needsReview: false, reason: "apple storage/icloud" };
+  if (any(["apple"])) return { category: "subscription", subCategory: "cloud_storage", confidence: "high", needsReview: false, reason: "apple subscription" };
+
+  if (any(["audible"])) return { category: "subscription", subCategory: "audiobook", confidence: "high", needsReview: false, reason: "audible" };
+  if (any(["microsoft 365", "office 365"])) return { category: "subscription", subCategory: "software_subscription", confidence: "high", needsReview: false, reason: "microsoft 365" };
+  if (any(["adobe", "canva", "figma"])) return { category: "subscription", subCategory: "software_subscription", confidence: "high", needsReview: false, reason: "software subscription" };
+  if (any(["chatgpt", "openai"])) return { category: "subscription", subCategory: "software_subscription", confidence: "high", needsReview: false, reason: "ai subscription" };
+  if (any(["puregym", "david lloyd", "anytime fitness"])) return { category: "subscription", subCategory: "gym", confidence: "high", needsReview: false, reason: "gym membership" };
+  if (any(["gym", "fitness"])) return { category: "subscription", subCategory: "gym", confidence: "high", needsReview: false, reason: "gym keyword" };
+  if (any(["amazon"])) return { category: "subscription", subCategory: "amazon_unknown", confidence: "low", needsReview: true, reason: "amazon (unclear type)" };
+
+  if (any(["car insurance", "vehicle insurance", "motor insurance"])) return { category: "vehicle", subCategory: "car_insurance", confidence: "high", needsReview: false, reason: "vehicle insurance" };
+  if (any(["dvla", "vehicle tax", "road tax", "mot"])) return { category: "vehicle", subCategory: "vehicle", confidence: "high", needsReview: false, reason: "vehicle keyword" };
+  if (any(["car finance", "car loan", "parking", "congestion"])) return { category: "vehicle", subCategory: "vehicle", confidence: "medium", needsReview: false, reason: "vehicle keyword" };
+
+  if (any(["credit card", "loan repayment", "personal loan", "barclaycard", "capital one", "klarna"])) return { category: "debt", subCategory: "loan", confidence: "high", needsReview: false, reason: "debt keyword" };
+  if (any(["nursery", "childcare", "child maintenance", "school fees"])) return { category: "family", subCategory: "childcare", confidence: "high", needsReview: false, reason: "family keyword" };
+
+  return { category: "other", subCategory: null, confidence: "low", needsReview: false, reason: "no match" };
+}
+
+const TRACKER_CHECKS = [
+  { label: "Energy", key: "energy", keywords: ["gas", "electric", "electricity", "energy", "octopus", "british gas", "eon", "e.on", "edf", "ovo", "shell energy", "scottish power"] },
+  { label: "Water", key: "water", keywords: ["water", "affinity water", "southern water", "thames water", "severn trent", "united utilities", "yorkshire water", "south east water"] },
+  { label: "Wastewater", key: "wastewater", keywords: ["wastewater", "waste water", "sewerage", "sewage", "drainage", "southern water", "thames water"] },
+  { label: "Council tax", key: "council_tax", keywords: ["council tax", "council"] },
+  { label: "Broadband", key: "broadband", keywords: ["broadband", "wifi", "wi-fi", "internet", "virgin media", "bt", "sky broadband", "talktalk", "vodafone broadband", "plusnet", "ee broadband"] },
+  { label: "Mobile", key: "mobile", keywords: ["mobile", "phone", "o2", "ee", "vodafone", "three", "giffgaff", "lebara", "voxi"] },
+  { label: "Home insurance", key: "home_insurance", keywords: ["home insurance", "contents insurance", "buildings insurance", "aviva", "direct line", "admiral", "churchill", "compare the market"] },
+  { label: "Rent / mortgage", key: "rent_mortgage", keywords: ["rent", "mortgage", "landlord", "letting agent", "halifax", "nationwide", "santander mortgage", "barclays mortgage"] },
+];
+
+function trackerBillMatch(billName, keywords) {
+  const text = (billName || "").toLowerCase();
+  return keywords.some((kw) => {
+    if (kw.length <= 3) {
+      return new RegExp("\\b" + kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(text);
+    }
+    return text.includes(kw);
+  });
+}
+
+function BillCategoryPill({ bill }) {
+  const category = bill.category || classifyBill(bill).category || "other";
+  const meta = CATEGORY_META[category] || CATEGORY_META.other;
+  return (
+    <span className="bill-category-pill">
+      {meta.icon} {meta.label}
+    </span>
+  );
+}
+
+function HouseholdTracker({ bills }) {
+  const checks = TRACKER_CHECKS.map((check) => ({
+    ...check,
+    found: bills.some((bill) => trackerBillMatch(bill.name, check.keywords)),
+  }));
+
+  return (
+    <div className="tracker-card">
+      <h3>🏠 Household utilities tracker</h3>
+      <p className="tracker-sub">ClearTill checks whether the main household bills are in your forecast.</p>
+      <div className="tracker-grid">
+        {checks.map((check) => (
+          <div key={check.key} className={`tracker-row ${check.found ? "tracker-added" : "tracker-missing"}`}>
+            <span>{check.found ? "✅" : "⚠️"}</span>
+            <span>{check.label}</span>
+          </div>
+        ))}
+      </div>
+      <button className="tracker-action" type="button">Add missing utility</button>
+    </div>
   );
 }
 
@@ -2177,7 +2323,7 @@ function BillGroup({
       {bills.length ? (
         <ul className="bill-list">
           {bills.map((bill) => (
-            <li key={bill.id}>
+            <li key={bill.id} className={isRecentlyAdded(bill) ? "bill-row-new" : undefined}>
               {editingBillId === bill.id ? (
                 <form className="edit-form bill-edit-form" onSubmit={(event) => onEditSave(event, bill.id)}>
                   <label className="field-label" htmlFor={`bill-name-${bill.id}`}>Bill name</label>
@@ -2203,6 +2349,22 @@ function BillGroup({
                     onChange={(event) => onBillFormChange((current) => ({ ...current, dueDay: event.target.value }))}
                     placeholder="Day of month"
                   />
+                  <label className="field-label" htmlFor={`bill-category-${bill.id}`}>Category</label>
+                  <select
+                    id={`bill-category-${bill.id}`}
+                    className="category-select"
+                    value={editingBillForm.category}
+                    onChange={(event) => onBillFormChange((current) => ({ ...current, category: event.target.value }))}
+                  >
+                    <option value="">Auto-detect</option>
+                    <option value="household">🏠 Household</option>
+                    <option value="subscription">🔁 Subscription</option>
+                    <option value="work_side_project">💼 Work / side project</option>
+                    <option value="vehicle">🚗 Vehicle</option>
+                    <option value="debt">💳 Debt / repayment</option>
+                    <option value="family">🧒 Children / family</option>
+                    <option value="other">📌 Other</option>
+                  </select>
                   <div className="edit-actions">
                     <button className="primary-button small-button" type="submit" disabled={savingEdit || importLocked}>
                       {savingEdit ? "Saving..." : "Save"}
@@ -2224,10 +2386,14 @@ function BillGroup({
                     />
                   ) : null}
                   <div className="bill-row-main">
-                    <span>{bill.name}</span>
+                    <span>
+                      {bill.name}
+                      {isRecentlyAdded(bill) ? <span className="bill-new-tag">Recently added</span> : null}
+                    </span>
                     <span className="bill-meta">
                       {formatCurrency(bill.amount, displayCurrency)} — {isValidDueDay(bill.dueDay) ? formatOrdinal(bill.dueDay) : "date not set"}
                     </span>
+                    <BillCategoryPill bill={bill} />
                   </div>
                   {!selectMode ? (
                     <div className="edit-actions">
