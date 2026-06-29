@@ -47,8 +47,6 @@ import {
   formatOrdinal,
   getTodayIso,
   isValidDueDay,
-  largeCostDailyReserve,
-  projectLargeCost,
 } from "@/lib/billMath";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
@@ -75,6 +73,10 @@ function getLargeCostsCollectionPath(userId) {
 
 function getLargeCostDocPath(userId, costId) {
   return `users/${userId}/largeCosts/${costId}`;
+}
+
+function getSavingsDocPath(userId) {
+  return `users/${userId}/settings/savings`;
 }
 
 function getReminderDocPath(userId, reminderId) {
@@ -117,11 +119,14 @@ export default function DashboardPage() {
   const imageInputRef = useRef(null);
   const addBillSectionRef = useRef(null);
   const messageInputRef = useRef(null);
+  const balanceSectionRef = useRef(null);
+  const balanceInputRef = useRef(null);
   const billsRef = useRef([]);
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [bills, setBills] = useState([]);
   const [largeCosts, setLargeCosts] = useState([]);
+  const [savings, setSavings] = useState(null);
   const [income, setIncome] = useState(null);
   const [account, setAccount] = useState(null);
   const [reminders, setReminders] = useState([]);
@@ -176,6 +181,10 @@ export default function DashboardPage() {
   });
   const [largeCostError, setLargeCostError] = useState("");
   const [savingLargeCost, setSavingLargeCost] = useState(false);
+  const [savingsInput, setSavingsInput] = useState("");
+  const [savingSavings, setSavingSavings] = useState(false);
+  const [savingsError, setSavingsError] = useState("");
+  const [highlightBalanceForm, setHighlightBalanceForm] = useState(false);
   const balanceSaveRequestRef = useRef(0);
 
   useEffect(() => {
@@ -303,6 +312,7 @@ export default function DashboardPage() {
     if (!user || !db) {
       setBills([]);
       setLargeCosts([]);
+      setSavings(null);
       setIncome(null);
       setAccount(null);
       setReminders([]);
@@ -365,6 +375,11 @@ export default function DashboardPage() {
     const unsubscribeLargeCosts = onSnapshot(largeCostsQuery, (snapshot) => {
       setLargeCosts(snapshot.docs.map((costDoc) => ({ id: costDoc.id, ...costDoc.data() })));
     });
+    const unsubscribeSavings = onSnapshot(doc(db, "users", user.uid, "settings", "savings"), (snapshot) => {
+      const nextSavings = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+      setSavings(nextSavings);
+      setSavingsInput(nextSavings?.totalSetAside === undefined || nextSavings?.totalSetAside === null ? "" : String(nextSavings.totalSetAside));
+    });
     const unsubscribeReminders = onSnapshot(remindersQuery, (snapshot) => {
       setReminders(snapshot.docs.map((reminderDoc) => ({ id: reminderDoc.id, ...reminderDoc.data() })));
     });
@@ -380,6 +395,7 @@ export default function DashboardPage() {
       unsubscribeIncome();
       unsubscribeAccount();
       unsubscribeLargeCosts();
+      unsubscribeSavings();
       unsubscribeReminders();
       unsubscribePreferences();
     };
@@ -446,24 +462,7 @@ export default function DashboardPage() {
     [bills, displayAccount, displayCurrency, incomeForDashboard],
   );
   const todayIso = getTodayIso();
-  const projectedLargeCosts = useMemo(
-    () =>
-      largeCosts
-        .filter((cost) => cost.active !== false)
-        .map((cost) => projectLargeCost(cost, todayIso))
-        .filter(Boolean)
-        .sort((a, b) => {
-          if (a.status === "due_now" && b.status !== "due_now") return -1;
-          if (a.status !== "due_now" && b.status === "due_now") return 1;
-          if (a.nextDueDate && b.nextDueDate) return String(a.nextDueDate).localeCompare(String(b.nextDueDate));
-          return String(a.name || "").localeCompare(String(b.name || ""));
-        }),
-    [largeCosts, todayIso],
-  );
-  const largeCostReserve = useMemo(
-    () => largeCostDailyReserve(largeCosts, todayIso),
-    [largeCosts, todayIso],
-  );
+  const protectedSavingsTotal = Math.max(0, Number(savings?.totalSetAside) || 0);
   const hasBalanceSnapshot = displayAccount?.currentBalance !== undefined;
   const hasPayday = isValidDueDay(displayIncome?.payDay);
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
@@ -534,14 +533,19 @@ export default function DashboardPage() {
   })();
 
   const largeCostImpact = useMemo(
-    () => calculateLargeCostImpact(largeCosts, dashboard.dailyLimitTillPayday || 0, dashboard.daysTillPayday || 0, todayIso),
-    [dashboard.dailyLimitTillPayday, dashboard.daysTillPayday, largeCosts, todayIso],
+    () => calculateLargeCostImpact(largeCosts, protectedSavingsTotal, dashboard.dailyLimitTillPayday || 0, dashboard.daysTillPayday || 0, todayIso),
+    [dashboard.dailyLimitTillPayday, dashboard.daysTillPayday, largeCosts, protectedSavingsTotal, todayIso],
   );
+  const normalDailyBudgetBeforeBigCosts = largeCostImpact.normalDailyBudgetBeforeBigCosts;
+  const bigCostDailyNeedAfterSavings = largeCostImpact.bigCostDailyNeedAfterSavings;
+  const safeDailyBudgetAfterBigCosts = largeCostImpact.safeDailyBudgetAfterBigCosts;
+  const bigCostDailyShortfall = largeCostImpact.bigCostDailyShortfall;
+  const bigCostsStillToFund = largeCostImpact.bigCostsStillToFund;
 
   const dailyLimitStatus = (() => {
     if (!hasBalanceSnapshot || !hasPayday) return "";
     if (dashboard.leftBeforePayday < 0) return "negative";
-    if (largeCostImpact.safeDailyBudget < 10) return "low";
+    if (safeDailyBudgetAfterBigCosts < 10) return "low";
     return "ok";
   })();
 
@@ -549,58 +553,71 @@ export default function DashboardPage() {
     if (!hasBalanceSnapshot) return "Add your balance snapshot";
     if (!hasPayday) return "Set your payday date";
     if (dashboard.leftBeforePayday < 0) return `${formatCurrency(Math.abs(dashboard.leftBeforePayday), displayCurrency)} short before payday`;
-    return `${formatCurrency(largeCostImpact.safeDailyBudget, displayCurrency)} per day`;
+    return `${formatCurrency(safeDailyBudgetAfterBigCosts, displayCurrency)} per day`;
   })();
 
   const dailyLimitHelper = (() => {
     if (!hasBalanceSnapshot) return "Add your balance snapshot to see your daily limit.";
     if (!hasPayday) return "Set your payday date to calculate your daily limit.";
     if (dashboard.leftBeforePayday < 0) return "Bills before payday exceed your balance snapshot.";
-    if (largeCostImpact.dailyShortfall > 0) {
-      return `Your big costs need ${formatCurrency(largeCostImpact.dailyShortfall, displayCurrency)}/day more than your current runway allows.`;
+    if (bigCostsStillToFund <= 0 && largeCostImpact.totalBigCosts > 0) {
+      return "Big costs are fully covered by protected savings.";
     }
-    if (largeCostImpact.safeDailyBudget < 10) return "Low daily limit until payday.";
-    if (largeCostImpact.bigCostDailyNeed > 0) {
-      return `Before big costs: ${formatCurrency(largeCostImpact.normalDailyBudget, displayCurrency)}/day. Big costs set aside: ${formatCurrency(largeCostImpact.bigCostDailyNeed, displayCurrency)}/day.`;
+    if (bigCostDailyShortfall > 0) {
+      return `Your big costs need ${formatCurrency(bigCostDailyShortfall, displayCurrency)}/day more than your current runway allows.`;
+    }
+    if (safeDailyBudgetAfterBigCosts < 10) return "Low daily limit until payday.";
+    if (bigCostDailyNeedAfterSavings > 0) {
+      return `Before big costs: ${formatCurrency(normalDailyBudgetBeforeBigCosts, displayCurrency)}/day. Big costs still need: ${formatCurrency(bigCostDailyNeedAfterSavings, displayCurrency)}/day.`;
     }
     return `Based on your balance snapshot after bills, spread over ${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"}.`;
   })();
   const dailyLimitBreakdown = useMemo(() => {
-    if (!hasBalanceSnapshot || !hasPayday || largeCostImpact.bigCostDailyNeed <= 0 || dashboard.leftBeforePayday < 0) {
+    if (!hasBalanceSnapshot || !hasPayday || dashboard.leftBeforePayday < 0) {
       return [];
     }
 
     const lines = [
-      `Before big costs: ${formatCurrency(largeCostImpact.normalDailyBudget, displayCurrency)}/day`,
+      `Before big costs: ${formatCurrency(normalDailyBudgetBeforeBigCosts, displayCurrency)}/day`,
     ];
 
-    if (largeCostImpact.dailyShortfall > 0) {
-      lines.push(`Big costs need: ${formatCurrency(largeCostImpact.bigCostDailyNeed, displayCurrency)}/day`);
-      lines.push(`Shortfall: ${formatCurrency(largeCostImpact.dailyShortfall, displayCurrency)}/day`);
+    if (largeCostImpact.totalBigCosts <= 0) {
+      return [];
+    }
+
+    if (bigCostsStillToFund <= 0 && largeCostImpact.totalBigCosts > 0) {
+      lines.push("Big costs are covered by protected savings.");
+      lines.push(`Big costs still need: ${formatCurrency(0, displayCurrency)}/day`);
+    } else if (bigCostDailyShortfall > 0) {
+      lines.push(`Big costs still need: ${formatCurrency(bigCostDailyNeedAfterSavings, displayCurrency)}/day`);
+      lines.push(`Shortfall: ${formatCurrency(bigCostDailyShortfall, displayCurrency)}/day`);
     } else {
-      lines.push(`Big costs set aside: ${formatCurrency(largeCostImpact.bigCostDailyNeed, displayCurrency)}/day`);
-      lines.push(`Safe after big costs: ${formatCurrency(largeCostImpact.safeDailyBudget, displayCurrency)}/day`);
+      lines.push(`Big costs still need: ${formatCurrency(bigCostDailyNeedAfterSavings, displayCurrency)}/day`);
+      lines.push(`Safe after big costs: ${formatCurrency(safeDailyBudgetAfterBigCosts, displayCurrency)}/day`);
     }
 
     return lines;
-  }, [dashboard.leftBeforePayday, displayCurrency, hasBalanceSnapshot, hasPayday, largeCostImpact]);
-  const largeCostBaseDailyRoom = hasBalanceSnapshot && hasPayday && dashboard.leftBeforePayday >= 0
-    ? Math.max(0, dashboard.dailyLimitTillPayday || 0)
-    : 0;
+  }, [bigCostDailyNeedAfterSavings, bigCostDailyShortfall, bigCostsStillToFund, dashboard.leftBeforePayday, displayCurrency, hasBalanceSnapshot, hasPayday, largeCostImpact.totalBigCosts, normalDailyBudgetBeforeBigCosts, safeDailyBudgetAfterBigCosts]);
   const largeCostsWithStatus = useMemo(
-    () =>
-      projectedLargeCosts.map((cost) => ({
+    () => [...largeCostImpact.costs]
+      .sort((a, b) => {
+        if (a.status === "due_now" && b.status !== "due_now") return -1;
+        if (a.status !== "due_now" && b.status === "due_now") return 1;
+        if (a.nextDueDate && b.nextDueDate) return String(a.nextDueDate).localeCompare(String(b.nextDueDate));
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      })
+      .map((cost) => ({
         ...cost,
         statusBadge: (() => {
           if (cost.status === "overdue") return "Overdue";
           if (cost.status === "due_now") return "Due now";
-          if (largeCostBaseDailyRoom <= 0) return "At risk";
-          if (cost.perDayRaw >= largeCostBaseDailyRoom * 0.9) return "At risk";
-          if (cost.perDayRaw >= largeCostBaseDailyRoom * 0.5) return "Tight";
+          if (largeCostImpact.normalDailyBudget <= 0) return "At risk";
+          if (cost.adjustedPerDayRaw >= largeCostImpact.normalDailyBudget * 0.9) return "At risk";
+          if (cost.adjustedPerDayRaw >= largeCostImpact.normalDailyBudget * 0.5) return "Tight";
           return "On track";
         })(),
       })),
-    [largeCostBaseDailyRoom, projectedLargeCosts],
+    [largeCostImpact],
   );
   const balanceSnapshotLabel = useMemo(
     () => formatBalanceSnapshotLabel(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt),
@@ -1693,6 +1710,52 @@ export default function DashboardPage() {
     }
   }
 
+  async function handleSavingsSave(event) {
+    event.preventDefault();
+
+    if (!user || !db) {
+      return;
+    }
+
+    const totalSetAside = Number(savingsInput || 0);
+
+    if (!Number.isFinite(totalSetAside) || totalSetAside < 0) {
+      setSavingsError("Savings set aside must be zero or more.");
+      return;
+    }
+
+    setSavingSavings(true);
+    setSavingsError("");
+
+    try {
+      await runWithTimeout(
+        setDoc(doc(db, "users", user.uid, "settings", "savings"), {
+          totalSetAside,
+          updatedAt: serverTimestamp(),
+          ...(savings?.id ? {} : { createdAt: serverTimestamp() }),
+        }, { merge: true }),
+        "Saving your protected savings is taking too long. Check your connection and try again.",
+      );
+      setPageNotice("Savings set aside updated.");
+    } catch (saveError) {
+      setSavingsError(saveError.message || "Could not save your protected savings.");
+    } finally {
+      setSavingSavings(false);
+    }
+  }
+
+  function focusBalanceSnapshotForm() {
+    balanceSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setHighlightBalanceForm(true);
+    window.setTimeout(() => {
+      balanceInputRef.current?.focus();
+      balanceInputRef.current?.select?.();
+    }, 180);
+    window.setTimeout(() => {
+      setHighlightBalanceForm(false);
+    }, 1800);
+  }
+
   async function handleCurrencySave(currency) {
     if (!user || !db) return;
     setDisplayCurrency(currency);
@@ -1919,51 +1982,43 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      <section className="summary-grid" aria-label="Bill summary">
-        <SummaryCard
-          label="Balance snapshot"
-          value={hasBalanceSnapshot
-            ? `${formatCurrency(dashboard.currentBalance, displayCurrency)} in account`
-            : "Not set"}
-          muted={!hasBalanceSnapshot}
-          helper="Manual snapshot, not a live bank balance."
-        />
-        <SummaryCard
-          label="Bills before payday"
-          value={
-            dashboard.paydayDate
-              ? `${formatCurrency(dashboard.totalBeforePayday, displayCurrency)} due before payday`
-              : hasBills
-                ? `${dashboard.upcomingBills.length} upcoming bill${dashboard.upcomingBills.length === 1 ? "" : "s"}`
-                : "No upcoming bills"
-          }
-          muted={!hasBalanceSnapshot || !hasPayday || !hasBills}
-          helper={billsBeforePaydayOverBudget ? "Bills before payday exceed your balance snapshot." : "Bills landing before your next payday."}
-          status={billsBeforePaydayOverBudget ? "negative" : ""}
-        />
-        <SummaryCard
-          label="Clear till payday"
-          value={clearTillValue}
-          muted={false}
-          helper={clearTillHelper}
-          status={clearTillStatus}
-        />
-        <SummaryCard
-          label="Daily limit till payday"
-          value={dailyLimitValue}
-          muted={!hasBalanceSnapshot || !hasPayday}
-          helper={dailyLimitHelper}
-          status={dailyLimitStatus}
-          detailLines={dailyLimitBreakdown}
-          href={largeCosts.length ? "/big-costs" : ""}
-          footerLink={largeCosts.length ? "View big cost plan →" : ""}
-        />
-      </section>
+      <HeroCard
+        status={clearTillStatus}
+        headline={(() => {
+          if (!hasBalanceSnapshot) return "Add your balance snapshot to get started";
+          if (clearTillStatus === "negative") return `Not quite — ${formatCurrency(Math.abs(dashboard.leftBeforePayday), displayCurrency)} short`;
+          if (clearTillStatus === "low") return `Almost clear — ${formatCurrency(dashboard.leftBeforePayday, displayCurrency)} left`;
+          return `You're clear — ${formatCurrency(dashboard.leftBeforePayday, displayCurrency)} left`;
+        })()}
+        subLine={hasBalanceSnapshot && hasPayday && dashboard.dailyLimitTillPayday !== null
+          ? `about ${formatCurrency(Math.max(0, dashboard.dailyLimitTillPayday), displayCurrency)}/day until payday on ${formatDisplayDate(dashboard.paydayDate)}`
+          : null}
+        onUpdateBalance={focusBalanceSnapshotForm}
+      />
+
+      <div className="stat-chip-row">
+        <span className="stat-chip">
+          <strong>{hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "—"}</strong>
+          {" in account"}
+        </span>
+        <span className="stat-chip">
+          <strong>{hasBalanceSnapshot && hasPayday ? formatCurrency(dashboard.totalBeforePayday, displayCurrency) : "—"}</strong>
+          {" before payday"}
+        </span>
+        <span className="stat-chip">
+          {"Payday "}
+          <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "not set"}</strong>
+        </span>
+      </div>
 
       <section className="content-grid">
         <div className="stack">
-          <section className={`chat-panel ${setupStep !== 1 ? "" : "setup-current"}`}>
+          <section
+            ref={balanceSectionRef}
+            className={`chat-panel ${setupStep !== 1 ? "" : "setup-current"} ${highlightBalanceForm ? "form-highlight" : ""}`}
+          >
             <h2>Balance snapshot</h2>
+            <p className="helper-text balance-copy">Update this whenever your bank balance changes.</p>
             <form className="chat-form" onSubmit={handleBalanceSave}>
               <div className="field-row">
                 <label className="field-label" htmlFor="account-balance">
@@ -1971,6 +2026,7 @@ export default function DashboardPage() {
                 </label>
                 <div className="chat-input-row">
                   <input
+                    ref={balanceInputRef}
                     id="account-balance"
                     inputMode="decimal"
                     value={balanceInput}
@@ -1979,7 +2035,7 @@ export default function DashboardPage() {
                     placeholder="Balance snapshot"
                   />
                   <button className="secondary-button" type="submit" disabled={importLocked}>
-                    Save
+                    Update
                   </button>
                 </div>
               </div>
@@ -2223,24 +2279,10 @@ export default function DashboardPage() {
             )}
           </section>
 
-          <LargeUpcomingCostsCard
-            costs={largeCostsWithStatus}
-            reserve={largeCostReserve}
+          <OverviewLinksSection
+            costsTotal={largeCostImpact.totalBigCosts}
+            savingsTotal={protectedSavingsTotal}
             displayCurrency={displayCurrency}
-            showForm={showLargeCostForm}
-            editingId={editingLargeCostId}
-            form={largeCostForm}
-            onFormChange={setLargeCostForm}
-            onStartAdd={startLargeCostCreate}
-            onEditStart={startLargeCostEdit}
-            onCancel={resetLargeCostForm}
-            onSave={handleLargeCostSave}
-            onDelete={handleLargeCostDelete}
-            saving={savingLargeCost}
-            error={largeCostError}
-            overReserved={largeCostImpact.dailyShortfall > 0}
-            shortfall={largeCostImpact.dailyShortfall}
-            baseDailyBudget={largeCostImpact.normalDailyBudget}
           />
 
           <section className="reminders-panel">
@@ -2692,6 +2734,7 @@ function LargeUpcomingCostsCard({
   overReserved,
   shortfall,
   baseDailyBudget,
+  savingsCovered,
 }) {
   return (
     <section className="large-costs-card">
@@ -2705,7 +2748,9 @@ function LargeUpcomingCostsCard({
           ) : null}
           {costs.length ? (
             <p className="large-costs-calm-note">
-              {overReserved
+              {savingsCovered
+                ? "Your big costs are fully covered by protected savings."
+                : overReserved
                 ? `Your big costs need ${formatCurrency(shortfall, displayCurrency)}/day more than your current runway allows.`
                 : `Your big costs still fit inside your current runway of ${formatCurrency(baseDailyBudget, displayCurrency)}/day.`}
             </p>
@@ -2798,11 +2843,13 @@ function LargeUpcomingCostsCard({
             return (
               <li key={cost.id} className="large-cost-row">
                 <div className="large-cost-row-main">
-                  <p className="large-cost-line">
+                  <div className="large-cost-topline">
                     <span className="large-cost-name">{category.icon} {cost.name}</span>
-                    <span className="large-cost-inline-sep">—</span>
-                    <strong>set aside {formatCurrency(cost.perDayRaw, displayCurrency)}/day</strong>
-                    <span className="large-cost-inline-sep">—</span>
+                    <strong className="large-cost-amount">{formatCurrency(cost.amount, displayCurrency)}</strong>
+                  </div>
+                  <p className="large-cost-line">
+                    <strong>Set aside {formatCurrency(cost.adjustedPerDayRaw, displayCurrency)}/day</strong>
+                    <span className="large-cost-inline-sep">•</span>
                     <span>{cost.dueLabel}</span>
                   </p>
                   <div className="large-cost-footer">
@@ -2835,8 +2882,51 @@ function LargeUpcomingCostsCard({
   );
 }
 
-function SummaryCard({ label, value, muted = false, helper = "", status = "", detailLines = [], href = "", footerLink = "" }) {
+function SavingsSetAsideCard({ value, onChange, onSave, saving, error, displayCurrency, protectedTotal }) {
+  return (
+    <section className="tracker-card savings-card">
+      <h3>💷 Savings set aside</h3>
+      <p className="tracker-sub">Money already put aside for holidays, car repairs, school costs or emergencies.</p>
+      <form className="chat-form" onSubmit={onSave}>
+        <div className="field-row">
+          <label className="field-label" htmlFor="savings-set-aside">Savings set aside</label>
+          <div className="chat-input-row">
+            <input
+              id="savings-set-aside"
+              inputMode="decimal"
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder="2000"
+            />
+            <button className="secondary-button" type="submit" disabled={saving}>
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      </form>
+      <p className="large-costs-calm-note">{formatCurrency(protectedTotal, displayCurrency)} protected for big costs.</p>
+      {error ? <p className="error">{error}</p> : null}
+    </section>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  muted = false,
+  helper = "",
+  status = "",
+  detailLines = [],
+  href = "",
+  footerLink = "",
+  compact = false,
+  emphasized = false,
+  actionLabel = "",
+  onAction,
+}) {
   const statusClass = status ? `summary-card-${status}` : "";
+  const compactClass = compact ? "summary-card-compact" : "";
+  const emphasizedClass = emphasized ? "summary-card-emphasized" : "";
   const content = (
     <>
       <span>{label}</span>
@@ -2847,20 +2937,25 @@ function SummaryCard({ label, value, muted = false, helper = "", status = "", de
         </div>
       ) : null}
       {helper ? <p className="helper-text helper-tooltip">{helper}</p> : null}
+      {actionLabel ? (
+        <button className="summary-card-action" type="button" onClick={onAction}>
+          {actionLabel}
+        </button>
+      ) : null}
       {footerLink ? <span className="summary-card-link">{footerLink}</span> : null}
     </>
   );
 
   if (href) {
     return (
-      <Link className={`summary-card summary-card-clickable ${muted ? "is-disabled-soft" : ""} ${statusClass}`.trim()} href={href}>
+      <Link className={`summary-card summary-card-clickable ${compactClass} ${emphasizedClass} ${muted ? "is-disabled-soft" : ""} ${statusClass}`.trim()} href={href}>
         {content}
       </Link>
     );
   }
 
   return (
-    <article className={`summary-card ${muted ? "is-disabled-soft" : ""} ${statusClass}`.trim()}>
+    <article className={`summary-card ${compactClass} ${emphasizedClass} ${muted ? "is-disabled-soft" : ""} ${statusClass}`.trim()}>
       {content}
     </article>
   );
@@ -2874,6 +2969,40 @@ function RunwayItem({ event, showDivider }) {
         <strong>{event.label}</strong> {event.detail}
       </span>
     </>
+  );
+}
+
+function HeroCard({ status, headline, subLine, onUpdateBalance }) {
+  const colorClass = status ? `hero-card-${status}` : "";
+  return (
+    <div className={`hero-card ${colorClass}`.trim()}>
+      <p className="hero-value">{headline}</p>
+      {subLine ? <p className="hero-sub">{subLine}</p> : null}
+      <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>
+        Update balance
+      </button>
+    </div>
+  );
+}
+
+function OverviewLinksSection({ costsTotal, savingsTotal, displayCurrency }) {
+  return (
+    <div className="overview-rows">
+      <Link className="overview-row" href="/big-costs">
+        <span className="overview-row-label">Large upcoming costs</span>
+        <span style={{ display: "flex", alignItems: "center" }}>
+          <span className="overview-row-value">{formatCurrency(costsTotal, displayCurrency)} planned</span>
+          <span className="overview-row-arrow">→</span>
+        </span>
+      </Link>
+      <Link className="overview-row" href="/big-costs">
+        <span className="overview-row-label">Savings set aside</span>
+        <span style={{ display: "flex", alignItems: "center" }}>
+          <span className="overview-row-value">{savingsTotal > 0 ? `${formatCurrency(savingsTotal, displayCurrency)} protected` : "None set"}</span>
+          <span className="overview-row-arrow">→</span>
+        </span>
+      </Link>
+    </div>
   );
 }
 
