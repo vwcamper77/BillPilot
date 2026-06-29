@@ -37,6 +37,7 @@ import {
 import {
   buildBillDocument,
   buildIncomeDocument,
+  buildLargeCostDocument,
   calculateDashboard,
   formatCurrency,
   formatDisplayDate,
@@ -44,6 +45,8 @@ import {
   formatOrdinal,
   getTodayIso,
   isValidDueDay,
+  largeCostDailyReserve,
+  projectLargeCost,
 } from "@/lib/billMath";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
@@ -62,6 +65,14 @@ function getBillsCollectionPath(userId) {
 
 function getBillDocPath(userId, billId) {
   return `users/${userId}/bills/${billId}`;
+}
+
+function getLargeCostsCollectionPath(userId) {
+  return `users/${userId}/largeCosts`;
+}
+
+function getLargeCostDocPath(userId, costId) {
+  return `users/${userId}/largeCosts/${costId}`;
 }
 
 function getReminderDocPath(userId, reminderId) {
@@ -96,14 +107,19 @@ function getIncomeStatusText(income, currency = "GBP") {
   return "No payday set yet.";
 }
 
+const BILLS_PER_PAGE = 6;
+
 export default function DashboardPage() {
   const recognitionRef = useRef(null);
   const transcriptRef = useRef("");
   const imageInputRef = useRef(null);
+  const addBillSectionRef = useRef(null);
+  const messageInputRef = useRef(null);
   const billsRef = useRef([]);
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [bills, setBills] = useState([]);
+  const [largeCosts, setLargeCosts] = useState([]);
   const [income, setIncome] = useState(null);
   const [account, setAccount] = useState(null);
   const [reminders, setReminders] = useState([]);
@@ -143,6 +159,20 @@ export default function DashboardPage() {
   const [setupDismissed, setSetupDismissed] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedBillIds, setSelectedBillIds] = useState(new Set());
+  const [billListPage, setBillListPage] = useState(0);
+  const [billListFilter, setBillListFilter] = useState("all");
+  const [quickAddContext, setQuickAddContext] = useState(null);
+  const [showLargeCostForm, setShowLargeCostForm] = useState(false);
+  const [editingLargeCostId, setEditingLargeCostId] = useState("");
+  const [largeCostForm, setLargeCostForm] = useState({
+    name: "",
+    amount: "",
+    dueDate: "",
+    frequency: "one_off",
+    category: "other",
+  });
+  const [largeCostError, setLargeCostError] = useState("");
+  const [savingLargeCost, setSavingLargeCost] = useState(false);
   const balanceSaveRequestRef = useRef(0);
 
   useEffect(() => {
@@ -269,6 +299,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user || !db) {
       setBills([]);
+      setLargeCosts([]);
       setIncome(null);
       setAccount(null);
       setReminders([]);
@@ -284,6 +315,10 @@ export default function DashboardPage() {
       collection(db, "users", user.uid, "reminders"),
       orderBy("createdAt", "desc"),
       limit(5),
+    );
+    const largeCostsQuery = query(
+      collection(db, "users", user.uid, "largeCosts"),
+      where("active", "==", true),
     );
 
     const unsubscribeBills = onSnapshot(billsQuery, (snapshot) => {
@@ -324,6 +359,9 @@ export default function DashboardPage() {
       setOptimisticBalance(null);
       setBalanceInput(nextAccount?.currentBalance?.toString() || "");
     });
+    const unsubscribeLargeCosts = onSnapshot(largeCostsQuery, (snapshot) => {
+      setLargeCosts(snapshot.docs.map((costDoc) => ({ id: costDoc.id, ...costDoc.data() })));
+    });
     const unsubscribeReminders = onSnapshot(remindersQuery, (snapshot) => {
       setReminders(snapshot.docs.map((reminderDoc) => ({ id: reminderDoc.id, ...reminderDoc.data() })));
     });
@@ -338,6 +376,7 @@ export default function DashboardPage() {
       unsubscribeBills();
       unsubscribeIncome();
       unsubscribeAccount();
+      unsubscribeLargeCosts();
       unsubscribeReminders();
       unsubscribePreferences();
     };
@@ -403,11 +442,46 @@ export default function DashboardPage() {
     () => calculateDashboard(bills, incomeForDashboard, displayAccount, undefined, displayCurrency),
     [bills, displayAccount, displayCurrency, incomeForDashboard],
   );
+  const todayIso = getTodayIso();
+  const projectedLargeCosts = useMemo(
+    () =>
+      largeCosts
+        .filter((cost) => cost.active !== false)
+        .map((cost) => projectLargeCost(cost, todayIso))
+        .filter(Boolean)
+        .sort((a, b) => {
+          if (a.status === "due_now" && b.status !== "due_now") return -1;
+          if (a.status !== "due_now" && b.status === "due_now") return 1;
+          if (a.nextDueDate && b.nextDueDate) return String(a.nextDueDate).localeCompare(String(b.nextDueDate));
+          return String(a.name || "").localeCompare(String(b.name || ""));
+        }),
+    [largeCosts, todayIso],
+  );
+  const largeCostReserve = useMemo(
+    () => largeCostDailyReserve(largeCosts, todayIso),
+    [largeCosts, todayIso],
+  );
   const hasBalanceSnapshot = displayAccount?.currentBalance !== undefined;
   const hasPayday = isValidDueDay(displayIncome?.payDay);
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
   const hasBills = bills.length > 0;
   const setupStep = !hasBalanceSnapshot ? 1 : !hasPayday ? 2 : !hasBills ? 3 : 4;
+
+  const allBillsForList = useMemo(() => {
+    const combined = dashboard.paydayDate
+      ? [...dashboard.beforePayday, ...dashboard.afterPayday]
+      : dashboard.upcomingBills;
+    if (billListFilter === "before" && dashboard.paydayDate) return dashboard.beforePayday;
+    if (billListFilter === "after" && dashboard.paydayDate) return dashboard.afterPayday;
+    if (billListFilter === "recent") return combined.filter(isRecentlyAdded);
+    return combined;
+  }, [dashboard, billListFilter]);
+  const billListTotalPages = Math.max(1, Math.ceil(allBillsForList.length / BILLS_PER_PAGE));
+  const safeBillPage = Math.min(billListPage, Math.max(0, billListTotalPages - 1));
+  const pagedBills = allBillsForList.slice(safeBillPage * BILLS_PER_PAGE, (safeBillPage + 1) * BILLS_PER_PAGE);
+  const beforePaydayIdSet = useMemo(() => new Set(dashboard.beforePayday.map((b) => b.id)), [dashboard.beforePayday]);
+  const pagedBeforeGroup = pagedBills.filter((b) => beforePaydayIdSet.has(b.id));
+  const pagedAfterGroup = pagedBills.filter((b) => !beforePaydayIdSet.has(b.id));
 
   const clearTillStatus = (() => {
     if (!hasBalanceSnapshot || !hasPayday) return "";
@@ -459,7 +533,7 @@ export default function DashboardPage() {
   const dailyLimitStatus = (() => {
     if (!hasBalanceSnapshot || !hasPayday) return "";
     if (dashboard.leftBeforePayday < 0) return "negative";
-    if (dashboard.dailyLimitTillPayday < 10) return "low";
+    if (Math.max(0, (dashboard.dailyLimitTillPayday || 0) - largeCostReserve) < 10) return "low";
     return "ok";
   })();
 
@@ -467,16 +541,33 @@ export default function DashboardPage() {
     if (!hasBalanceSnapshot) return "Add your balance snapshot";
     if (!hasPayday) return "Set your payday date";
     if (dashboard.leftBeforePayday < 0) return `${formatCurrency(Math.abs(dashboard.leftBeforePayday), displayCurrency)} short before payday`;
-    return `${formatCurrency(dashboard.dailyLimitTillPayday, displayCurrency)} per day`;
+    return `${formatCurrency(Math.max(0, (dashboard.dailyLimitTillPayday || 0) - largeCostReserve), displayCurrency)} per day`;
   })();
 
   const dailyLimitHelper = (() => {
     if (!hasBalanceSnapshot) return "Add your balance snapshot to see your daily limit.";
     if (!hasPayday) return "Set your payday date to calculate your daily limit.";
     if (dashboard.leftBeforePayday < 0) return "Bills before payday exceed your balance snapshot.";
-    if (dashboard.dailyLimitTillPayday < 10) return "Low daily limit until payday.";
+    if (dashboard.dailyLimitTillPayday !== null && largeCostReserve > (dashboard.dailyLimitTillPayday || 0)) {
+      return "Your big costs need more room than you have right now.";
+    }
+    if (Math.max(0, (dashboard.dailyLimitTillPayday || 0) - largeCostReserve) < 10) return "Low daily limit until payday.";
+    if (largeCostReserve > 0) {
+      return `Includes ${formatCurrency(largeCostReserve, displayCurrency)} per day to set aside for large upcoming costs.`;
+    }
     return `Based on your balance snapshot after bills, spread over ${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"}.`;
   })();
+  const largeCostBaseDailyRoom = hasBalanceSnapshot && hasPayday && dashboard.leftBeforePayday >= 0
+    ? Math.max(0, dashboard.dailyLimitTillPayday || 0)
+    : 0;
+  const largeCostsWithStatus = useMemo(
+    () =>
+      projectedLargeCosts.map((cost) => ({
+        ...cost,
+        isTight: cost.status !== "due_now" && largeCostBaseDailyRoom > 0 && cost.perDayRounded > largeCostBaseDailyRoom * 0.6,
+      })),
+    [largeCostBaseDailyRoom, projectedLargeCosts],
+  );
   const balanceSnapshotLabel = useMemo(
     () => formatBalanceSnapshotLabel(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt),
     [displayAccount?.snapshotEnteredAt, displayAccount?.updatedAt],
@@ -631,11 +722,13 @@ export default function DashboardPage() {
           throw new Error(parsed.responseMessage || "I could not read that yet.");
         }
 
-        const outcome = await applyParsedActions(user.uid, parsed, Boolean(displayIncome), bills);
-        setAssistantMessage(buildOutcomeMessage(parsed, outcome));
+        const parsedWithContext = applyQuickAddContext(parsed, quickAddContext);
+        const outcome = await applyParsedActions(user.uid, parsedWithContext, Boolean(displayIncome), bills);
+        setAssistantMessage(buildOutcomeMessage(parsedWithContext, outcome));
       }
 
       setMessage("");
+      setQuickAddContext(null);
       setVoiceMessage("");
       transcriptRef.current = "";
     } catch (submitError) {
@@ -1409,6 +1502,32 @@ export default function DashboardPage() {
     }
   }
 
+  function focusAddBillComposer() {
+    addBillSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      messageInputRef.current?.focus();
+      messageInputRef.current?.setSelectionRange?.(
+        messageInputRef.current.value.length,
+        messageInputRef.current.value.length,
+      );
+    }, 180);
+  }
+
+  function handleAddMissingUtility(check) {
+    if (!check) {
+      return;
+    }
+
+    setQuickAddContext({
+      name: check.label,
+      category: "household",
+    });
+    setMessage(check.label);
+    setAssistantMessage("");
+    setChatError("");
+    focusAddBillComposer();
+  }
+
   async function handleBulkDelete() {
     if (!user || !db || selectedBillIds.size === 0) return;
     const count = selectedBillIds.size;
@@ -1429,6 +1548,106 @@ export default function DashboardPage() {
   function handleSetupDismiss() {
     localStorage.setItem("cleartill_setup_dismissed", "true");
     setSetupDismissed(true);
+  }
+
+  function resetLargeCostForm() {
+    setLargeCostForm({
+      name: "",
+      amount: "",
+      dueDate: "",
+      frequency: "one_off",
+      category: "other",
+    });
+    setEditingLargeCostId("");
+    setLargeCostError("");
+    setShowLargeCostForm(false);
+  }
+
+  function startLargeCostCreate() {
+    setLargeCostError("");
+    setEditingLargeCostId("");
+    setLargeCostForm({
+      name: "",
+      amount: "",
+      dueDate: todayIso,
+      frequency: "one_off",
+      category: "other",
+    });
+    setShowLargeCostForm(true);
+  }
+
+  function startLargeCostEdit(cost) {
+    setLargeCostError("");
+    setEditingLargeCostId(cost.id);
+    setLargeCostForm({
+      name: cost.name || "",
+      amount: cost.amount?.toString() || "",
+      dueDate: cost.dueDate || todayIso,
+      frequency: cost.frequency || "one_off",
+      category: cost.category || "other",
+    });
+    setShowLargeCostForm(true);
+  }
+
+  async function handleLargeCostSave(event) {
+    event.preventDefault();
+
+    if (!user || !db) {
+      return;
+    }
+
+    const amount = Number(largeCostForm.amount);
+
+    if (!largeCostForm.name.trim() || !Number.isFinite(amount) || amount <= 0 || !largeCostForm.dueDate) {
+      setLargeCostError("Add a name, amount, and due date before saving.");
+      return;
+    }
+
+    setSavingLargeCost(true);
+    setLargeCostError("");
+
+    try {
+      const costId = editingLargeCostId || doc(collection(db, "users", user.uid, "largeCosts")).id;
+      const path = getLargeCostDocPath(user.uid, costId);
+      const payload = {
+        ...buildLargeCostDocument({
+          name: largeCostForm.name.trim(),
+          amount,
+          dueDate: largeCostForm.dueDate,
+          frequency: largeCostForm.frequency,
+          category: largeCostForm.category,
+          currency: "GBP",
+        }, todayIso),
+        updatedAt: serverTimestamp(),
+        ...(editingLargeCostId ? {} : { createdAt: serverTimestamp() }),
+      };
+
+      await runWithTimeout(
+        setDoc(doc(db, "users", user.uid, "largeCosts", costId), payload, { merge: true }),
+        "Saving that large cost is taking too long. Check your connection and try again.",
+      );
+      console.log("[firestore-large-cost-save] success", { uid: user.uid, path, payload });
+      setPageNotice(editingLargeCostId ? "Large cost updated." : "Large cost added.");
+      resetLargeCostForm();
+    } catch (saveError) {
+      console.error("[firestore-large-cost-save] failed", saveError?.code, saveError?.message);
+      setLargeCostError(saveError.message || "Could not save that large cost.");
+    } finally {
+      setSavingLargeCost(false);
+    }
+  }
+
+  async function handleLargeCostDelete(costId) {
+    if (!user || !db) return;
+    if (!window.confirm("Remove this large cost?")) return;
+    try {
+      await deleteDoc(doc(db, "users", user.uid, "largeCosts", costId));
+      if (editingLargeCostId === costId) {
+        resetLargeCostForm();
+      }
+    } catch {
+      setLargeCostError("Could not delete that large cost. Try again.");
+    }
   }
 
   async function handleCurrencySave(currency) {
@@ -1755,7 +1974,10 @@ export default function DashboardPage() {
             {balanceError ? <p className="error">{balanceError}</p> : null}
           </section>
 
-          <section className={`chat-panel ${setupStep === 3 ? "setup-current" : ""} ${!hasBalanceSnapshot ? "is-disabled-soft" : ""}`}>
+          <section
+            ref={addBillSectionRef}
+            className={`chat-panel ${setupStep === 3 ? "setup-current" : ""} ${!hasBalanceSnapshot ? "is-disabled-soft" : ""}`}
+          >
             <h2>Add a bill or payday</h2>
             {!hasBalanceSnapshot || !hasPayday ? (
               <p className="helper-text helper-tooltip">
@@ -1763,6 +1985,23 @@ export default function DashboardPage() {
                   ? "Bills can be added now, but the forecast works best after balance and payday are set."
                   : "You can add bills now, but ClearTill needs your payday to show what lands before you get paid."}
               </p>
+            ) : null}
+            {quickAddContext ? (
+              <div className="quick-add-note" role="status" aria-live="polite">
+                <div className="quick-add-copy">
+                  <strong>Adding missing utility: {quickAddContext.name}</strong>
+                  <span>
+                    Category set to Household. Add the amount and due day, then log it.
+                  </span>
+                </div>
+                <button
+                  className="quick-add-clear"
+                  type="button"
+                  onClick={() => setQuickAddContext(null)}
+                >
+                  Clear
+                </button>
+              </div>
             ) : null}
             <form className="chat-form" onSubmit={handleSubmit}>
               <div
@@ -1872,11 +2111,16 @@ export default function DashboardPage() {
               ) : null}
               <div className="chat-input-row">
                 <textarea
+                  ref={messageInputRef}
                   value={message}
                   disabled={importLocked}
                   onChange={(event) => setMessage(event.target.value)}
                   onPaste={handlePaste}
-                  placeholder="My rent is GBP 1,100 due on the 26th every month."
+                  placeholder={
+                    quickAddContext
+                      ? `Example: ${quickAddContext.name} is GBP 28 due on the 14th each month.`
+                      : "My rent is GBP 1,100 due on the 26th every month."
+                  }
                 />
                 <button
                   className={`secondary-button mic-button${listening ? " is-listening" : ""}`}
@@ -1932,6 +2176,24 @@ export default function DashboardPage() {
               <p className="empty">No upcoming bills found.</p>
             )}
           </section>
+
+          <LargeUpcomingCostsCard
+            costs={largeCostsWithStatus}
+            reserve={largeCostReserve}
+            displayCurrency={displayCurrency}
+            showForm={showLargeCostForm}
+            editingId={editingLargeCostId}
+            form={largeCostForm}
+            onFormChange={setLargeCostForm}
+            onStartAdd={startLargeCostCreate}
+            onEditStart={startLargeCostEdit}
+            onCancel={resetLargeCostForm}
+            onSave={handleLargeCostSave}
+            onDelete={handleLargeCostDelete}
+            saving={savingLargeCost}
+            error={largeCostError}
+            overReserved={hasBalanceSnapshot && hasPayday && dashboard.leftBeforePayday >= 0 && largeCostReserve > (dashboard.dailyLimitTillPayday || 0)}
+          />
 
           <section className="reminders-panel">
             <h2>Reminders</h2>
@@ -2071,47 +2333,83 @@ export default function DashboardPage() {
               </p>
             ) : null}
           </section>
-          {dashboard.paydayDate ? (
+          {hasBills ? (
+            <div className="bill-filter-tabs">
+              {[
+                { key: "all", label: "All" },
+                ...(dashboard.paydayDate ? [{ key: "before", label: "Before payday" }, { key: "after", label: "After payday" }] : []),
+                { key: "recent", label: "Recently added" },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`bill-filter-tab${billListFilter === tab.key ? " is-active" : ""}`}
+                  onClick={() => { setBillListFilter(tab.key); setBillListPage(0); }}
+                >{tab.label}</button>
+              ))}
+            </div>
+          ) : null}
+
+          {billListTotalPages > 1 ? (
+            <BillPagination
+              page={safeBillPage}
+              total={billListTotalPages}
+              onPrev={() => setBillListPage((p) => Math.max(0, p - 1))}
+              onNext={() => setBillListPage((p) => Math.min(billListTotalPages - 1, p + 1))}
+            />
+          ) : null}
+
+          {dashboard.paydayDate && billListFilter === "all" ? (
             <>
-              <BillGroup
-                title="Before payday"
-                bills={dashboard.beforePayday}
-                editingBillId={editingBillId}
-                editingBillForm={editingBillForm}
-                onBillFormChange={setEditingBillForm}
-                onEditStart={startBillEdit}
-                onEditCancel={cancelBillEdit}
-                onEditSave={handleBillEditSave}
-                savingEdit={savingEdit}
-                importLocked={importLocked}
-                onDelete={handleBillDelete}
-                selectMode={selectMode}
-                selectedBillIds={selectedBillIds}
-                onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
-                displayCurrency={displayCurrency}
-              />
-              <BillGroup
-                title="After payday"
-                bills={dashboard.afterPayday}
-                editingBillId={editingBillId}
-                editingBillForm={editingBillForm}
-                onBillFormChange={setEditingBillForm}
-                onEditStart={startBillEdit}
-                onEditCancel={cancelBillEdit}
-                onEditSave={handleBillEditSave}
-                savingEdit={savingEdit}
-                importLocked={importLocked}
-                onDelete={handleBillDelete}
-                selectMode={selectMode}
-                selectedBillIds={selectedBillIds}
-                onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
-                displayCurrency={displayCurrency}
-              />
+              {pagedBeforeGroup.length > 0 ? (
+                <BillGroup
+                  title="Before payday"
+                  bills={pagedBeforeGroup}
+                  editingBillId={editingBillId}
+                  editingBillForm={editingBillForm}
+                  onBillFormChange={setEditingBillForm}
+                  onEditStart={startBillEdit}
+                  onEditCancel={cancelBillEdit}
+                  onEditSave={handleBillEditSave}
+                  savingEdit={savingEdit}
+                  importLocked={importLocked}
+                  onDelete={handleBillDelete}
+                  selectMode={selectMode}
+                  selectedBillIds={selectedBillIds}
+                  onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
+                  displayCurrency={displayCurrency}
+                />
+              ) : null}
+              {pagedAfterGroup.length > 0 ? (
+                <BillGroup
+                  title="After payday"
+                  bills={pagedAfterGroup}
+                  editingBillId={editingBillId}
+                  editingBillForm={editingBillForm}
+                  onBillFormChange={setEditingBillForm}
+                  onEditStart={startBillEdit}
+                  onEditCancel={cancelBillEdit}
+                  onEditSave={handleBillEditSave}
+                  savingEdit={savingEdit}
+                  importLocked={importLocked}
+                  onDelete={handleBillDelete}
+                  selectMode={selectMode}
+                  selectedBillIds={selectedBillIds}
+                  onToggleSelect={(id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
+                  displayCurrency={displayCurrency}
+                />
+              ) : null}
+              {pagedBills.length === 0 ? <p className="empty">No bills on this page.</p> : null}
             </>
           ) : (
             <BillGroup
-              title="Upcoming bills"
-              bills={dashboard.upcomingBills}
+              title={
+                billListFilter === "before" ? "Before payday"
+                : billListFilter === "after" ? "After payday"
+                : billListFilter === "recent" ? "Recently added"
+                : "Upcoming bills"
+              }
+              bills={pagedBills}
               editingBillId={editingBillId}
               editingBillForm={editingBillForm}
               onBillFormChange={setEditingBillForm}
@@ -2127,8 +2425,18 @@ export default function DashboardPage() {
               displayCurrency={displayCurrency}
             />
           )}
+
+          {billListTotalPages > 1 ? (
+            <BillPagination
+              page={safeBillPage}
+              total={billListTotalPages}
+              onPrev={() => setBillListPage((p) => Math.max(0, p - 1))}
+              onNext={() => setBillListPage((p) => Math.min(billListTotalPages - 1, p + 1))}
+            />
+          ) : null}
+
           {editingIncome || editingBillId ? (editError ? <p className="error">{editError}</p> : null) : null}
-          <HouseholdTracker bills={bills} />
+          <HouseholdTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} />
         </section>
       </section>
     </main>
@@ -2255,11 +2563,12 @@ function BillCategoryPill({ bill }) {
   );
 }
 
-function HouseholdTracker({ bills }) {
+function HouseholdTracker({ bills, onAddMissingUtility }) {
   const checks = TRACKER_CHECKS.map((check) => ({
     ...check,
     found: bills.some((bill) => trackerBillMatch(bill.name, check.keywords)),
   }));
+  const missingChecks = checks.filter((check) => !check.found);
 
   return (
     <div className="tracker-card">
@@ -2268,13 +2577,195 @@ function HouseholdTracker({ bills }) {
       <div className="tracker-grid">
         {checks.map((check) => (
           <div key={check.key} className={`tracker-row ${check.found ? "tracker-added" : "tracker-missing"}`}>
-            <span>{check.found ? "✅" : "⚠️"}</span>
-            <span>{check.label}</span>
+            <div className="tracker-row-main">
+              <span className="tracker-state" aria-hidden="true">{check.found ? "✓" : "•"}</span>
+              <div className="tracker-copy">
+                <span className="tracker-label">{check.label}</span>
+                <span className="tracker-note">{check.found ? "Added to forecast" : "Missing from forecast"}</span>
+              </div>
+            </div>
+            {!check.found ? (
+              <button
+                className="tracker-inline-action"
+                type="button"
+                onClick={() => onAddMissingUtility?.(check)}
+              >
+                Add
+              </button>
+            ) : null}
           </div>
         ))}
       </div>
-      <button className="tracker-action" type="button">Add missing utility</button>
+      {missingChecks.length ? (
+        <button
+          className="tracker-action"
+          type="button"
+          onClick={() => onAddMissingUtility?.(missingChecks[0])}
+        >
+          Add missing utility
+        </button>
+      ) : null}
     </div>
+  );
+}
+
+const LARGE_COST_CATEGORY_META = {
+  holiday: { icon: "🏖", label: "Holiday" },
+  car: { icon: "🚗", label: "Car" },
+  home: { icon: "🏠", label: "Home" },
+  kids: { icon: "🧒", label: "Kids" },
+  emergency: { icon: "🛠", label: "Emergency" },
+  other: { icon: "📌", label: "Other" },
+};
+
+const LARGE_COST_FREQUENCY_LABELS = {
+  one_off: "One-off",
+  every_2_months: "Every 2 months",
+  quarterly: "Quarterly",
+  every_6_months: "Every 6 months",
+  yearly: "Yearly",
+};
+
+function LargeUpcomingCostsCard({
+  costs,
+  reserve,
+  displayCurrency,
+  showForm,
+  editingId,
+  form,
+  onFormChange,
+  onStartAdd,
+  onEditStart,
+  onCancel,
+  onSave,
+  onDelete,
+  saving,
+  error,
+  overReserved,
+}) {
+  const hasTightCost = costs.some((cost) => cost.isTight);
+
+  return (
+    <section className="large-costs-card">
+      <div className="section-head">
+        <div>
+          <h2 style={{ margin: 0 }}>Large upcoming costs</h2>
+          {costs.length ? (
+            <p className="large-costs-sub">
+              {reserve > 0 ? `Set aside about ${formatCurrency(reserve, displayCurrency)} per day across these costs.` : "Quietly priced into your daily limit."}
+            </p>
+          ) : null}
+        </div>
+        {!showForm ? (
+          <button className="secondary-button small-button" type="button" onClick={onStartAdd}>
+            Add cost
+          </button>
+        ) : null}
+      </div>
+
+      {!showForm && !costs.length ? (
+        <p className="empty large-costs-empty">
+          Add holidays, car repairs, school trips, boiler repairs, quarterly bills or anything big that could hit your cashflow.
+        </p>
+      ) : null}
+
+      {showForm ? (
+        <form className="edit-form large-cost-form" onSubmit={onSave}>
+          <label className="field-label" htmlFor="large-cost-name">Name</label>
+          <input
+            id="large-cost-name"
+            value={form.name}
+            onChange={(event) => onFormChange((current) => ({ ...current, name: event.target.value }))}
+            placeholder="Holiday"
+          />
+          <label className="field-label" htmlFor="large-cost-amount">Amount</label>
+          <input
+            id="large-cost-amount"
+            inputMode="decimal"
+            value={form.amount}
+            onChange={(event) => onFormChange((current) => ({ ...current, amount: event.target.value }))}
+            placeholder="5000"
+          />
+          <label className="field-label" htmlFor="large-cost-due-date">Due date</label>
+          <input
+            id="large-cost-due-date"
+            type="date"
+            value={form.dueDate}
+            onChange={(event) => onFormChange((current) => ({ ...current, dueDate: event.target.value }))}
+          />
+          <label className="field-label" htmlFor="large-cost-frequency">Frequency</label>
+          <select
+            id="large-cost-frequency"
+            className="category-select"
+            value={form.frequency}
+            onChange={(event) => onFormChange((current) => ({ ...current, frequency: event.target.value }))}
+          >
+            {Object.entries(LARGE_COST_FREQUENCY_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+          <label className="field-label" htmlFor="large-cost-category">Category</label>
+          <select
+            id="large-cost-category"
+            className="category-select"
+            value={form.category}
+            onChange={(event) => onFormChange((current) => ({ ...current, category: event.target.value }))}
+          >
+            {Object.entries(LARGE_COST_CATEGORY_META).map(([value, meta]) => (
+              <option key={value} value={value}>{meta.icon} {meta.label}</option>
+            ))}
+          </select>
+          <div className="edit-actions">
+            <button className="primary-button small-button" type="submit" disabled={saving}>
+              {saving ? "Saving..." : editingId ? "Save changes" : "Save"}
+            </button>
+            <button className="secondary-button small-button" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+          </div>
+          {error ? <p className="error">{error}</p> : null}
+        </form>
+      ) : null}
+
+      {costs.length ? (
+        <ul className={`large-cost-list ${hasTightCost ? "has-tight-cost" : ""}`}>
+          {costs.map((cost) => {
+            const category = LARGE_COST_CATEGORY_META[cost.category] || LARGE_COST_CATEGORY_META.other;
+            const badgeLabel =
+              cost.status === "due_now"
+                ? "Due now"
+                : cost.isTight
+                  ? "Tight"
+                  : "";
+
+            return (
+              <li key={cost.id} className="large-cost-row">
+                <div className="large-cost-row-main">
+                  <p className="large-cost-line">
+                    <span className="large-cost-name">{category.icon} {cost.name}</span>
+                    <span className="large-cost-dash">—</span>
+                    <strong>set aside {formatCurrency(cost.perDayRounded, displayCurrency)}/day</strong>
+                    <span className="large-cost-dot">·</span>
+                    <span>{cost.dueLabel}</span>
+                    {badgeLabel ? <span className="large-cost-badge">{badgeLabel}</span> : null}
+                  </p>
+                </div>
+                <div className="bill-actions">
+                  <button className="bill-action-button bill-action-edit" type="button" onClick={() => onEditStart(cost)}>
+                    Edit
+                  </button>
+                  <button className="bill-action-button bill-action-remove" type="button" onClick={() => onDelete(cost.id)}>
+                    Remove
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+
+      {overReserved ? <p className="large-costs-calm-note">Your big costs need more room than you have right now.</p> : null}
+    </section>
   );
 }
 
@@ -2297,6 +2788,26 @@ function RunwayItem({ event, showDivider }) {
         <strong>{event.label}</strong> {event.detail}
       </span>
     </>
+  );
+}
+
+function BillPagination({ page, total, onPrev, onNext }) {
+  return (
+    <div className="bill-pagination">
+      <button
+        className="secondary-button"
+        type="button"
+        disabled={page === 0}
+        onClick={onPrev}
+      >← Previous</button>
+      <span className="bill-pagination-label">Page {page + 1} of {total}</span>
+      <button
+        className="secondary-button"
+        type="button"
+        disabled={page >= total - 1}
+        onClick={onNext}
+      >Next →</button>
+    </div>
   );
 }
 
@@ -2386,21 +2897,28 @@ function BillGroup({
                     />
                   ) : null}
                   <div className="bill-row-main">
-                    <span>
-                      {bill.name}
+                    <div className="bill-row-head">
+                      <span className="bill-row-title">{bill.name}</span>
                       {isRecentlyAdded(bill) ? <span className="bill-new-tag">Recently added</span> : null}
-                    </span>
-                    <span className="bill-meta">
-                      {formatCurrency(bill.amount, displayCurrency)} — {isValidDueDay(bill.dueDay) ? formatOrdinal(bill.dueDay) : "date not set"}
-                    </span>
+                    </div>
+                    <div className="bill-row-details">
+                      <span className="bill-meta-pair">
+                        <strong>{formatCurrency(bill.amount, displayCurrency)}</strong>
+                        <span className="bill-meta">per month</span>
+                      </span>
+                      <span className="bill-meta-pair">
+                        <strong>{isValidDueDay(bill.dueDay) ? formatOrdinal(bill.dueDay) : "Date not set"}</strong>
+                        <span className="bill-meta">due date</span>
+                      </span>
+                    </div>
                     <BillCategoryPill bill={bill} />
                   </div>
                   {!selectMode ? (
-                    <div className="edit-actions">
-                      <button className="secondary-button small-button" type="button" disabled={importLocked} onClick={() => onEditStart(bill)}>
+                    <div className="bill-actions">
+                      <button className="bill-action-button bill-action-edit" type="button" disabled={importLocked} onClick={() => onEditStart(bill)}>
                         Edit
                       </button>
-                      <button className="secondary-button small-button remove-button" type="button" disabled={importLocked} onClick={() => onDelete?.(bill.id)}>
+                      <button className="bill-action-button bill-action-remove" type="button" disabled={importLocked} onClick={() => onDelete?.(bill.id)}>
                         Remove
                       </button>
                     </div>
@@ -2437,6 +2955,45 @@ async function saveIncome(userId, parsed, hasExistingIncome) {
   await setDoc(doc(db, "users", userId, "income", "main"), payload, { merge: true });
 }
 
+function applyQuickAddContext(parsed, quickAddContext) {
+  if (!quickAddContext?.name || !parsed) {
+    return parsed;
+  }
+
+  const normalisedHintName = quickAddContext.name.trim().toLowerCase();
+
+  const attachHint = (item) => {
+    if (item?.action !== "create_bill") {
+      return item;
+    }
+
+    const itemName = String(item.name || "").trim().toLowerCase();
+
+    const matchesHint =
+      itemName === normalisedHintName ||
+      itemName.includes(normalisedHintName) ||
+      normalisedHintName.includes(itemName);
+
+    if (item.category || !matchesHint) {
+      return item;
+    }
+
+    return {
+      ...item,
+      category: quickAddContext.category || "household",
+    };
+  };
+
+  if (parsed.action === "batch") {
+    return {
+      ...parsed,
+      items: (parsed.items || []).map(attachHint),
+    };
+  }
+
+  return attachHint(parsed);
+}
+
 async function applyParsedActions(userId, parsed, hasExistingIncome, existingBills = []) {
   const outcome = { createdBills: 0, skippedBills: 0, savedIncome: false };
   const items = parsed.action === "batch" ? parsed.items || [] : [parsed];
@@ -2457,6 +3014,7 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
         const batch = writeBatch(db);
         const payload = {
           ...bill,
+          category: item.category || null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
