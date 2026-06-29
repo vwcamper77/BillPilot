@@ -282,6 +282,21 @@ h1 {
   padding: 14px 18px;
 }
 
+.summary-card-clickable {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.summary-card-clickable:hover,
+.summary-card-clickable:focus-visible {
+  border-color: rgba(190, 180, 162, 0.95);
+  box-shadow: 0 10px 24px rgba(62, 45, 24, 0.06);
+  transform: translateY(-1px);
+  outline: none;
+}
+
 .summary-card span {
   display: block;
   margin-bottom: 14px;
@@ -297,6 +312,30 @@ h1 {
 
 .summary-card .helper-text {
   margin-top: 10px;
+}
+
+.summary-card-details {
+  margin-top: 10px;
+}
+
+.summary-card-details .helper-text {
+  margin: 4px 0 0;
+}
+
+.summary-card-link {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  color: var(--accent-dark);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.summary-card-link:hover,
+.summary-card-link:focus-visible {
+  text-decoration: underline;
+  outline: none;
 }
 
 .summary-card-negative {
@@ -599,12 +638,17 @@ h1 {
 .large-cost-row-main {
   min-width: 0;
   flex: 1;
+  display: grid;
+  gap: 8px;
 }
 
-.large-cost-line {
-  margin: 0;
-  color: #584f45;
-  line-height: 1.5;
+.large-cost-topline,
+.large-cost-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .large-cost-name {
@@ -612,25 +656,59 @@ h1 {
   color: var(--ink);
 }
 
-.large-cost-dash,
-.large-cost-dot {
-  margin: 0 5px;
-  color: #92877b;
+.large-cost-line {
+  margin: 0;
+  color: #5d544a;
+  line-height: 1.5;
+}
+
+.large-cost-inline-sep {
+  margin: 0 6px;
+  color: #948a7f;
+}
+
+.large-cost-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 14px;
+  color: #6d645a;
+  font-size: 0.88rem;
 }
 
 .large-cost-badge {
   display: inline-flex;
   align-items: center;
-  margin-left: 8px;
   min-height: 22px;
   padding: 0 8px;
   border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.large-cost-badge-on-track {
+  background: rgba(236, 246, 239, 0.95);
+  border: 1px solid rgba(183, 213, 191, 0.9);
+  color: #39624b;
+}
+
+.large-cost-badge-tight {
   background: rgba(248, 238, 218, 0.92);
   border: 1px solid rgba(224, 204, 162, 0.9);
   color: #8d6730;
-  font-size: 0.74rem;
-  font-weight: 700;
-  vertical-align: middle;
+}
+
+.large-cost-badge-at-risk,
+.large-cost-badge-due-now,
+.large-cost-badge-overdue {
+  background: rgba(249, 236, 231, 0.94);
+  border: 1px solid rgba(232, 195, 180, 0.92);
+  color: #97593f;
+}
+
+.large-cost-due-copy {
+  color: #82786c;
+  font-size: 0.84rem;
 }
 
 .bill-section {
@@ -1038,7 +1116,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 58px;
+  min-height: 66px;
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid rgba(229, 218, 200, 0.72);
@@ -1057,6 +1135,7 @@ h1 {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .tracker-copy {
@@ -1101,18 +1180,20 @@ h1 {
 }
 
 .tracker-missing .tracker-state {
-  color: #9a8f82;
-  background: rgba(245, 237, 226, 0.95);
+  background: rgba(251, 250, 246, 0.95);
+  border: 1.5px dashed #c7c2b5;
 }
 
 .tracker-inline-action,
 .tracker-action {
   min-height: 32px;
+  flex: 0 0 auto;
+  white-space: nowrap;
   border-radius: 999px;
   border: 1px solid rgba(221, 213, 200, 0.9);
   background: rgba(255, 255, 255, 0.78);
   color: #4e5f54;
-  padding: 0 11px;
+  padding: 0 14px;
   font-size: 0.86rem;
   font-weight: 600;
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
@@ -1126,6 +1207,7 @@ h1 {
   border-color: rgba(192, 221, 204, 0.92);
   color: #1f6b4d;
   outline: none;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
 }
 
 .tracker-action {
@@ -1145,6 +1227,103 @@ h1 {
 .bill-pagination-label { font-size:0.82rem; color:var(--muted); flex:1; text-align:center; }
 .bill-pagination .secondary-button { min-height:30px; padding:0 10px; font-size:0.82rem; font-weight:600; }
 
+.plan-shell {
+  width: min(980px, 100%);
+  margin: 0 auto;
+  padding: 32px;
+  min-height: 100vh;
+}
+
+.plan-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.plan-panel {
+  background: rgba(255, 253, 248, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.plan-card {
+  background: #fffaf1;
+  border: 1px solid #e5dac8;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.plan-card span {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.plan-card strong {
+  font-size: 1.35rem;
+  line-height: 1.08;
+}
+
+.plan-copy {
+  margin: 0;
+  color: #61584d;
+  line-height: 1.6;
+}
+
+.plan-list {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.plan-item {
+  border: 1px solid rgba(229, 218, 200, 0.92);
+  border-radius: 12px;
+  background: rgba(255, 250, 241, 0.72);
+  padding: 14px;
+}
+
+.plan-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.plan-item-name {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.plan-item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px 14px;
+  color: #665d52;
+  font-size: 0.9rem;
+}
+
+.plan-options {
+  margin: 0;
+  padding-left: 18px;
+  color: #665d52;
+}
+
+.plan-options li + li {
+  margin-top: 6px;
+}
+
 @media (max-width: 860px) {
   .home-shell,
   .dashboard-shell {
@@ -1158,7 +1337,8 @@ h1 {
   }
 
   .summary-grid,
-  .content-grid {
+  .content-grid,
+  .plan-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1179,6 +1359,14 @@ h1 {
   .quick-add-note {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .large-cost-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .plan-item-grid {
+    grid-template-columns: 1fr;
   }
 
   .bill-actions {

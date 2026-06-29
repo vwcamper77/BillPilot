@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
@@ -38,6 +39,7 @@ import {
   buildBillDocument,
   buildIncomeDocument,
   buildLargeCostDocument,
+  calculateLargeCostImpact,
   calculateDashboard,
   formatCurrency,
   formatDisplayDate,
@@ -167,6 +169,7 @@ export default function DashboardPage() {
   const [largeCostForm, setLargeCostForm] = useState({
     name: "",
     amount: "",
+    amountAlreadySaved: "",
     dueDate: "",
     frequency: "one_off",
     category: "other",
@@ -530,10 +533,15 @@ export default function DashboardPage() {
     return "After regular bills, from your expected monthly income.";
   })();
 
+  const largeCostImpact = useMemo(
+    () => calculateLargeCostImpact(largeCosts, dashboard.dailyLimitTillPayday || 0, dashboard.daysTillPayday || 0, todayIso),
+    [dashboard.dailyLimitTillPayday, dashboard.daysTillPayday, largeCosts, todayIso],
+  );
+
   const dailyLimitStatus = (() => {
     if (!hasBalanceSnapshot || !hasPayday) return "";
     if (dashboard.leftBeforePayday < 0) return "negative";
-    if (Math.max(0, (dashboard.dailyLimitTillPayday || 0) - largeCostReserve) < 10) return "low";
+    if (largeCostImpact.safeDailyBudget < 10) return "low";
     return "ok";
   })();
 
@@ -541,22 +549,41 @@ export default function DashboardPage() {
     if (!hasBalanceSnapshot) return "Add your balance snapshot";
     if (!hasPayday) return "Set your payday date";
     if (dashboard.leftBeforePayday < 0) return `${formatCurrency(Math.abs(dashboard.leftBeforePayday), displayCurrency)} short before payday`;
-    return `${formatCurrency(Math.max(0, (dashboard.dailyLimitTillPayday || 0) - largeCostReserve), displayCurrency)} per day`;
+    return `${formatCurrency(largeCostImpact.safeDailyBudget, displayCurrency)} per day`;
   })();
 
   const dailyLimitHelper = (() => {
     if (!hasBalanceSnapshot) return "Add your balance snapshot to see your daily limit.";
     if (!hasPayday) return "Set your payday date to calculate your daily limit.";
     if (dashboard.leftBeforePayday < 0) return "Bills before payday exceed your balance snapshot.";
-    if (dashboard.dailyLimitTillPayday !== null && largeCostReserve > (dashboard.dailyLimitTillPayday || 0)) {
-      return "Your big costs need more room than you have right now.";
+    if (largeCostImpact.dailyShortfall > 0) {
+      return `Your big costs need ${formatCurrency(largeCostImpact.dailyShortfall, displayCurrency)}/day more than your current runway allows.`;
     }
-    if (Math.max(0, (dashboard.dailyLimitTillPayday || 0) - largeCostReserve) < 10) return "Low daily limit until payday.";
-    if (largeCostReserve > 0) {
-      return `Includes ${formatCurrency(largeCostReserve, displayCurrency)} per day to set aside for large upcoming costs.`;
+    if (largeCostImpact.safeDailyBudget < 10) return "Low daily limit until payday.";
+    if (largeCostImpact.bigCostDailyNeed > 0) {
+      return `Before big costs: ${formatCurrency(largeCostImpact.normalDailyBudget, displayCurrency)}/day. Big costs set aside: ${formatCurrency(largeCostImpact.bigCostDailyNeed, displayCurrency)}/day.`;
     }
     return `Based on your balance snapshot after bills, spread over ${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"}.`;
   })();
+  const dailyLimitBreakdown = useMemo(() => {
+    if (!hasBalanceSnapshot || !hasPayday || largeCostImpact.bigCostDailyNeed <= 0 || dashboard.leftBeforePayday < 0) {
+      return [];
+    }
+
+    const lines = [
+      `Before big costs: ${formatCurrency(largeCostImpact.normalDailyBudget, displayCurrency)}/day`,
+    ];
+
+    if (largeCostImpact.dailyShortfall > 0) {
+      lines.push(`Big costs need: ${formatCurrency(largeCostImpact.bigCostDailyNeed, displayCurrency)}/day`);
+      lines.push(`Shortfall: ${formatCurrency(largeCostImpact.dailyShortfall, displayCurrency)}/day`);
+    } else {
+      lines.push(`Big costs set aside: ${formatCurrency(largeCostImpact.bigCostDailyNeed, displayCurrency)}/day`);
+      lines.push(`Safe after big costs: ${formatCurrency(largeCostImpact.safeDailyBudget, displayCurrency)}/day`);
+    }
+
+    return lines;
+  }, [dashboard.leftBeforePayday, displayCurrency, hasBalanceSnapshot, hasPayday, largeCostImpact]);
   const largeCostBaseDailyRoom = hasBalanceSnapshot && hasPayday && dashboard.leftBeforePayday >= 0
     ? Math.max(0, dashboard.dailyLimitTillPayday || 0)
     : 0;
@@ -564,7 +591,14 @@ export default function DashboardPage() {
     () =>
       projectedLargeCosts.map((cost) => ({
         ...cost,
-        isTight: cost.status !== "due_now" && largeCostBaseDailyRoom > 0 && cost.perDayRounded > largeCostBaseDailyRoom * 0.6,
+        statusBadge: (() => {
+          if (cost.status === "overdue") return "Overdue";
+          if (cost.status === "due_now") return "Due now";
+          if (largeCostBaseDailyRoom <= 0) return "At risk";
+          if (cost.perDayRaw >= largeCostBaseDailyRoom * 0.9) return "At risk";
+          if (cost.perDayRaw >= largeCostBaseDailyRoom * 0.5) return "Tight";
+          return "On track";
+        })(),
       })),
     [largeCostBaseDailyRoom, projectedLargeCosts],
   );
@@ -1554,6 +1588,7 @@ export default function DashboardPage() {
     setLargeCostForm({
       name: "",
       amount: "",
+      amountAlreadySaved: "",
       dueDate: "",
       frequency: "one_off",
       category: "other",
@@ -1569,6 +1604,7 @@ export default function DashboardPage() {
     setLargeCostForm({
       name: "",
       amount: "",
+      amountAlreadySaved: "",
       dueDate: todayIso,
       frequency: "one_off",
       category: "other",
@@ -1582,6 +1618,7 @@ export default function DashboardPage() {
     setLargeCostForm({
       name: cost.name || "",
       amount: cost.amount?.toString() || "",
+      amountAlreadySaved: cost.amountAlreadySaved?.toString() || "",
       dueDate: cost.dueDate || todayIso,
       frequency: cost.frequency || "one_off",
       category: cost.category || "other",
@@ -1597,9 +1634,14 @@ export default function DashboardPage() {
     }
 
     const amount = Number(largeCostForm.amount);
+    const amountAlreadySaved = Number(largeCostForm.amountAlreadySaved || 0);
 
     if (!largeCostForm.name.trim() || !Number.isFinite(amount) || amount <= 0 || !largeCostForm.dueDate) {
       setLargeCostError("Add a name, amount, and due date before saving.");
+      return;
+    }
+    if (!Number.isFinite(amountAlreadySaved) || amountAlreadySaved < 0) {
+      setLargeCostError("Amount already saved must be zero or more.");
       return;
     }
 
@@ -1613,6 +1655,7 @@ export default function DashboardPage() {
         ...buildLargeCostDocument({
           name: largeCostForm.name.trim(),
           amount,
+          amountAlreadySaved,
           dueDate: largeCostForm.dueDate,
           frequency: largeCostForm.frequency,
           category: largeCostForm.category,
@@ -1911,6 +1954,9 @@ export default function DashboardPage() {
           muted={!hasBalanceSnapshot || !hasPayday}
           helper={dailyLimitHelper}
           status={dailyLimitStatus}
+          detailLines={dailyLimitBreakdown}
+          href={largeCosts.length ? "/big-costs" : ""}
+          footerLink={largeCosts.length ? "View big cost plan →" : ""}
         />
       </section>
 
@@ -2192,7 +2238,9 @@ export default function DashboardPage() {
             onDelete={handleLargeCostDelete}
             saving={savingLargeCost}
             error={largeCostError}
-            overReserved={hasBalanceSnapshot && hasPayday && dashboard.leftBeforePayday >= 0 && largeCostReserve > (dashboard.dailyLimitTillPayday || 0)}
+            overReserved={largeCostImpact.dailyShortfall > 0}
+            shortfall={largeCostImpact.dailyShortfall}
+            baseDailyBudget={largeCostImpact.normalDailyBudget}
           />
 
           <section className="reminders-panel">
@@ -2578,7 +2626,7 @@ function HouseholdTracker({ bills, onAddMissingUtility }) {
         {checks.map((check) => (
           <div key={check.key} className={`tracker-row ${check.found ? "tracker-added" : "tracker-missing"}`}>
             <div className="tracker-row-main">
-              <span className="tracker-state" aria-hidden="true">{check.found ? "✓" : "•"}</span>
+              <span className="tracker-state" aria-hidden="true">{check.found ? "✓" : null}</span>
               <div className="tracker-copy">
                 <span className="tracker-label">{check.label}</span>
                 <span className="tracker-note">{check.found ? "Added to forecast" : "Missing from forecast"}</span>
@@ -2610,7 +2658,7 @@ function HouseholdTracker({ bills, onAddMissingUtility }) {
 }
 
 const LARGE_COST_CATEGORY_META = {
-  holiday: { icon: "🏖", label: "Holiday" },
+  holiday: { icon: "✈️", label: "Holiday" },
   car: { icon: "🚗", label: "Car" },
   home: { icon: "🏠", label: "Home" },
   kids: { icon: "🧒", label: "Kids" },
@@ -2642,9 +2690,9 @@ function LargeUpcomingCostsCard({
   saving,
   error,
   overReserved,
+  shortfall,
+  baseDailyBudget,
 }) {
-  const hasTightCost = costs.some((cost) => cost.isTight);
-
   return (
     <section className="large-costs-card">
       <div className="section-head">
@@ -2653,6 +2701,13 @@ function LargeUpcomingCostsCard({
           {costs.length ? (
             <p className="large-costs-sub">
               {reserve > 0 ? `Set aside about ${formatCurrency(reserve, displayCurrency)} per day across these costs.` : "Quietly priced into your daily limit."}
+            </p>
+          ) : null}
+          {costs.length ? (
+            <p className="large-costs-calm-note">
+              {overReserved
+                ? `Your big costs need ${formatCurrency(shortfall, displayCurrency)}/day more than your current runway allows.`
+                : `Your big costs still fit inside your current runway of ${formatCurrency(baseDailyBudget, displayCurrency)}/day.`}
             </p>
           ) : null}
         </div>
@@ -2685,6 +2740,14 @@ function LargeUpcomingCostsCard({
             value={form.amount}
             onChange={(event) => onFormChange((current) => ({ ...current, amount: event.target.value }))}
             placeholder="5000"
+          />
+          <label className="field-label" htmlFor="large-cost-saved">Amount already saved</label>
+          <input
+            id="large-cost-saved"
+            inputMode="decimal"
+            value={form.amountAlreadySaved}
+            onChange={(event) => onFormChange((current) => ({ ...current, amountAlreadySaved: event.target.value }))}
+            placeholder="0"
           />
           <label className="field-label" htmlFor="large-cost-due-date">Due date</label>
           <input
@@ -2728,27 +2791,26 @@ function LargeUpcomingCostsCard({
       ) : null}
 
       {costs.length ? (
-        <ul className={`large-cost-list ${hasTightCost ? "has-tight-cost" : ""}`}>
+        <ul className="large-cost-list">
           {costs.map((cost) => {
             const category = LARGE_COST_CATEGORY_META[cost.category] || LARGE_COST_CATEGORY_META.other;
-            const badgeLabel =
-              cost.status === "due_now"
-                ? "Due now"
-                : cost.isTight
-                  ? "Tight"
-                  : "";
 
             return (
               <li key={cost.id} className="large-cost-row">
                 <div className="large-cost-row-main">
                   <p className="large-cost-line">
                     <span className="large-cost-name">{category.icon} {cost.name}</span>
-                    <span className="large-cost-dash">—</span>
-                    <strong>set aside {formatCurrency(cost.perDayRounded, displayCurrency)}/day</strong>
-                    <span className="large-cost-dot">·</span>
+                    <span className="large-cost-inline-sep">—</span>
+                    <strong>set aside {formatCurrency(cost.perDayRaw, displayCurrency)}/day</strong>
+                    <span className="large-cost-inline-sep">—</span>
                     <span>{cost.dueLabel}</span>
-                    {badgeLabel ? <span className="large-cost-badge">{badgeLabel}</span> : null}
                   </p>
+                  <div className="large-cost-footer">
+                    <span className="bill-category-pill">{category.icon} {category.label}</span>
+                    <span className={`large-cost-badge large-cost-badge-${cost.statusBadge.toLowerCase().replace(/\s+/g, "-")}`}>
+                      {cost.statusBadge}
+                    </span>
+                  </div>
                 </div>
                 <div className="bill-actions">
                   <button className="bill-action-button bill-action-edit" type="button" onClick={() => onEditStart(cost)}>
@@ -2764,18 +2826,42 @@ function LargeUpcomingCostsCard({
         </ul>
       ) : null}
 
-      {overReserved ? <p className="large-costs-calm-note">Your big costs need more room than you have right now.</p> : null}
+      {costs.length ? (
+        <Link className="summary-card-link" href="/big-costs">
+          View big cost plan →
+        </Link>
+      ) : null}
     </section>
   );
 }
 
-function SummaryCard({ label, value, muted = false, helper = "", status = "" }) {
+function SummaryCard({ label, value, muted = false, helper = "", status = "", detailLines = [], href = "", footerLink = "" }) {
   const statusClass = status ? `summary-card-${status}` : "";
-  return (
-    <article className={`summary-card ${muted ? "is-disabled-soft" : ""} ${statusClass}`.trim()}>
+  const content = (
+    <>
       <span>{label}</span>
       <strong>{value}</strong>
+      {detailLines.length ? (
+        <div className="summary-card-details">
+          {detailLines.map((line) => <p key={line} className="helper-text">{line}</p>)}
+        </div>
+      ) : null}
       {helper ? <p className="helper-text helper-tooltip">{helper}</p> : null}
+      {footerLink ? <span className="summary-card-link">{footerLink}</span> : null}
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link className={`summary-card summary-card-clickable ${muted ? "is-disabled-soft" : ""} ${statusClass}`.trim()} href={href}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <article className={`summary-card ${muted ? "is-disabled-soft" : ""} ${statusClass}`.trim()}>
+      {content}
     </article>
   );
 }
