@@ -149,6 +149,9 @@ function getIncomeStatusText(income, currency = "GBP") {
 }
 
 const BILLS_PER_PAGE = 6;
+const BALANCE_HELPER_TEXT = "We don’t connect to your bank or ask for login details. This is just the money currently available in your account, so ClearTill can show today’s cash position after bills.";
+const BALANCE_TRUST_NOTE = "Private by design: no bank login, no Open Banking connection, and you can delete your data any time.";
+const BALANCE_MISSING_FORECAST_COPY = "Add your current available money to see today’s exact cash forecast.";
 
 export default function DashboardPage() {
   const recognitionRef = useRef(null);
@@ -552,7 +555,8 @@ export default function DashboardPage() {
   );
   const todayIso = getTodayIso();
   const generalProtectedSavings = Math.max(0, Number(savings?.totalSetAside) || 0);
-  const hasBalanceSnapshot = displayAccount?.currentBalance !== undefined;
+  const balanceValue = displayAccount?.currentBalance;
+  const hasBalanceSnapshot = balanceValue !== undefined && balanceValue !== null && balanceValue !== "" && Number.isFinite(Number(balanceValue));
   const hasPayday = isValidDueDay(displayIncome?.payDay);
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
   const hasBills = bills.length > 0;
@@ -630,21 +634,21 @@ export default function DashboardPage() {
     return "ok";
   })();
   const spendingRoomValue = (() => {
-    if (!hasBalanceSnapshot) return "Add your current balance";
+    if (!hasBalanceSnapshot) return BALANCE_MISSING_FORECAST_COPY;
     if (!hasPayday) return "Set your payday";
     if (spendingRoomUntilPayday === null) return "—";
     if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
     return formatCurrency(spendingRoomUntilPayday, displayCurrency);
   })();
   const spendingRoomSummary = (() => {
-    if (!hasBalanceSnapshot) return "Add your current balance";
+    if (!hasBalanceSnapshot) return BALANCE_MISSING_FORECAST_COPY;
     if (!hasPayday) return "Set your payday";
     if (spendingRoomUntilPayday === null) return "Spending room unavailable";
     if (spendingRoomUntilPayday < 0) return `You're ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} short before payday`;
     return `You're clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
   })();
   const spendingRoomHelper = (() => {
-    if (!hasBalanceSnapshot) return "Update your current balance to see what is still safe to spend.";
+    if (!hasBalanceSnapshot) return BALANCE_MISSING_FORECAST_COPY;
     if (!hasPayday) return "Set your payday so ClearTill can work to that date.";
     if (dailySpendingRoom === null) return "";
     if (spendingRoomUntilPayday < 0) {
@@ -1307,6 +1311,36 @@ export default function DashboardPage() {
     return { skipped: false };
   }
 
+  async function handleSkipBalance() {
+    if (!user) {
+      return;
+    }
+
+    setBalanceError("");
+    setPageNotice("You can add your current available money later for a more accurate forecast.");
+    setOptimisticBalance(null);
+    setBalanceInput("");
+
+    const path = getBalanceDocPath(user.uid);
+    const payload = {
+      currentBalance: null,
+      currency: "GBP",
+      updatedAt: serverTimestamp(),
+      createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
+    };
+
+    console.log("[firestore-balance-skip] writing", {
+      uid: user.uid,
+      path,
+      payload,
+    });
+
+    void setDoc(doc(db, "users", user.uid, "settings", "balance"), payload, { merge: true })
+      .catch((saveError) => {
+        console.error("[firestore-balance-skip] failed", saveError?.code, saveError?.message);
+      });
+  }
+
   async function handleBalanceSave(event) {
     event.preventDefault();
 
@@ -1314,10 +1348,33 @@ export default function DashboardPage() {
       return;
     }
 
-    const parsedBalance = Number(balanceInput);
+    const trimmedBalanceInput = balanceInput.trim();
+
+    if (!trimmedBalanceInput) {
+      setBalanceError("");
+      setPageNotice("You can add your current available money later for a more accurate forecast.");
+      setOptimisticBalance(null);
+      setBalanceInput("");
+
+      const path = getBalanceDocPath(user.uid);
+      const payload = {
+        currentBalance: null,
+        currency: "GBP",
+        updatedAt: serverTimestamp(),
+        createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
+      };
+
+      void setDoc(doc(db, "users", user.uid, "settings", "balance"), payload, { merge: true })
+        .catch((saveError) => {
+          console.error("[firestore-balance-save] failed", saveError?.code, saveError?.message);
+        });
+      return;
+    }
+
+    const parsedBalance = Number(trimmedBalanceInput);
 
     if (!Number.isFinite(parsedBalance)) {
-      setBalanceError("Add your balance snapshot as a number.");
+      setBalanceError("Add your current available money as a number.");
       return;
     }
 
@@ -1329,7 +1386,7 @@ export default function DashboardPage() {
     setOptimisticBalance(parsedBalance);
     setBalanceInput(parsedBalance.toString());
     setSavingBalance(false);
-    setPageNotice(`Balance snapshot updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
+    setPageNotice(`Current available money updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
 
     const path = getBalanceDocPath(user.uid);
     const payload = {
@@ -1359,7 +1416,7 @@ export default function DashboardPage() {
           uid: user.uid,
           path,
         });
-        setPageNotice(`Balance snapshot saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
+        setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
       })
       .catch((saveError) => {
         if (balanceSaveRequestRef.current !== saveRequestId) {
@@ -1369,39 +1426,8 @@ export default function DashboardPage() {
         console.error("[firestore-balance-save] failed", saveError?.code, saveError?.message);
         setOptimisticBalance(null);
         setPageNotice("");
-        setBalanceError(saveError.message || "Balance snapshot could not be saved.");
+        setBalanceError(saveError.message || "Current available money could not be saved.");
       });
-
-    return;
-    setBalanceError("");
-    setPageNotice("");
-    setOptimisticBalance(parsedBalance);
-    setBalanceInput(parsedBalance.toString());
-    setPageNotice("Saving balance snapshot…");
-
-    try {
-      await runWithTimeout(
-        setDoc(
-        doc(db, "users", user.uid, "profile", "main"),
-        {
-          currentBalance: parsedBalance,
-          currency: "GBP",
-          updatedAt: serverTimestamp(),
-          snapshotEnteredAt: serverTimestamp(),
-          createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
-        },
-        { merge: true },
-      ),
-        "Saving balance snapshot is taking too long. Check your connection and try again.",
-      );
-      setPageNotice(`Balance snapshot saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
-    } catch (saveError) {
-      setOptimisticBalance(null);
-      setPageNotice("");
-      setBalanceError(saveError.message || "Balance snapshot could not be saved.");
-    } finally {
-      setSavingBalance(false);
-    }
   }
 
   function startBillEdit(bill) {
@@ -2362,7 +2388,7 @@ export default function DashboardPage() {
         <section className="auth-panel">
           <p className="eyebrow">ClearTill</p>
           <h1>Know you&apos;re clear till payday.</h1>
-          <p>Add your balance snapshot, payday and bills. ClearTill shows what&apos;s due before payday and what may be left after.</p>
+          <p>Add your current available money, payday and bills. ClearTill shows what&apos;s due before payday and what may be left after.</p>
           <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
             {signingIn ? "Signing in…" : "Continue with Google"}
           </button>
@@ -2445,10 +2471,11 @@ export default function DashboardPage() {
               <p className="eyebrow">Setup</p>
               <h2>{setupMessage.title}</h2>
               <p className="helper-text">{setupMessage.detail}</p>
+              <p className="helper-text">{BALANCE_TRUST_NOTE}</p>
             </div>
             <div className="setup-chip-row" aria-label="Setup progress">
               <button className={`setup-chip ${getSetupChipState(1, setupStep)}`} type="button" onClick={focusBalanceSnapshotForm}>
-                <span>{setupStep > 1 ? "✓" : "1"}</span> Balance
+                <span>{setupStep > 1 ? "✓" : "1"}</span> Money
               </button>
               <button className={`setup-chip ${getSetupChipState(2, setupStep)}`} type="button" onClick={focusPaydayForm}>
                 <span>{setupStep > 2 ? "✓" : "2"}</span> Payday
@@ -2459,7 +2486,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="setup-cta-row">
-            {setupStep === 1 ? <button className="primary-button" type="button" onClick={focusBalanceSnapshotForm}>Add balance snapshot</button> : null}
+            {setupStep === 1 ? <button className="primary-button" type="button" onClick={focusBalanceSnapshotForm}>Add current available money</button> : null}
             {setupStep === 2 ? <button className="primary-button" type="button" onClick={focusPaydayForm}>Add payday</button> : null}
             {setupStep === 3 ? <button className="primary-button" type="button" onClick={focusAddBillComposer}>Add bills</button> : null}
             {setupStep === 4 ? (
@@ -2478,7 +2505,7 @@ export default function DashboardPage() {
       <HeroCard
         status={clearTillStatus}
         headline={(() => {
-          if (!hasBalanceSnapshot) return "Add your balance snapshot to get started";
+          if (!hasBalanceSnapshot) return "Add your current available money to get started";
           if (spendingRoomUntilPayday === null) return "Set your payday to get started";
           if (clearTillStatus === "negative") return `You're short - ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
           if (clearTillStatus === "low") return `Almost clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
@@ -2531,20 +2558,20 @@ export default function DashboardPage() {
           >
             <div className="section-head">
               <div>
-                <h2 style={{ margin: 0 }}>Current balance</h2>
-                <p className="helper-text balance-copy">Update this first. ClearTill uses it to work out what is still safe to spend until payday.</p>
+                <h2 style={{ margin: 0 }}>Current available money</h2>
+                <p className="helper-text balance-copy">Update this when your cash position changes. ClearTill uses it to work out what is still safe to spend until payday.</p>
               </div>
               <button className="secondary-button small-button" type="button" onClick={focusBalanceSnapshotForm}>
                 Update
               </button>
             </div>
             <p className="balance-action-value">
-              {hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "Add your current balance"}
+              {hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : BALANCE_MISSING_FORECAST_COPY}
             </p>
             <form className="chat-form" onSubmit={handleBalanceSave}>
               <div className="field-row">
                 <label className="field-label" htmlFor="account-balance">
-                  Current balance
+                  Current available money
                 </label>
                 <div className="chat-input-row">
                   <input
@@ -2554,7 +2581,7 @@ export default function DashboardPage() {
                     value={balanceInput}
                     disabled={importLocked}
                     onChange={(event) => setBalanceInput(event.target.value)}
-                    placeholder="Current balance"
+                    placeholder="Current available money"
                   />
                   <button className="secondary-button" type="submit" disabled={importLocked}>
                     Update
@@ -2562,19 +2589,23 @@ export default function DashboardPage() {
                 </div>
               </div>
             </form>
-            {displayAccount?.currentBalance !== undefined ? (
+            <p className="helper-text balance-copy" style={{ marginTop: "8px" }}>{BALANCE_HELPER_TEXT}</p>
+            <button className="secondary-button small-button" type="button" onClick={handleSkipBalance} disabled={importLocked} style={{ marginTop: "8px" }}>
+              Skip for now
+            </button>
+            {hasBalanceSnapshot ? (
               <div className="helper-text balance-copy">
                 <p>{balanceSnapshotLabel}</p>
                 <p>Still around {formatCurrency(dashboard.currentBalance, displayCurrency)}? Update it whenever that changes.</p>
               </div>
             ) : (
               <p className="helper-text balance-copy">
-                Enter your current balance and ClearTill will show what is safe to spend before payday.
+                {BALANCE_MISSING_FORECAST_COPY}
               </p>
             )}
-            {displayAccount?.currentBalance === undefined ? (
+            {!hasBalanceSnapshot ? (
               <p className="helper-text balance-copy">
-                Add your balance to unlock the payday forecast.
+                Add your current available money later for a more accurate forecast.
               </p>
             ) : null}
             <div className="field-row" style={{ marginTop: "14px" }}>
@@ -2597,7 +2628,7 @@ export default function DashboardPage() {
             <div className="section-head">
               <div>
                 <h2 style={{ margin: 0 }}>Spending room until payday</h2>
-                <p className="helper-text">This uses current account money only, after bills and large costs due before payday.</p>
+                <p className="helper-text">This uses current available money only, after bills and large costs due before payday.</p>
               </div>
             </div>
             <div className="forecast-header">
@@ -2661,7 +2692,7 @@ export default function DashboardPage() {
               <h3>Explain this number</h3>
               <div className="forecast-breakdown-list">
                 <div className="forecast-breakdown-row">
-                  <span>Current balance</span>
+                  <span>Current available money</span>
                   <strong>{hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "—"}</strong>
                 </div>
                 <div className="forecast-breakdown-row">
@@ -2882,7 +2913,7 @@ export default function DashboardPage() {
             )}
             {!hasBalanceSnapshot ? (
               <p className="helper-text helper-tooltip">
-                Add your balance snapshot first so ClearTill can forecast what may be left.
+                Add your current available money first so ClearTill can forecast what may be left.
               </p>
             ) : null}
           </section>
@@ -4897,8 +4928,8 @@ function getSetupChipState(stepNumber, setupStep) {
 function getSetupMessage(setupStep) {
   if (setupStep === 1) {
     return {
-      title: "Step 1 of 3 — Add your balance snapshot",
-      detail: "ClearTill works best when you start with a manual balance snapshot.",
+      title: "Step 1 of 3 — Add your current available money",
+      detail: "ClearTill works best when you start with your current available money, even if you want to skip it for now.",
     };
   }
 
