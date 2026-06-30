@@ -159,6 +159,9 @@ export default function DashboardPage() {
   const messageInputRef = useRef(null);
   const balanceSectionRef = useRef(null);
   const balanceInputRef = useRef(null);
+  const paydaySectionRef = useRef(null);
+  const paydayAmountInputRef = useRef(null);
+  const paydayDayInputRef = useRef(null);
   const billsRef = useRef([]);
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -232,6 +235,8 @@ export default function DashboardPage() {
   const [savingSavings, setSavingSavings] = useState(false);
   const [savingsError, setSavingsError] = useState("");
   const [highlightBalanceForm, setHighlightBalanceForm] = useState(false);
+  const [highlightPaydayForm, setHighlightPaydayForm] = useState(false);
+  const [highlightAddBillForm, setHighlightAddBillForm] = useState(false);
   const [fundingEditorCostId, setFundingEditorCostId] = useState("");
   const [fundingEditorForm, setFundingEditorForm] = useState({ fundingStatus: "unassigned", savingsAmount: "" });
   const balanceSaveRequestRef = useRef(0);
@@ -1979,6 +1984,7 @@ export default function DashboardPage() {
 
   function focusAddBillComposer() {
     addBillSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setHighlightAddBillForm(true);
     window.setTimeout(() => {
       messageInputRef.current?.focus();
       messageInputRef.current?.setSelectionRange?.(
@@ -1986,6 +1992,9 @@ export default function DashboardPage() {
         messageInputRef.current.value.length,
       );
     }, 180);
+    window.setTimeout(() => {
+      setHighlightAddBillForm(false);
+    }, 1800);
   }
 
   function handleAddMissingUtility(check) {
@@ -2228,6 +2237,20 @@ export default function DashboardPage() {
     }, 1800);
   }
 
+  function focusPaydayForm() {
+    setEditingIncome(true);
+    paydaySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setHighlightPaydayForm(true);
+    window.setTimeout(() => {
+      const targetInput = hasIncomeAmount ? paydayDayInputRef.current : paydayAmountInputRef.current;
+      targetInput?.focus();
+      targetInput?.select?.();
+    }, 180);
+    window.setTimeout(() => {
+      setHighlightPaydayForm(false);
+    }, 1800);
+  }
+
   async function handleCurrencySave(currency) {
     if (!user || !db) return;
     setDisplayCurrency(currency);
@@ -2424,25 +2447,25 @@ export default function DashboardPage() {
               <p className="helper-text">{setupMessage.detail}</p>
             </div>
             <div className="setup-chip-row" aria-label="Setup progress">
-              <button className={`setup-chip ${getSetupChipState(1, setupStep)}`} type="button">
+              <button className={`setup-chip ${getSetupChipState(1, setupStep)}`} type="button" onClick={focusBalanceSnapshotForm}>
                 <span>{setupStep > 1 ? "✓" : "1"}</span> Balance
               </button>
-              <button className={`setup-chip ${getSetupChipState(2, setupStep)}`} type="button">
+              <button className={`setup-chip ${getSetupChipState(2, setupStep)}`} type="button" onClick={focusPaydayForm}>
                 <span>{setupStep > 2 ? "✓" : "2"}</span> Payday
               </button>
-              <button className={`setup-chip ${getSetupChipState(3, setupStep)}`} type="button">
+              <button className={`setup-chip ${getSetupChipState(3, setupStep)}`} type="button" onClick={focusAddBillComposer}>
                 <span>{setupStep > 3 ? "✓" : "3"}</span> Bills
               </button>
             </div>
           </div>
           <div className="setup-cta-row">
-            {setupStep === 1 ? <button className="primary-button" type="button">Add balance snapshot</button> : null}
-            {setupStep === 2 ? <button className="primary-button" type="button" onClick={() => setEditingIncome(true)}>Add payday</button> : null}
-            {setupStep === 3 ? <button className="primary-button" type="button">Add bills</button> : null}
+            {setupStep === 1 ? <button className="primary-button" type="button" onClick={focusBalanceSnapshotForm}>Add balance snapshot</button> : null}
+            {setupStep === 2 ? <button className="primary-button" type="button" onClick={focusPaydayForm}>Add payday</button> : null}
+            {setupStep === 3 ? <button className="primary-button" type="button" onClick={focusAddBillComposer}>Add bills</button> : null}
             {setupStep === 4 ? (
               <>
-                <button className="secondary-button" type="button">Update snapshot</button>
-                <button className="primary-button" type="button">Add another bill</button>
+                <button className="secondary-button" type="button" onClick={focusBalanceSnapshotForm}>Update snapshot</button>
+                <button className="primary-button" type="button" onClick={focusAddBillComposer}>Add another bill</button>
                 <button className="secondary-button small-button setup-dismiss" type="button" onClick={handleSetupDismiss}>
                   Dismiss
                 </button>
@@ -2570,7 +2593,7 @@ export default function DashboardPage() {
             {balanceError ? <p className="error">{balanceError}</p> : null}
           </section>
 
-          <section className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || !hasPayday) ? "is-disabled-soft" : ""}`}>
+          <section className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || (!hasPayday && !editingIncome)) ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}>
             <div className="section-head">
               <div>
                 <h2 style={{ margin: 0 }}>Spending room until payday</h2>
@@ -2792,7 +2815,10 @@ export default function DashboardPage() {
               </div>
             ) : null}
           </div>
-          <section className={`bill-section ${!hasBalanceSnapshot ? "is-disabled-soft" : ""}`}>
+          <section
+            ref={paydaySectionRef}
+            className={`bill-section ${!hasBalanceSnapshot ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}
+          >
             <div className="section-head">
               <h3>Payday</h3>
               <button
@@ -2808,6 +2834,7 @@ export default function DashboardPage() {
               <form className="edit-form" onSubmit={handleIncomeSave}>
                 <label className="field-label" htmlFor="payday-amount">Amount</label>
                 <input
+                  ref={paydayAmountInputRef}
                   id="payday-amount"
                   inputMode="decimal"
                   disabled={importLocked}
@@ -2817,6 +2844,7 @@ export default function DashboardPage() {
                 />
                 <label className="field-label" htmlFor="payday-day">Payday</label>
                 <input
+                  ref={paydayDayInputRef}
                   id="payday-day"
                   inputMode="numeric"
                   disabled={importLocked}
@@ -2970,7 +2998,7 @@ export default function DashboardPage() {
           {/* Add bills — unified card: type, speak, or upload (CSV/image) */}
           <section
             ref={addBillSectionRef}
-            className={`chat-panel add-bills-card ${setupStep === 3 ? "setup-current" : ""} ${!hasBalanceSnapshot ? "is-disabled-soft" : ""} ${dragActive ? "is-dragging" : ""}`}
+            className={`chat-panel add-bills-card ${setupStep === 3 ? "setup-current" : ""} ${!hasBalanceSnapshot ? "is-disabled-soft" : ""} ${highlightAddBillForm ? "form-highlight" : ""} ${dragActive ? "is-dragging" : ""}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
