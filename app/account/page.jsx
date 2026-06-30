@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
+import Logo from "@/components/Logo";
+import TrustShieldBadge from "@/app/components/TrustShieldBadge";
 import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";
 
 const ACCOUNT_DIALOGS = {
@@ -12,7 +14,7 @@ const ACCOUNT_DIALOGS = {
     body: [
       "This will clear your bills, balance, payday settings, savings and big costs so you can start again.",
       "Your login account will not be deleted.",
-      "This cannot be undone.",
+      "This permanently removes your ClearTill budgeting data. This cannot be undone.",
     ],
     confirmLabel: "Reset my data",
   },
@@ -21,7 +23,7 @@ const ACCOUNT_DIALOGS = {
     body: [
       "This will permanently delete all ClearTill data linked to your account, including bills, balances, payday settings, savings, big costs and imported data.",
       "Your login account will remain active.",
-      "This cannot be undone.",
+      "This permanently removes your ClearTill budgeting data. This cannot be undone.",
     ],
     confirmLabel: "Delete my ClearTill data",
   },
@@ -75,6 +77,53 @@ export default function AccountPage() {
     if (user.isAnonymous) return "Guest session";
     return user.email || user.displayName || "Signed in";
   }, [user]);
+
+  async function handleExportData() {
+    if (!auth?.currentUser) {
+      return;
+    }
+
+    setBusyAction("export_data");
+    setFeedback({ type: "", message: "" });
+
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const response = await fetch("/api/account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ action: "export_data" }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Could not export your data right now.");
+      }
+
+      const blob = new Blob([JSON.stringify(payload.export, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `cleartill-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setFeedback({ type: "success", message: "Your ClearTill data has been downloaded." });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error?.message || "Could not export your data right now.",
+      });
+    } finally {
+      setBusyAction("");
+    }
+  }
 
   async function handleSignOut() {
     if (!auth) return;
@@ -157,7 +206,7 @@ export default function AccountPage() {
     return (
       <main className="account-shell">
         <section className="account-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Loading your account…</h1>
         </section>
       </main>
@@ -168,7 +217,7 @@ export default function AccountPage() {
     return (
       <main className="account-shell">
         <section className="account-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Firebase is not configured.</h1>
         </section>
       </main>
@@ -179,7 +228,7 @@ export default function AccountPage() {
     return (
       <main className="account-shell">
         <section className="account-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Sign in to manage your account.</h1>
           <p className="helper-text">Open your dashboard to sign in or continue as a guest first.</p>
           <div className="topbar-actions">
@@ -195,7 +244,9 @@ export default function AccountPage() {
     <main className="account-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">ClearTill</p>
+          <Link className="brand-link" href="/" aria-label="ClearTill home">
+            <Logo className="eyebrow-logo" />
+          </Link>
           <h1 className="brand" style={{ fontSize: "2rem" }}>Account</h1>
         </div>
         <div className="topbar-actions">
@@ -209,6 +260,8 @@ export default function AccountPage() {
           {feedback.message}
         </section>
       ) : null}
+
+      <TrustShieldBadge className="page-trust-banner" />
 
       <div className="account-stack">
         <section className="account-panel">
@@ -230,6 +283,14 @@ export default function AccountPage() {
               </div>
               <span aria-hidden="true">→</span>
             </Link>
+
+            <button className="account-row" type="button" onClick={handleExportData} disabled={Boolean(busyAction) || Boolean(dialogAction)}>
+              <div>
+                <strong>Export my data</strong>
+                <span>Download a copy of your ClearTill data as a JSON file.</span>
+              </div>
+              <span aria-hidden="true">{busyAction === "export_data" ? "…" : "↓"}</span>
+            </button>
 
             <button className="account-row" type="button" onClick={() => openDialog("reset_data")} disabled={Boolean(busyAction)}>
               <div>
@@ -280,6 +341,14 @@ export default function AccountPage() {
               <div>
                 <strong>Privacy Policy</strong>
                 <span>See the current ClearTill privacy placeholder.</span>
+              </div>
+              <span aria-hidden="true">→</span>
+            </Link>
+
+            <Link className="account-row" href="/security">
+              <div>
+                <strong>Security</strong>
+                <span>How ClearTill protects your data and what controls you have.</span>
               </div>
               <span aria-hidden="true">→</span>
             </Link>

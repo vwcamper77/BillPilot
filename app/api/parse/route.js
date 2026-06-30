@@ -35,7 +35,6 @@ export async function POST(request) {
     message = form?.get("message") || "";
 
     if (file instanceof File) {
-      console.log("[api/parse] received multipart image", file.name, file.size);
       imageDataUrl = await fileToDataUrl(file);
       imageName = file.name;
     }
@@ -120,7 +119,6 @@ export async function POST(request) {
 
   try {
     if (isMultipartImageImport) {
-      console.log("[api/parse] starting image import parse", { hasMessage: Boolean(safeMessage.trim()) });
       const imageResult = await parseImageImportWithOpenAI({
         message: safeMessage,
         image: safeImages[0],
@@ -137,9 +135,6 @@ export async function POST(request) {
         }
       }
 
-      console.log("[api/parse] extracted bills count", bills.length);
-      console.log("[api/parse] extracted bills", bills);
-
       if (bills.length) {
         return NextResponse.json(buildImageImportSuccess(bills), { status: 200 });
       }
@@ -150,12 +145,10 @@ export async function POST(request) {
       );
     }
 
-    console.log("[api/parse] starting vision parse", { hasImage: safeImages.length > 0, hasMessage: Boolean(safeMessage.trim()) });
     const parsed = await parseMessageWithOpenAI({
       message: safeMessage,
       images: safeImages,
     });
-    console.log("[api/parse] finished vision parse");
     const normalised = normaliseParsedResult(parsed, safeMessage, safeImages.length > 0);
 
     if (safeImages.length && normalised.action === "unknown") {
@@ -165,8 +158,6 @@ export async function POST(request) {
         if (isMultipartImageImport) {
           return NextResponse.json(buildImageImportResponse(ocrFallback), { status: 200 });
         }
-        const ocrBillCount = ocrFallback.action === "batch" ? (ocrFallback.items || []).length : 0;
-        console.log("[api/parse] returning bill count (ocr fallback)", ocrBillCount);
         return NextResponse.json(ocrFallback);
       }
 
@@ -177,9 +168,6 @@ export async function POST(request) {
         );
       }
     }
-
-    const billCount = normalised.action === "batch" ? (normalised.items || []).length : (normalised.action === "create_bill" ? 1 : 0);
-    console.log("[api/parse] returning bill count", billCount);
 
     if (isMultipartImageImport) {
       return NextResponse.json(
@@ -825,14 +813,6 @@ function buildImageImportResponse(parsed) {
 }
 
 function buildImageImportSuccess(bills) {
-  console.log("[date-debug-api]", bills.map((bill) => ({
-    name: bill.name,
-    amount: bill.amount,
-    dueDay: bill.dueDay,
-    dateText: bill.dateText,
-    rawText: bill.rawText,
-  })));
-
   return {
     ok: true,
     mode: "image_import",

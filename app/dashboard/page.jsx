@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import Logo from "@/components/Logo";
+import TrustShieldBadge from "@/app/components/TrustShieldBadge";
+import TrustShield from "@/components/TrustShield";
 import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
-  getDocs,
   limit,
   onSnapshot,
   orderBy,
@@ -55,45 +56,11 @@ import {
   normaliseLargeCostFundingStatus,
 } from "@/lib/billMath";
 import { analyseCsvText } from "@/lib/csvBillFinder";
+import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clientSecurity";
+import { safeError, safeWarn } from "@/lib/security/safeLog";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
 const GOOGLE_REDIRECT_ACTION_KEY = "billpilot_google_redirect_action";
-
-function getBalanceDocPath(userId) {
-  return `users/${userId}/settings/balance`;
-}
-
-function getIncomeDocPath(userId) {
-  return `users/${userId}/income/main`;
-}
-
-function getBillsCollectionPath(userId) {
-  return `users/${userId}/bills`;
-}
-
-function getBillDocPath(userId, billId) {
-  return `users/${userId}/bills/${billId}`;
-}
-
-function getLargeCostsCollectionPath(userId) {
-  return `users/${userId}/largeCosts`;
-}
-
-function getLargeCostDocPath(userId, costId) {
-  return `users/${userId}/largeCosts/${costId}`;
-}
-
-function getSavingsDocPath(userId) {
-  return `users/${userId}/settings/savings`;
-}
-
-function getReminderDocPath(userId, reminderId) {
-  return `users/${userId}/reminders/${reminderId}`;
-}
-
-function getDebugDocPath(userId) {
-  return `users/${userId}/debug/test`;
-}
 
 function getStoredGoogleRedirectAction() {
   if (typeof window === "undefined") {
@@ -149,8 +116,7 @@ function getIncomeStatusText(income, currency = "GBP") {
 }
 
 const BILLS_PER_PAGE = 6;
-const BALANCE_HELPER_TEXT = "We don’t connect to your bank or ask for login details. This is just the money currently available in your account, so ClearTill can show today’s cash position after bills.";
-const BALANCE_TRUST_NOTE = "Private by design: no bank login, no Open Banking connection, and you can delete your data any time.";
+const BALANCE_HELPER_TEXT = "This is just the money currently available in your account, so ClearTill can show today’s cash position after bills.";
 const BALANCE_MISSING_FORECAST_COPY = "Add your current available money to see today’s exact cash forecast.";
 
 export default function DashboardPage() {
@@ -213,7 +179,6 @@ export default function DashboardPage() {
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
-  const [firestoreTestState, setFirestoreTestState] = useState("idle");
   const [displayCurrency, setDisplayCurrency] = useState("GBP");
   const [setupDismissed, setSetupDismissed] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
@@ -428,23 +393,12 @@ export default function DashboardPage() {
     );
 
     const unsubscribeBills = onSnapshot(billsQuery, (snapshot) => {
-      console.log("[firestore-read] bills count", {
-        uid: user.uid,
-        path: getBillsCollectionPath(user.uid),
-        count: snapshot.size,
-      });
       setBills(snapshot.docs.map((billDoc) => ({ id: billDoc.id, ...billDoc.data() })));
     });
     const unsubscribeIncome = onSnapshot(doc(db, "users", user.uid, "income", "main"), (snapshot) => {
-      console.log("[firestore-read] income exists", {
-        uid: user.uid,
-        path: getIncomeDocPath(user.uid),
-        exists: snapshot.exists(),
-      });
       const loadedIncome = snapshot.exists() ? snapshot.data() : null;
-      console.log("[payday-load] loaded", loadedIncome);
       if (loadedIncome && !isValidDueDay(loadedIncome.payDay)) {
-        console.warn("[payday-load] invalid payDay", loadedIncome.payDay);
+        safeWarn("[payday-load] invalid payDay");
       }
       const nextIncome = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setIncome(nextIncome);
@@ -455,11 +409,6 @@ export default function DashboardPage() {
       });
     });
     const unsubscribeAccount = onSnapshot(balanceDocRef, (snapshot) => {
-      console.log("[firestore-read] balance exists", {
-        uid: user.uid,
-        path: getBalanceDocPath(user.uid),
-        exists: snapshot.exists(),
-      });
       const nextAccount = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setAccount(nextAccount);
       setOptimisticBalance(null);
@@ -492,38 +441,6 @@ export default function DashboardPage() {
       unsubscribeReminders();
       unsubscribePreferences();
     };
-  }, [user]);
-
-  useEffect(() => {
-    if (!user || !db) {
-      return undefined;
-    }
-
-    const userId = user.uid;
-
-    void (async () => {
-      try {
-        const [balanceSnapshot, incomeSnapshot, billsSnapshot] = await Promise.all([
-          getDoc(doc(db, "users", userId, "settings", "balance")),
-          getDoc(doc(db, "users", userId, "income", "main")),
-          getDocs(query(collection(db, "users", userId, "bills"))),
-        ]);
-
-        console.log("[firestore-read] dashboard load", {
-          uid: userId,
-          balancePath: getBalanceDocPath(userId),
-          balanceExists: balanceSnapshot.exists(),
-          incomePath: getIncomeDocPath(userId),
-          incomeExists: incomeSnapshot.exists(),
-          billsPath: getBillsCollectionPath(userId),
-          billsCount: billsSnapshot.size,
-        });
-      } catch (error) {
-        console.error("[firestore-read] dashboard load failed", error?.code, error?.message);
-      }
-    })();
-
-    return undefined;
   }, [user]);
 
   const displayIncome = useMemo(() => (
@@ -832,30 +749,6 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleFirestoreTestWrite() {
-    if (!user || !db) {
-      return;
-    }
-
-    const path = getDebugDocPath(user.uid);
-    const payload = {
-      message: "Firestore write test",
-      createdAt: serverTimestamp(),
-    };
-
-    setFirestoreTestState("writing");
-    console.log("[firestore-test] writing", path);
-
-    try {
-      await setDoc(doc(db, "users", user.uid, "debug", "test"), payload, { merge: true });
-      console.log("[firestore-test] success");
-      setFirestoreTestState("success");
-    } catch (error) {
-      console.error("[firestore-test] failed", error?.code, error?.message);
-      setFirestoreTestState("failed");
-    }
-  }
-
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -963,7 +856,6 @@ export default function DashboardPage() {
         });
 
         try {
-          console.log("[import-queue] starting job", job.id, job.name);
 
           const result = await importSingleImage(job);
 
@@ -997,8 +889,6 @@ export default function DashboardPage() {
             });
           }
           setCurrentImportStep("job_done");
-
-          console.log("[import-queue] finished job", job.id, job.name, result);
         } catch (error) {
           processedTotal += 1;
 
@@ -1019,7 +909,7 @@ export default function DashboardPage() {
           });
           setCurrentImportStep("job_failed");
 
-          console.error("[import-queue] failed job", job.id, job.name, error);
+          safeError("[import-queue] job failed", { reason: isTimeout ? "timeout" : "import_error" });
         } finally {
           setLastCompletedImportJobName(job.name);
           setCurrentImportJobId(null);
@@ -1046,7 +936,6 @@ export default function DashboardPage() {
   }
 
   async function importSingleImage(job) {
-    console.log("[import-single] sending", job.name);
     setCurrentImportStep("uploading_image");
     updateJob(job.id, {
       status: "uploading",
@@ -1062,7 +951,6 @@ export default function DashboardPage() {
 
     const response = await fetchImageImport(formData, job.name);
 
-    console.log("[import-single] response received", response.status, response.ok);
     setCurrentImportStep("reading_response");
     updateJob(job.id, {
       status: "identifying",
@@ -1070,16 +958,23 @@ export default function DashboardPage() {
     });
     const json = await response.json();
     setCurrentImportStep("json_received");
-    console.log("[import-single] json received", json);
     if (!response.ok || json.ok === false) {
       throw new Error(json.error || json.message || "Image import failed");
     }
 
     const bills = Array.isArray(json.bills) ? json.bills : [];
-    console.log("[import-single] bills returned", Array.isArray(json.bills) ? json.bills.length : "not array");
     if (!bills.length) {
       throw new Error(json.error || json.message || "No bills found in this screenshot.");
     }
+
+    // Archive the AI-extracted provenance text server-side (encrypted at rest)
+    // and record that an AI import was used — no financial values are logged.
+    logSecurityEventClient("ai_import_used", { billCount: bills.length });
+    storeImportArchive({
+      source: "ai_image",
+      rawText: bills.map((bill) => bill?.rawText).filter(Boolean).join("\n"),
+      payload: { billCount: bills.length },
+    });
 
     const qualityResults = bills.map(scoreAndClassifyBill);
     const billsToSave = qualityResults.filter((r) => r.shouldImport).map((r) => r.bill);
@@ -1122,7 +1017,6 @@ export default function DashboardPage() {
           billsSkipped: skippedCount,
           currentBillIndex: index + 1,
         });
-        console.log(`[import-single] saving bill ${index + 1}/${billsToSave.length}`, bill);
         const result = await withTimeout(
           saveImportedBill(user.uid, bill),
           10000,
@@ -1142,9 +1036,8 @@ export default function DashboardPage() {
           billsSkipped: skippedCount,
           currentBillIndex: index + 1,
         });
-        console.log(`[import-single] saved bill ${index + 1}/${billsToSave.length}`, result);
-      } catch (error) {
-        console.error("[import-single] save failed", bill, error);
+      } catch {
+        safeError("[import-single] bill save failed", { reason: "save_error" });
         skippedCount += 1;
         updateJob(job.id, {
           status: "saving",
@@ -1168,17 +1061,7 @@ export default function DashboardPage() {
       currentBillIndex: bills.length,
       skippedRows,
     });
-    console.log("[import-single] image result", {
-      name: job.name,
-      responseOk: response.ok,
-      jsonOk: json.ok,
-      billCount: bills.length,
-      importedCount,
-      skippedCount,
-      qualitySkipped: skippedRows.length,
-    });
     setCurrentImportStep("returning_result");
-    console.log("[import-single] returning result", { importedCount, skippedCount });
 
     return {
       importedCount,
@@ -1227,14 +1110,6 @@ export default function DashboardPage() {
   }
 
   async function saveImportedBill(userId, bill) {
-    console.log("[date-debug-client-before-save]", {
-      name: bill.name,
-      amount: bill.amount,
-      dueDay: bill.dueDay,
-      dateText: bill.dateText,
-      rawText: bill.rawText,
-    });
-
     const repairedDueDay = isValidDueDay(bill?.dueDay)
       ? Number(bill?.dueDay)
       : parseDueDayFromText(
@@ -1270,7 +1145,6 @@ export default function DashboardPage() {
 
     const billRef = doc(collection(db, "users", userId, "bills"));
     const billDocument = buildBillDocument(parsedBill);
-    const path = getBillDocPath(userId, billRef.id);
     const payload = {
       ...billDocument,
       dateText: parsedBill.dateText,
@@ -1278,21 +1152,15 @@ export default function DashboardPage() {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
-    console.log("[firestore-bill-save] writing", {
-      uid: userId,
-      path,
-      payload,
-    });
-    console.log("[date-debug-firestore-payload]", payload);
     const batch = writeBatch(db);
 
     batch.set(billRef, payload);
 
     try {
       await batch.commit();
-      console.log("[firestore-bill-save] success", { uid: userId, path });
+      logSecurityEventClient("bill_created", { source: "import" });
     } catch (error) {
-      console.error("[firestore-bill-save] failed", error?.code, error?.message);
+      safeError("[firestore-bill-save] failed", { code: error?.code });
       throw error;
     }
     const savedBill = {
@@ -1322,7 +1190,6 @@ export default function DashboardPage() {
     setOptimisticBalance(null);
     setBalanceInput("");
 
-    const path = getBalanceDocPath(user.uid);
     const payload = {
       currentBalance: null,
       currency: "GBP",
@@ -1330,15 +1197,9 @@ export default function DashboardPage() {
       createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
     };
 
-    console.log("[firestore-balance-skip] writing", {
-      uid: user.uid,
-      path,
-      payload,
-    });
-
     void setDoc(doc(db, "users", user.uid, "settings", "balance"), payload, { merge: true })
       .catch((saveError) => {
-        console.error("[firestore-balance-skip] failed", saveError?.code, saveError?.message);
+        safeError("[firestore-balance-skip] failed", { code: saveError?.code });
       });
   }
 
@@ -1357,7 +1218,6 @@ export default function DashboardPage() {
       setOptimisticBalance(null);
       setBalanceInput("");
 
-      const path = getBalanceDocPath(user.uid);
       const payload = {
         currentBalance: null,
         currency: "GBP",
@@ -1367,7 +1227,7 @@ export default function DashboardPage() {
 
       void setDoc(doc(db, "users", user.uid, "settings", "balance"), payload, { merge: true })
         .catch((saveError) => {
-          console.error("[firestore-balance-save] failed", saveError?.code, saveError?.message);
+          safeError("[firestore-balance-save] failed", { code: saveError?.code });
         });
       return;
     }
@@ -1389,7 +1249,6 @@ export default function DashboardPage() {
     setSavingBalance(false);
     setPageNotice(`Current available money updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
 
-    const path = getBalanceDocPath(user.uid);
     const payload = {
       currentBalance: parsedBalance,
       currency: "GBP",
@@ -1397,11 +1256,6 @@ export default function DashboardPage() {
       snapshotEnteredAt: serverTimestamp(),
       createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
     };
-    console.log("[firestore-balance-save] writing", {
-      uid: user.uid,
-      path,
-      payload,
-    });
 
     void setDoc(
       doc(db, "users", user.uid, "settings", "balance"),
@@ -1413,10 +1267,7 @@ export default function DashboardPage() {
           return;
         }
 
-        console.log("[firestore-balance-save] success", {
-          uid: user.uid,
-          path,
-        });
+        logSecurityEventClient("balance_updated");
         setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
       })
       .catch((saveError) => {
@@ -1424,7 +1275,7 @@ export default function DashboardPage() {
           return;
         }
 
-        console.error("[firestore-balance-save] failed", saveError?.code, saveError?.message);
+        safeError("[firestore-balance-save] failed", { code: saveError?.code });
         setOptimisticBalance(null);
         setPageNotice("");
         setBalanceError(saveError.message || "Current available money could not be saved.");
@@ -1476,18 +1327,12 @@ export default function DashboardPage() {
         reminderOffsetDays: 1,
         paidThroughDate: existingBill?.paidThroughDate || null,
       });
-      const path = getBillDocPath(user.uid, billId);
       const payload = {
         ...updatedBill,
         category: editingBillForm.category || null,
         lastPaidAt: existingBill?.lastPaidAt || null,
         updatedAt: serverTimestamp(),
       };
-      console.log("[firestore-bill-save] writing", {
-        uid: user.uid,
-        path,
-        payload,
-      });
 
       await runWithTimeout(setDoc(
         doc(db, "users", user.uid, "bills", billId),
@@ -1495,14 +1340,11 @@ export default function DashboardPage() {
         { merge: true },
       ), "Saving that bill is taking too long. Check your connection and try again.");
 
-      console.log("[firestore-bill-save] success", {
-        uid: user.uid,
-        path,
-      });
+      logSecurityEventClient("bill_updated", { source: "edit" });
       cancelBillEdit();
       setPageNotice("Bill updated.");
     } catch (saveError) {
-      console.error("[firestore-bill-save] failed", saveError?.code, saveError?.message);
+      safeError("[firestore-bill-save] failed", { code: saveError?.code });
       setEditError(saveError.message);
     } finally {
       setSavingEdit(false);
@@ -1520,8 +1362,6 @@ export default function DashboardPage() {
     const payDayInput = incomeForm.payDay;
     const amount = Number(incomeAmountInput);
     const payDay = Number(payDayInput);
-
-    console.log("[payday-save] input", { incomeAmountInput, payDayInput });
 
     if (!Number.isFinite(amount) || amount < 0) {
       setEditError("Enter your monthly income amount.");
@@ -1551,13 +1391,6 @@ export default function DashboardPage() {
       payDay,
       currency: "GBP",
     };
-    const payload = {
-      ...buildIncomeDocument(parsedIncome),
-      updatedAt: serverTimestamp(),
-      ...(income?.id ? {} : { createdAt: serverTimestamp() }),
-    };
-
-    console.log("[payday-save] payload", payload);
 
     setEditingIncome(false);
     setPageNotice(`Payday set for the ${formatOrdinal(payDay)}.`);
@@ -1568,12 +1401,8 @@ export default function DashboardPage() {
         parsedIncome,
         Boolean(income),
       );
-      console.log("[firestore-payday-save] success", {
-        uid: user.uid,
-        path: getIncomeDocPath(user.uid),
-      });
     } catch (saveError) {
-      console.error("[firestore-payday-save] failed", saveError?.code, saveError?.message);
+      safeError("[firestore-payday-save] failed", { code: saveError?.code });
       setOptimisticIncome(null);
       setEditingIncome(true);
       setPageNotice("");
@@ -1707,7 +1536,8 @@ export default function DashboardPage() {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const result = analyseCsvText(e.target.result || "");
+        const csvText = e.target.result || "";
+        const result = analyseCsvText(csvText);
         if (result.error === "no_columns") {
           setCsvError("We could not find date, description and amount columns in this CSV.");
           setCsvPhase("error");
@@ -1719,6 +1549,10 @@ export default function DashboardPage() {
         } else {
           setCsvSuggestions(result.suggestions);
           setCsvPhase("reviewing");
+          // Archive the uploaded CSV text server-side (encrypted at rest) and
+          // record the upload — no financial values are logged.
+          logSecurityEventClient("csv_uploaded", { suggestionCount: result.suggestions.length });
+          storeImportArchive({ source: "csv", csvText: String(csvText).slice(0, 100000) });
         }
       } catch {
         setCsvError("We could not read this CSV. Try exporting it again from your banking app.");
@@ -1756,6 +1590,7 @@ export default function DashboardPage() {
       billsRef.current = [...(billsRef.current || []), saved];
       setCsvSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
       setCsvSavedCount((n) => n + 1);
+      logSecurityEventClient("bill_created", { source: "csv" });
     } catch {
       setCsvError("Could not save that bill. Try again.");
     } finally {
@@ -1806,6 +1641,7 @@ export default function DashboardPage() {
       setCsvSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
       setCsvEditingId(null);
       setCsvSavedCount((n) => n + 1);
+      logSecurityEventClient("bill_created", { source: "csv" });
     } catch {
       setCsvError("Could not save that bill. Try again.");
     } finally {
@@ -1916,6 +1752,7 @@ export default function DashboardPage() {
     if (!window.confirm("Remove this bill?")) return;
     try {
       await deleteDoc(doc(db, "users", user.uid, "bills", billId));
+      logSecurityEventClient("bill_deleted");
     } catch {
       setEditError("Could not delete that bill. Try again.");
     }
@@ -2050,6 +1887,7 @@ export default function DashboardPage() {
         batch.delete(doc(db, "users", user.uid, "bills", billId));
       });
       await batch.commit();
+      logSecurityEventClient("bill_deleted", { count });
       setSelectedBillIds(new Set());
       setSelectMode(false);
     } catch {
@@ -2131,7 +1969,6 @@ export default function DashboardPage() {
 
     try {
       const costId = editingLargeCostId || doc(collection(db, "users", user.uid, "largeCosts")).id;
-      const path = getLargeCostDocPath(user.uid, costId);
       const payload = {
         ...buildLargeCostDocument({
           name: largeCostForm.name.trim(),
@@ -2151,11 +1988,10 @@ export default function DashboardPage() {
         setDoc(doc(db, "users", user.uid, "largeCosts", costId), payload, { merge: true }),
         "Saving that large cost is taking too long. Check your connection and try again.",
       );
-      console.log("[firestore-large-cost-save] success", { uid: user.uid, path, payload });
       setPageNotice(editingLargeCostId ? "Large cost updated." : "Large cost added.");
       resetLargeCostForm();
     } catch (saveError) {
-      console.error("[firestore-large-cost-save] failed", saveError?.code, saveError?.message);
+      safeError("[firestore-large-cost-save] failed", { code: saveError?.code });
       setLargeCostError(saveError.message || "Could not save that large cost.");
     } finally {
       setSavingLargeCost(false);
@@ -2383,7 +2219,7 @@ export default function DashboardPage() {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Loading your payday forecast…</h1>
         </section>
       </main>
@@ -2394,7 +2230,7 @@ export default function DashboardPage() {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Sign-in is not available.</h1>
           {process.env.NODE_ENV !== "production" ? (
             <>
@@ -2413,8 +2249,9 @@ export default function DashboardPage() {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Know you&apos;re clear till payday.</h1>
+          <TrustShieldBadge className="auth-trust-banner" />
           <p>Add your current available money, payday and bills. ClearTill shows what&apos;s due before payday and what may be left after.</p>
           <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
             {signingIn ? "Signing in…" : "Continue with Google"}
@@ -2456,7 +2293,6 @@ export default function DashboardPage() {
               Just testing? Continue as guest
             </button>
           ) : null}
-          <p className="helper-text auth-trust">No bank connection. No spending tracking. Just a simple payday heads-up.</p>
           {authError ? <p className="error">{authError}</p> : null}
         </section>
       </main>
@@ -2467,7 +2303,9 @@ export default function DashboardPage() {
     <main className="dashboard-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">ClearTill</p>
+          <Link className="brand-link" href="/" aria-label="ClearTill home">
+            <Logo className="eyebrow-logo" />
+          </Link>
           <h1 className="brand">Your payday heads-up for bills.</h1>
         </div>
         <div className="topbar-actions">
@@ -2498,7 +2336,7 @@ export default function DashboardPage() {
               <p className="eyebrow">Setup</p>
               <h2>{setupMessage.title}</h2>
               <p className="helper-text">{setupMessage.detail}</p>
-              <p className="helper-text">{BALANCE_TRUST_NOTE}</p>
+              <TrustShieldBadge className="setup-trust-badge" compact />
             </div>
             <div className="setup-chip-row" aria-label="Setup progress">
               <button className={`setup-chip ${getSetupChipState(1, setupStep)}`} type="button" onClick={focusBalanceSnapshotForm}>
@@ -2588,9 +2426,7 @@ export default function DashboardPage() {
                 <h2 style={{ margin: 0 }}>Current available money</h2>
                 <p className="helper-text balance-copy">Update this when your cash position changes. ClearTill uses it to work out what is still safe to spend until payday.</p>
               </div>
-              <button className="secondary-button small-button" type="button" onClick={focusBalanceSnapshotForm}>
-                Update
-              </button>
+              <TrustShieldBadge className="balance-trust-badge" compact />
             </div>
             <p className="balance-action-value">
               {hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : BALANCE_MISSING_FORECAST_COPY}
@@ -2617,6 +2453,7 @@ export default function DashboardPage() {
               </div>
             </form>
             <p className="helper-text balance-copy" style={{ marginTop: "8px" }}>{BALANCE_HELPER_TEXT}</p>
+            <TrustShield className="balance-trust-shield" compact />
             <button className="secondary-button small-button" type="button" onClick={handleSkipBalance} disabled={importLocked} style={{ marginTop: "8px" }}>
               Skip for now
             </button>
@@ -4557,7 +4394,6 @@ function BillGroup({
 
 async function saveIncome(userId, parsed, hasExistingIncome) {
   const income = buildIncomeDocument(parsed);
-  const path = getIncomeDocPath(userId);
   const payload = {
     ...income,
     updatedAt: serverTimestamp(),
@@ -4567,11 +4403,6 @@ async function saveIncome(userId, parsed, hasExistingIncome) {
     payload.createdAt = serverTimestamp();
   }
 
-  console.log("[firestore-payday-save] writing", {
-    uid: userId,
-    path,
-    payload,
-  });
   await setDoc(doc(db, "users", userId, "income", "main"), payload, { merge: true });
 }
 
@@ -4630,7 +4461,6 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
       billItems.toCreate.map((item) => {
         const billRef = doc(collection(db, "users", userId, "bills"));
         const bill = buildBillDocument(item);
-        const path = getBillDocPath(userId, billRef.id);
         const batch = writeBatch(db);
         const payload = {
           ...bill,
@@ -4638,11 +4468,6 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
-        console.log("[firestore-bill-save] writing", {
-          uid: userId,
-          path,
-          payload,
-        });
         batch.set(billRef, payload);
         return batch.commit().then(() => ({
           id: billRef.id,
@@ -4654,26 +4479,9 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
     outcome.savedBills = saveResults
       .filter((result) => result.status === "fulfilled")
       .map((result) => result.value);
-    saveResults.forEach((result, index) => {
-      const item = billItems.toCreate[index];
-
-      if (!item) {
-        return;
-      }
-
-      if (result.status === "fulfilled") {
-        console.log("[firestore-bill-save] success", {
-          uid: userId,
-          path: `${getBillsCollectionPath(userId)}/(generated)`,
-          name: item.name,
-        });
-      } else {
-        console.error("[firestore-bill-save] failed", result.reason?.code, result.reason?.message);
-      }
-    });
     const failures = saveResults.filter((r) => r.status === "rejected");
     if (failures.length) {
-      console.error("[applyParsedActions] some bill saves failed", failures.map((f) => f.reason));
+      safeError("[applyParsedActions] some bill saves failed", { count: failures.length });
     }
   }
 
@@ -4682,7 +4490,7 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
       await saveIncome(userId, incomeItems[incomeItems.length - 1], hasExistingIncome);
       outcome.savedIncome = true;
     } catch (saveError) {
-      console.error("[applyParsedActions] income save failed", saveError);
+      safeError("[applyParsedActions] income save failed", { code: saveError?.code });
     }
   }
 

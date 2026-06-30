@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { deleteUserAccount, deleteUserData, resetUserData } from "@/lib/accountData";
+import { deleteUserAccount, deleteUserData, exportUserData, resetUserData } from "@/lib/accountData";
 import { getAdminAuth } from "@/lib/firebaseAdmin";
+import { logSecurityEvent, SECURITY_ACTIONS } from "@/lib/security/auditLog";
 
 export const runtime = "nodejs";
 
@@ -11,8 +12,27 @@ export async function POST(request) {
     const action = String(body?.action || "").trim();
 
     switch (action) {
+      case "export_data": {
+        const result = await exportUserData(decodedToken.uid);
+        await logSecurityEvent({
+          userId: decodedToken.uid,
+          action: SECURITY_ACTIONS.DATA_EXPORT_REQUESTED,
+        });
+
+        return NextResponse.json({
+          ok: true,
+          action,
+          message: "ClearTill data export ready.",
+          export: result,
+        });
+      }
+
       case "reset_data": {
         const result = await resetUserData(decodedToken.uid);
+        await logSecurityEvent({
+          userId: decodedToken.uid,
+          action: SECURITY_ACTIONS.DATA_RESET_REQUESTED,
+        });
 
         return NextResponse.json({
           ok: true,
@@ -24,6 +44,11 @@ export async function POST(request) {
 
       case "delete_data": {
         const result = await deleteUserData(decodedToken.uid);
+        await logSecurityEvent({
+          userId: decodedToken.uid,
+          action: SECURITY_ACTIONS.DATA_RESET_REQUESTED,
+          metadata: { scope: "all" },
+        });
 
         return NextResponse.json({
           ok: true,
@@ -35,6 +60,11 @@ export async function POST(request) {
 
       case "delete_account": {
         // TODO: Cancel or disconnect Stripe billing before full account deletion when paid plans exist.
+        // Log the request before deletion so the audit trail survives the account removal.
+        await logSecurityEvent({
+          userId: decodedToken.uid,
+          action: SECURITY_ACTIONS.ACCOUNT_DELETE_REQUESTED,
+        });
         const result = await deleteUserAccount(decodedToken.uid);
 
         return NextResponse.json({

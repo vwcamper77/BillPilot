@@ -1,4 +1,3 @@
-import { getApps } from "firebase-admin/app";
 import { NextResponse } from "next/server";
 import {
   calculateBillSchedule,
@@ -28,10 +27,7 @@ async function handleRemindersRequest(request) {
   }
 
   try {
-    console.log("[reminders] admin project", process.env.FIREBASE_PROJECT_ID);
     const db = getAdminDb();
-    const adminApp = getApps()[0] || null;
-    console.log("[reminders] admin initialized", Boolean(adminApp));
 
     const todayIso = getTodayIso();
     const tomorrowIso = getTodayIso(new Date(Date.now() + 24 * 60 * 60 * 1000));
@@ -82,7 +78,7 @@ async function handleRemindersRequest(request) {
           continue;
         }
 
-        console.log("[reminders] due tomorrow", bill.name, bill.id);
+        console.log("[reminders] due tomorrow", bill.id);
 
         const reminderId = getReminderDocumentId(bill.id, schedule.reminderDate);
         const reminderRef = userRef.collection("reminders").doc(reminderId);

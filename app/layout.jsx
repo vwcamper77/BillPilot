@@ -1,15 +1,27 @@
-import Link from "next/link";
 import "./globals.css";
+import Footer from "@/components/Footer";
 
 export const metadata = {
-  title: "ClearTill — Know you're clear till payday",
-  description: "Add your balance snapshot, payday and bills. ClearTill shows what's due before payday and what may be left after.",
+  title: "ClearTill",
+  description: "Know you're clear till payday.",
+  manifest: "/site.webmanifest",
+  icons: {
+    icon: [
+      { url: "/favicon/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+    ],
+    shortcut: "/favicon/favicon.ico",
+    apple: "/app-icons/apple-touch-icon-180x180.png",
+  },
   openGraph: {
-    title: "ClearTill — Know you're clear till payday",
-    description: "No bank connection. No spending tracking. Just a simple payday heads-up.",
+    title: "ClearTill",
+    description: "Know you're clear till payday.",
     siteName: "ClearTill",
   },
 };
+
+export const viewport = { themeColor: "#143C3A" };
 
 export default function RootLayout({ children }) {
   return (
@@ -17,14 +29,7 @@ export default function RootLayout({ children }) {
       <body>
         <div className="app-frame">
           <div className="app-content">{children}</div>
-          <footer className="site-footer">
-            <span>&copy; ClearTill</span>
-            <div className="site-footer-links">
-              <Link href="/terms">Terms of Service</Link>
-              <span aria-hidden="true">&middot;</span>
-              <Link href="/privacy">Privacy Policy</Link>
-            </div>
-          </footer>
+          <Footer />
         </div>
       </body>
     </html>

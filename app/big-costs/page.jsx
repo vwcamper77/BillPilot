@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import Logo from "@/components/Logo";
+import TrustShieldBadge from "@/app/components/TrustShieldBadge";
 import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, authPersistenceReady, db, isFirebaseClientConfigured } from "@/lib/firebase";
@@ -191,7 +193,7 @@ export default function BigCostsPlanPage() {
     return (
       <main className="plan-shell">
         <section className="auth-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Loading your big cost plan…</h1>
         </section>
       </main>
@@ -202,7 +204,7 @@ export default function BigCostsPlanPage() {
     return (
       <main className="plan-shell">
         <section className="auth-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Firebase is not configured.</h1>
         </section>
       </main>
@@ -213,7 +215,7 @@ export default function BigCostsPlanPage() {
     return (
       <main className="plan-shell">
         <section className="auth-panel">
-          <p className="eyebrow">ClearTill</p>
+          <Logo className="eyebrow-logo" />
           <h1>Sign in to view your big cost plan.</h1>
           <Link className="primary-link" href="/dashboard">Back to dashboard</Link>
         </section>
@@ -415,7 +417,9 @@ export default function BigCostsPlanPage() {
     <main className="plan-shell">
       <div className="topbar">
         <div>
-          <p className="eyebrow">ClearTill</p>
+          <Link className="brand-link" href="/" aria-label="ClearTill home">
+            <Logo className="eyebrow-logo" />
+          </Link>
           <h1 className="brand" style={{ fontSize: "2rem" }}>Big costs plan</h1>
         </div>
         <div className="topbar-actions">
@@ -428,6 +432,8 @@ export default function BigCostsPlanPage() {
           <Link className="secondary-button" href="/dashboard">Back to dashboard</Link>
         </div>
       </div>
+
+      <TrustShieldBadge className="page-trust-banner" />
 
       <div className="plan-stack">
         <section className="plan-panel plan-gap-panel">
