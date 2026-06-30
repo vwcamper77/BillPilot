@@ -240,6 +240,7 @@ export default function DashboardPage() {
   const [highlightBalanceForm, setHighlightBalanceForm] = useState(false);
   const [highlightPaydayForm, setHighlightPaydayForm] = useState(false);
   const [highlightAddBillForm, setHighlightAddBillForm] = useState(false);
+  const [pendingSetupFocus, setPendingSetupFocus] = useState("");
   const [fundingEditorCostId, setFundingEditorCostId] = useState("");
   const [fundingEditorForm, setFundingEditorForm] = useState({ fundingStatus: "unassigned", savingsAmount: "" });
   const balanceSaveRequestRef = useRef(0);
@@ -2009,15 +2010,16 @@ export default function DashboardPage() {
   }
 
   function focusAddBillComposer() {
-    addBillSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setHighlightAddBillForm(true);
-    window.setTimeout(() => {
+    setPendingSetupFocus("bills");
+    window.requestAnimationFrame(() => {
+      messageInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       messageInputRef.current?.focus();
       messageInputRef.current?.setSelectionRange?.(
         messageInputRef.current.value.length,
         messageInputRef.current.value.length,
       );
-    }, 180);
+    });
     window.setTimeout(() => {
       setHighlightAddBillForm(false);
     }, 1800);
@@ -2264,18 +2266,43 @@ export default function DashboardPage() {
   }
 
   function focusPaydayForm() {
+    const target = hasIncomeAmount ? "payday-day" : "payday-amount";
     setEditingIncome(true);
     paydaySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setHighlightPaydayForm(true);
-    window.setTimeout(() => {
-      const targetInput = hasIncomeAmount ? paydayDayInputRef.current : paydayAmountInputRef.current;
-      targetInput?.focus();
-      targetInput?.select?.();
-    }, 180);
+    setPendingSetupFocus(target);
     window.setTimeout(() => {
       setHighlightPaydayForm(false);
     }, 1800);
   }
+
+  useEffect(() => {
+    if (pendingSetupFocus === "payday-amount" && editingIncome && paydayAmountInputRef.current) {
+      paydayAmountInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      paydayAmountInputRef.current.focus();
+      paydayAmountInputRef.current.select?.();
+      setPendingSetupFocus("");
+      return;
+    }
+
+    if (pendingSetupFocus === "payday-day" && editingIncome && paydayDayInputRef.current) {
+      paydayDayInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      paydayDayInputRef.current.focus();
+      paydayDayInputRef.current.select?.();
+      setPendingSetupFocus("");
+      return;
+    }
+
+    if (pendingSetupFocus === "bills" && messageInputRef.current) {
+      messageInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      messageInputRef.current.focus();
+      messageInputRef.current.setSelectionRange?.(
+        messageInputRef.current.value.length,
+        messageInputRef.current.value.length,
+      );
+      setPendingSetupFocus("");
+    }
+  }, [editingIncome, pendingSetupFocus]);
 
   async function handleCurrencySave(currency) {
     if (!user || !db) return;
