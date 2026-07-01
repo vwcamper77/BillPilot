@@ -59,7 +59,7 @@ import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clien
 import { safeError, safeWarn } from "@/lib/security/safeLog";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
-const GOOGLE_REDIRECT_ACTION_KEY = "billpilot_google_redirect_action";
+const GOOGLE_REDIRECT_ACTION_KEY = "cleartill_google_redirect_action";
 
 function getStoredGoogleRedirectAction() {
   if (typeof window === "undefined") {
