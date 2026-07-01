@@ -8,7 +8,6 @@ export default function HomePage() {
         <div className="home-hero">
           <div className="home-hero-copy">
             <Logo className="home-brand-logo" height={68} />
-            <p className="helper-text">cleartill.money</p>
             <h1>Know you&apos;re clear till payday.</h1>
             <p className="home-hero-copy-text">
               Tell ClearTill your bills.
@@ -24,10 +23,9 @@ export default function HomePage() {
               <span className="trust-pill">No bank login</span>
               <span className="trust-pill">No Open Banking</span>
               <span className="trust-pill">You control your data</span>
-              <span className="trust-pill trust-pill-wide">Sensitive import data encrypted where supported</span>
             </div>
             <p className="helper-text home-hero-support">
-              ClearTill helps you plan your money without connecting to your bank.
+              Plan ahead without connecting your bank.
             </p>
           </div>
         </div>

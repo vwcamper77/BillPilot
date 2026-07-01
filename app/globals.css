@@ -97,9 +97,9 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 28px;
-  min-height: 560px;
-  padding: 0 190px 28px 0;
+  gap: 20px;
+  min-height: 0;
+  padding: 0 190px 8px 0;
   position: relative;
 }
 
@@ -107,9 +107,9 @@ button {
   display: grid;
   align-content: center;
   justify-items: start;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
-  max-width: 560px;
+  max-width: 520px;
 }
 
 .home-brand-logo {
@@ -120,9 +120,9 @@ button {
 
 .home-hero-copy-text {
   margin: 0;
-  max-width: 26rem;
-  font-size: clamp(1.2rem, 2vw, 1.5rem);
-  line-height: 1.22;
+  max-width: 24rem;
+  font-size: clamp(1.1rem, 1.8vw, 1.35rem);
+  line-height: 1.18;
 }
 
 .brand-link {
@@ -148,16 +148,39 @@ button {
   color: var(--muted);
 }
 
+.site-footer-company,
+.site-footer-company-detail,
+.legal-company-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.site-footer-company {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.site-footer-company-detail,
+.legal-company-note {
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.site-footer-meta {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .home-trust-stack {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  max-width: 760px;
+  gap: 8px;
+  max-width: 520px;
 }
 
 .home-hero-support {
-  margin-top: 8px;
-  max-width: 34rem;
+  margin-top: 4px;
+  max-width: 24rem;
 }
 
 .eyebrow {
@@ -176,9 +199,9 @@ p {
 
 h1 {
   max-width: 620px;
-  margin: 0 0 28px;
-  font-size: clamp(2.25rem, 6vw, 4.75rem);
-  line-height: 0.98;
+  margin: 0 0 10px;
+  font-size: clamp(2.25rem, 5.6vw, 4.25rem);
+  line-height: 0.94;
   letter-spacing: 0;
 }
 
@@ -277,9 +300,9 @@ h1 {
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 32px 24px;
+  padding: 0 32px 18px;
   color: #776d62;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
 }
 
 .site-footer-links {
@@ -287,6 +310,7 @@ h1 {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  align-self: flex-start;
 }
 
 .site-footer a {
@@ -414,13 +438,13 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
-  padding: 8px 12px;
+  min-height: 34px;
+  padding: 6px 11px;
   border: 1px solid rgba(20, 100, 85, 0.25);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.55);
   color: var(--accent-dark);
-  font-size: 0.92rem;
+  font-size: 0.86rem;
   font-weight: 700;
   line-height: 1.2;
 }

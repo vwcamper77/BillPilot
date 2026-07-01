@@ -29,6 +29,12 @@ export default function PrivacyPage() {
           ClearTill helps you plan your money without connecting to your bank.
         </p>
 
+        <h2 className="account-heading" style={{ marginTop: "20px" }}>Who operates ClearTill</h2>
+        <p>
+          ClearTill is operated by GMBF Ventures Ltd, a company registered in England and Wales under company number
+          {" "}17286832. Our registered office is 124 City Road, London, EC1V 2NX, United Kingdom.
+        </p>
+
         <h2 className="account-heading">What data you enter</h2>
         <p>Information we may store includes:</p>
         <ul className="page-list">

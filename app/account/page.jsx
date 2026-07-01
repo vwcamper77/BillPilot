@@ -271,6 +271,7 @@ export default function AccountPage() {
           <p className="helper-text">
             Manage your ClearTill data, account access, and privacy controls here.
           </p>
+          <p className="legal-company-note">ClearTill is a product from GMBF Ventures Ltd.</p>
         </section>
 
         <section className="account-panel">

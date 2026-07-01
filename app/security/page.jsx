@@ -58,6 +58,7 @@ export default function SecurityPage() {
         <p className="helper-text" style={{ marginTop: "16px" }}>
           For the full privacy summary, see our <Link href="/privacy">Privacy Policy</Link>.
         </p>
+        <p className="legal-company-note">ClearTill is operated by GMBF Ventures Ltd.</p>
       </section>
     </main>
   );

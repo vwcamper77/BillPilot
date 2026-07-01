@@ -10,14 +10,16 @@ export default function Footer() {
         <Link href="/" aria-label="ClearTill home">
           <Logo className="site-footer-logo" height={32} />
         </Link>
-        <p className="site-footer-tagline">Know you&apos;re clear till payday.</p>
-        <p className="site-footer-tagline">No bank login. No Open Banking. You stay in control of your data.</p>
-        <span>&copy; {year} ClearTill</span>
+        <p className="site-footer-company">ClearTill is a product from GMBF Ventures Ltd.</p>
+        <p className="site-footer-company-detail">
+          GMBF Ventures Ltd - Company No. 17286832 - Registered office: 124 City Road, London, EC1V 2NX, United Kingdom
+        </p>
+        <span className="site-footer-meta">&copy; {year} ClearTill</span>
       </div>
       <div className="site-footer-links">
-        <Link href="/terms">Terms of Service</Link>
+        <Link href="/privacy">Privacy</Link>
         <span aria-hidden="true">&middot;</span>
-        <Link href="/privacy">Privacy Policy</Link>
+        <Link href="/terms">Terms</Link>
         <span aria-hidden="true">&middot;</span>
         <Link href="/security">Security</Link>
       </div>
