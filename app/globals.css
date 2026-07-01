@@ -106,6 +106,7 @@ button {
 .home-hero-copy {
   display: grid;
   align-content: center;
+  justify-items: start;
   gap: 18px;
   min-width: 0;
   max-width: 560px;
@@ -147,30 +148,16 @@ button {
   color: var(--muted);
 }
 
-.home-hero-shield {
+.home-trust-stack {
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-  padding: 0;
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  pointer-events: none;
+  flex-wrap: wrap;
+  gap: 10px;
+  max-width: 760px;
 }
 
-.home-trust-badge {
-  margin: 0;
-  opacity: 1;
-  transform: translate(8px, 10px) scale(0.84);
-  transform-origin: bottom right;
-}
-
-.home-trust-badge .trust-shield-badge__icon {
-  filter: drop-shadow(0 8px 18px rgba(15, 118, 110, 0.08));
-}
-
-.home-trust-badge .trust-shield-badge__icon {
-  filter: drop-shadow(0 10px 16px rgba(15, 118, 110, 0.08));
+.home-hero-support {
+  margin-top: 8px;
+  max-width: 34rem;
 }
 
 .eyebrow {
@@ -352,94 +339,117 @@ h1 {
   color: var(--muted);
 }
 
-.trust-shield-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  background: transparent;
-}
-
-.trust-shield-badge.is-feature {
-  width: 168px;
-}
-
-.trust-shield-badge.is-compact {
-  width: 112px;
-}
-
-.trust-shield-badge__icon {
-  display: block;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-  filter: drop-shadow(0 10px 24px rgba(15, 118, 110, 0.18));
-}
-
-/* TrustShield — compact official-looking trust mark (transparent pill). */
 .trust-shield {
   display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
   max-width: 100%;
-  padding: 8px 14px;
-  border: 1.5px solid var(--accent-dark);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--ink);
-  line-height: 1.3;
+  padding: 12px 14px;
+  border: 1px solid rgba(20, 100, 85, 0.25);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--accent-dark);
+  line-height: 1.35;
 }
 
-.trust-shield__icon {
-  font-size: 18px;
-  flex: 0 0 auto;
+.trust-shield__heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .trust-shield__text {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  gap: 4px;
+}
+
+.trust-shield__icon {
+  font-size: 0.95rem;
+  flex: 0 0 auto;
 }
 
 .trust-shield__title {
-  font-size: 0.82rem;
+  font-size: 0.84rem;
   font-weight: 700;
   color: var(--accent-dark);
 }
 
 .trust-shield__subtext {
-  font-size: 0.72rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+
+.trust-shield__note {
+  font-size: 0.75rem;
   color: var(--muted);
 }
 
 .trust-shield--compact {
-  padding: 6px 12px;
-  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
 }
 
-.trust-shield--compact .trust-shield__subtext {
-  font-size: 0.68rem;
+.trust-shield--compact .trust-shield__title {
+  font-size: 0.8rem;
 }
 
-.balance-trust-shield {
-  margin: 12px 0;
+.trust-shield--compact .trust-shield__subtext,
+.trust-shield--compact .trust-shield__note {
+  font-size: 0.74rem;
+}
+
+.trust-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.trust-pill-row-spaced {
+  margin: 0 0 18px;
+}
+
+.trust-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(20, 100, 85, 0.25);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--accent-dark);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.trust-pill-wide {
+  justify-content: flex-start;
+}
+
+.terms-trust-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 10px 0 0;
 }
 
 @media (max-width: 520px) {
   .trust-shield {
-    border-radius: 16px;
-    align-items: flex-start;
+    width: 100%;
+  }
+
+  .trust-pill,
+  .trust-pill-wide {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 
-.setup-trust-badge,
-.balance-trust-badge {
+.setup-trust-banner {
   margin-top: 12px;
-}
-
-.section-head .balance-trust-badge {
-  margin-top: 0;
-  margin-left: auto;
 }
 
 .summary-grid {
@@ -2504,6 +2514,28 @@ h1 {
   border-color: rgba(214, 205, 191, 0.92);
 }
 
+.hero-trust {
+  margin-top: 14px;
+  max-width: 38rem;
+}
+
+.hero-trust-line,
+.hero-trust-note {
+  margin: 0;
+}
+
+.hero-trust-line {
+  color: var(--accent-dark);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.hero-trust-note {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 /* Stat chip row */
 .stat-chip-row {
   display: flex;
@@ -2544,28 +2576,7 @@ h1 {
     grid-template-columns: 1fr;
     gap: 20px;
     min-height: 0;
-    padding: 0 0 92px;
-  }
-
-  .home-hero-shield {
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    justify-content: flex-end;
-    align-items: flex-end;
-  }
-
-  .home-trust-badge {
-    opacity: 1;
-    transform: translate(6px, 8px) scale(0.74);
-  }
-
-  .trust-shield-badge.is-feature {
-    width: 118px;
-  }
-
-  .trust-shield-badge.is-compact {
-    width: 82px;
+    padding: 0;
   }
 
   .home-shell,

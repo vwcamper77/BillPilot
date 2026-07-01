@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import TrustShieldBadge from "@/app/components/TrustShieldBadge";
+import TrustShield from "@/components/TrustShield";
 
 export const metadata = {
   title: "Billing & payments | ClearTill",
@@ -22,7 +22,7 @@ export default function BillingPage() {
         </div>
       </header>
 
-      <TrustShieldBadge className="page-trust-banner" />
+      <TrustShield className="page-trust-banner" compact />
 
       <section className="legal-panel">
         <p>

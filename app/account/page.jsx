@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
 import Logo from "@/components/Logo";
-import TrustShieldBadge from "@/app/components/TrustShieldBadge";
+import TrustShield from "@/components/TrustShield";
 import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";
 
 const ACCOUNT_DIALOGS = {
@@ -261,7 +261,7 @@ export default function AccountPage() {
         </section>
       ) : null}
 
-      <TrustShieldBadge className="page-trust-banner" />
+      <TrustShield className="page-trust-banner" />
 
       <div className="account-stack">
         <section className="account-panel">
@@ -269,7 +269,7 @@ export default function AccountPage() {
           <h2 className="account-heading">Signed in as</h2>
           <p className="account-identity">{signedInLabel}</p>
           <p className="helper-text">
-            Manage your ClearTill data, billing placeholder, and account access here.
+            Manage your ClearTill data, account access, and privacy controls here.
           </p>
         </section>
 
@@ -340,7 +340,7 @@ export default function AccountPage() {
             <Link className="account-row" href="/privacy">
               <div>
                 <strong>Privacy Policy</strong>
-                <span>See the current ClearTill privacy placeholder.</span>
+                <span>See what you enter, how it is used, and how to manage it.</span>
               </div>
               <span aria-hidden="true">→</span>
             </Link>
@@ -348,7 +348,7 @@ export default function AccountPage() {
             <Link className="account-row" href="/security">
               <div>
                 <strong>Security</strong>
-                <span>How ClearTill protects your data and what controls you have.</span>
+                <span>Read the plain-English summary of how ClearTill handles imported data and privacy controls.</span>
               </div>
               <span aria-hidden="true">→</span>
             </Link>

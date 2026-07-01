@@ -22,36 +22,31 @@ export default function SecurityPage() {
       </header>
       <section className="legal-panel">
         <p>
-          ClearTill is built to be calm and trustworthy. Here is how we approach your data.
+          ClearTill helps you plan your money without connecting to your bank.
         </p>
-        <ul className="page-list">
-          <li>No bank login.</li>
-          <li>No Open Banking.</li>
-          <li>You choose what information to enter.</li>
-          <li>Server-processed import text is encrypted before storage.</li>
-          <li>Sensitive import data is encrypted where supported.</li>
-          <li>You control your data — you can reset or delete it at any time.</li>
-        </ul>
+        <div className="trust-pill-row trust-pill-row-spaced" aria-label="ClearTill trust">
+          <span className="trust-pill">No bank login</span>
+          <span className="trust-pill">No Open Banking</span>
+          <span className="trust-pill">You control your data</span>
+          <span className="trust-pill trust-pill-wide">Sensitive import data encrypted where supported</span>
+        </div>
 
-        <h2 className="account-heading" style={{ marginTop: "20px" }}>How encryption works</h2>
+        <h2 className="account-heading" style={{ marginTop: "20px" }}>How ClearTill handles imported data</h2>
         <p>
-          ClearTill applies application-level encryption to import text processed
-          on our servers, such as content extracted from uploaded screenshots,
-          CSV files or imported statements. Encryption keys are held only on the
-          server and are never shared with your browser.
+          Server-processed import text, such as CSV, AI and uploaded-document
+          extracted content, is encrypted before storage where supported.
         </p>
         <p>
-          ClearTill&apos;s live dashboard budgeting fields are currently stored in a
-          format that supports realtime calculations. Server-processed import
-          text, such as AI/CSV/upload extracted content, is encrypted before
-          storage.
+          Some budgeting fields, like amounts and dates, may stay in a readable
+          format so ClearTill can keep your forecast up to date. Imported text
+          processed on the server is still encrypted before storage.
         </p>
 
         <h2 className="account-heading" style={{ marginTop: "20px" }}>Your controls</h2>
         <p>
           From your account menu you can export a copy of your data, reset your
-          ClearTill data, or delete your account. These actions are recorded in a
-          security log that never stores your financial values.
+          ClearTill data, or delete your account. You stay in control of what is
+          kept in ClearTill.
         </p>
 
         <h2 className="account-heading" style={{ marginTop: "20px" }}>Standards</h2>
@@ -61,7 +56,7 @@ export default function SecurityPage() {
         </p>
 
         <p className="helper-text" style={{ marginTop: "16px" }}>
-          Questions about security? See our <Link href="/privacy">Privacy Policy</Link>.
+          For the full privacy summary, see our <Link href="/privacy">Privacy Policy</Link>.
         </p>
       </section>
     </main>

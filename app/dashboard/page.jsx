@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
-import TrustShieldBadge from "@/app/components/TrustShieldBadge";
 import TrustShield from "@/components/TrustShield";
 import {
   collection,
@@ -2251,8 +2250,8 @@ export default function DashboardPage() {
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
           <h1>Know you&apos;re clear till payday.</h1>
-          <TrustShieldBadge className="auth-trust-banner" />
-          <p>Add your current available money, payday and bills. ClearTill shows what&apos;s due before payday and what may be left after.</p>
+          <p>ClearTill helps you plan your money without connecting to your bank.</p>
+          <TrustShield className="auth-trust-banner" compact />
           <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
             {signingIn ? "Signing in…" : "Continue with Google"}
           </button>
@@ -2336,7 +2335,7 @@ export default function DashboardPage() {
               <p className="eyebrow">Setup</p>
               <h2>{setupMessage.title}</h2>
               <p className="helper-text">{setupMessage.detail}</p>
-              <TrustShieldBadge className="setup-trust-badge" compact />
+              <TrustShield className="setup-trust-banner" compact showTitle={false} />
             </div>
             <div className="setup-chip-row" aria-label="Setup progress">
               <button className={`setup-chip ${getSetupChipState(1, setupStep)}`} type="button" onClick={focusBalanceSnapshotForm}>
@@ -2388,6 +2387,8 @@ export default function DashboardPage() {
           return `about ${formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day until payday on ${formatDisplayDate(dashboard.paydayDate)}`;
         })()}
         onUpdateBalance={focusBalanceSnapshotForm}
+        trustLine="ClearTill Trust: No bank login • No Open Banking • You control your data"
+        trustNote="Sensitive import data encrypted where supported."
       />
 
       <div className="stat-chip-row">
@@ -2426,7 +2427,6 @@ export default function DashboardPage() {
                 <h2 style={{ margin: 0 }}>Current available money</h2>
                 <p className="helper-text balance-copy">Update this when your cash position changes. ClearTill uses it to work out what is still safe to spend until payday.</p>
               </div>
-              <TrustShieldBadge className="balance-trust-badge" compact />
             </div>
             <p className="balance-action-value">
               {hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : BALANCE_MISSING_FORECAST_COPY}
@@ -2453,7 +2453,6 @@ export default function DashboardPage() {
               </div>
             </form>
             <p className="helper-text balance-copy" style={{ marginTop: "8px" }}>{BALANCE_HELPER_TEXT}</p>
-            <TrustShield className="balance-trust-shield" compact />
             <button className="secondary-button small-button" type="button" onClick={handleSkipBalance} disabled={importLocked} style={{ marginTop: "8px" }}>
               Skip for now
             </button>
@@ -4191,7 +4190,7 @@ function RunwayItem({ event, showDivider }) {
   );
 }
 
-function HeroCard({ status, headline, subLine, onUpdateBalance }) {
+function HeroCard({ status, headline, subLine, onUpdateBalance, trustLine, trustNote }) {
   const colorClass = status ? `hero-card-${status}` : "";
   return (
     <div className={`hero-card ${colorClass}`.trim()}>
@@ -4200,6 +4199,12 @@ function HeroCard({ status, headline, subLine, onUpdateBalance }) {
       <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>
         Update balance
       </button>
+      {trustLine ? (
+        <div className="hero-trust">
+          <p className="hero-trust-line">{trustLine}</p>
+          {trustNote ? <p className="hero-trust-note">{trustNote}</p> : null}
+        </div>
+      ) : null}
     </div>
   );
 }

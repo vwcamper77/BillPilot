@@ -1,6 +1,5 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import TrustShieldBadge from "@/app/components/TrustShieldBadge";
 
 export default function HomePage() {
   return (
@@ -21,9 +20,15 @@ export default function HomePage() {
             <Link className="primary-link" href="/dashboard">
               Open dashboard
             </Link>
-          </div>
-          <div className="home-hero-shield">
-            <TrustShieldBadge className="home-trust-badge" />
+            <div className="home-trust-stack" aria-label="ClearTill trust">
+              <span className="trust-pill">No bank login</span>
+              <span className="trust-pill">No Open Banking</span>
+              <span className="trust-pill">You control your data</span>
+              <span className="trust-pill trust-pill-wide">Sensitive import data encrypted where supported</span>
+            </div>
+            <p className="helper-text home-hero-support">
+              ClearTill helps you plan your money without connecting to your bank.
+            </p>
           </div>
         </div>
       </section>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
-import TrustShieldBadge from "@/app/components/TrustShieldBadge";
+import TrustShield from "@/components/TrustShield";
 import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, authPersistenceReady, db, isFirebaseClientConfigured } from "@/lib/firebase";
@@ -433,7 +433,7 @@ export default function BigCostsPlanPage() {
         </div>
       </div>
 
-      <TrustShieldBadge className="page-trust-banner" />
+      <TrustShield className="page-trust-banner" compact />
 
       <div className="plan-stack">
         <section className="plan-panel plan-gap-panel">

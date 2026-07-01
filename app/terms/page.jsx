@@ -1,6 +1,5 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import TrustShieldBadge from "@/app/components/TrustShieldBadge";
 
 export const metadata = {
   title: "Terms of Service | ClearTill",
@@ -15,15 +14,17 @@ export default function TermsPage() {
             <Logo className="eyebrow-logo" />
           </Link>
           <h1 className="brand" style={{ fontSize: "2rem" }}>Terms of Service</h1>
+          <div className="terms-trust-row" aria-label="ClearTill trust">
+            <span className="trust-pill">No bank login</span>
+            <span className="trust-pill">No Open Banking</span>
+            <span className="trust-pill">You control your data</span>
+          </div>
         </div>
         <div className="topbar-actions">
           <Link className="secondary-button" href="/account">Back to account</Link>
           <Link className="secondary-button" href="/dashboard">Dashboard</Link>
         </div>
       </header>
-
-      <TrustShieldBadge className="page-trust-banner" />
-
       <section className="legal-panel">
         <p>
           ClearTill is a personal cashflow planning tool designed to help you understand your upcoming bills, payday timing, savings and day-to-day spending room.

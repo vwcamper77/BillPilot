@@ -11,6 +11,7 @@ export default function Footer() {
           <Logo className="site-footer-logo" height={32} />
         </Link>
         <p className="site-footer-tagline">Know you&apos;re clear till payday.</p>
+        <p className="site-footer-tagline">No bank login. No Open Banking. You stay in control of your data.</p>
         <span>&copy; {year} ClearTill</span>
       </div>
       <div className="site-footer-links">

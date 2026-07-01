@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import TrustShieldBadge from "@/app/components/TrustShieldBadge";
+import TrustShield from "@/components/TrustShield";
 
 export const metadata = {
   title: "Privacy Policy | ClearTill",
@@ -22,11 +22,11 @@ export default function PrivacyPage() {
         </div>
       </header>
 
-      <TrustShieldBadge className="page-trust-banner" />
+      <TrustShield className="page-trust-banner" />
 
       <section className="legal-panel">
         <p>
-          ClearTill is designed to help users manage payday cashflow, bills, savings and planned costs.
+          ClearTill helps you plan your money without connecting to your bank.
         </p>
 
         <h2 className="account-heading">What data you enter</h2>
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
           manual balance snapshot instead of connecting any account.
         </p>
 
-        <h2 className="account-heading" style={{ marginTop: "20px" }}>Encryption of sensitive data</h2>
+        <h2 className="account-heading" style={{ marginTop: "20px" }}>How imported data is handled</h2>
         <p>
           Sensitive import data is encrypted where supported. Server-processed
           import text — such as content extracted from uploaded screenshots, CSV
