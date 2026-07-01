@@ -19,14 +19,11 @@ import {
 } from "firebase/firestore";
 import {
   createUserWithEmailAndPassword,
-  getRedirectResult,
   linkWithPopup,
-  linkWithRedirect,
   onAuthStateChanged,
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
-  signInWithRedirect,
   signOut,
 } from "firebase/auth";
 import {
@@ -59,36 +56,6 @@ import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clien
 import { safeError, safeWarn } from "@/lib/security/safeLog";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
-const GOOGLE_REDIRECT_ACTION_KEY = "cleartill_google_redirect_action";
-
-function getStoredGoogleRedirectAction() {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  try {
-    return window.sessionStorage.getItem(GOOGLE_REDIRECT_ACTION_KEY) || "";
-  } catch {
-    return "";
-  }
-}
-
-function setStoredGoogleRedirectAction(action) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    if (action) {
-      window.sessionStorage.setItem(GOOGLE_REDIRECT_ACTION_KEY, action);
-      return;
-    }
-
-    window.sessionStorage.removeItem(GOOGLE_REDIRECT_ACTION_KEY);
-  } catch {
-    // Ignore storage failures; auth can still continue without redirect intent recovery.
-  }
-}
 
 function isValidIncomeAmount(value) {
   const amount = Number(value);
@@ -128,8 +95,10 @@ export default function DashboardPage() {
   const balanceSectionRef = useRef(null);
   const balanceInputRef = useRef(null);
   const paydaySectionRef = useRef(null);
+  const paydaySettingsSectionRef = useRef(null);
   const paydayAmountInputRef = useRef(null);
   const paydayDayInputRef = useRef(null);
+  const forecastPaydayAmountInputRef = useRef(null);
   const billsRef = useRef([]);
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -148,9 +117,13 @@ export default function DashboardPage() {
   const [assistantMessage, setAssistantMessage] = useState("");
   const [authError, setAuthError] = useState("");
   const [chatError, setChatError] = useState("");
+  const [billReviewDrafts, setBillReviewDrafts] = useState([]);
+  const [editingReviewId, setEditingReviewId] = useState("");
+  const [billReviewForm, setBillReviewForm] = useState({ name: "", amount: "", dueDay: "", category: "", frequency: "monthly" });
   const [balanceError, setBalanceError] = useState("");
   const [editError, setEditError] = useState("");
   const [pageNotice, setPageNotice] = useState("");
+  const [onboardingHelper, setOnboardingHelper] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingBalance, setSavingBalance] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -208,6 +181,7 @@ export default function DashboardPage() {
   const [fundingEditorCostId, setFundingEditorCostId] = useState("");
   const [fundingEditorForm, setFundingEditorForm] = useState({ fundingStatus: "unassigned", savingsAmount: "" });
   const balanceSaveRequestRef = useRef(0);
+  const onboardingHelperTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (!auth) {
@@ -222,40 +196,6 @@ export default function DashboardPage() {
       if (!isMounted) {
         return;
       }
-
-      getRedirectResult(auth)
-        .then(() => {
-          setStoredGoogleRedirectAction("");
-        })
-        .catch(async (redirectError) => {
-          const pendingAction = getStoredGoogleRedirectAction();
-
-          if (
-            pendingAction === "link-google"
-            && redirectError?.code === "auth/credential-already-in-use"
-          ) {
-            try {
-              if (auth.currentUser?.isAnonymous) {
-                await auth.currentUser.delete().catch(() => signOut(auth));
-              } else {
-                await signOut(auth);
-              }
-
-              setStoredGoogleRedirectAction("signin-google");
-              await signInWithRedirect(auth, googleProvider);
-              return;
-            } catch (retryError) {
-              setStoredGoogleRedirectAction("");
-              setAuthError(friendlyAuthError(retryError));
-              setSigningIn(false);
-              return;
-            }
-          }
-
-          setStoredGoogleRedirectAction("");
-          setAuthError(friendlyAuthError(redirectError));
-          setSigningIn(false);
-        });
 
       unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         setUser(currentUser);
@@ -273,6 +213,12 @@ export default function DashboardPage() {
   useEffect(() => {
     billsRef.current = bills;
   }, [bills]);
+
+  useEffect(() => () => {
+    if (onboardingHelperTimeoutRef.current) {
+      window.clearTimeout(onboardingHelperTimeoutRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -343,7 +289,7 @@ export default function DashboardPage() {
       setListening(false);
       setVoiceMessage((current) =>
         current === "Listening..."
-          ? "Voice captured. Review it, then log it."
+          ? "Voice captured. Review it, then add it."
           : current,
       );
     };
@@ -624,6 +570,7 @@ export default function DashboardPage() {
   const importQueueFinished = importJobs.length > 0 && !isImporting && importJobs.some((job) => job.status !== "queued");
   const importButtonLabel = getImportButtonLabel(isImporting, currentImportStep, importJobs, currentImportJobId);
   const setupMessage = getSetupMessage(setupStep);
+  const showSetupCard = setupStep < 4 || !setupDismissed;
   const firestoreDiagnostics = {
     uid: auth?.currentUser?.uid || user?.uid || "none",
     envProjectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
@@ -663,49 +610,27 @@ export default function DashboardPage() {
       await authPersistenceReady;
 
       if (auth.currentUser?.isAnonymous) {
-        try {
-          await linkWithPopup(auth.currentUser, googleProvider);
-          setStoredGoogleRedirectAction("");
-          return;
-        } catch (popupError) {
-          if (popupError?.code === "auth/credential-already-in-use") {
-            await auth.currentUser.delete().catch(() => signOut(auth));
-            await signInWithPopup(auth, googleProvider);
-            setStoredGoogleRedirectAction("");
-            return;
-          }
-
-          if (
-            popupError?.code !== "auth/popup-blocked"
-            && popupError?.code !== "auth/cancelled-popup-request"
-          ) {
-            throw popupError;
-          }
-        }
-
-        setStoredGoogleRedirectAction("link-google");
-        await linkWithRedirect(auth.currentUser, googleProvider);
+        await linkWithPopup(auth.currentUser, googleProvider);
         return;
       }
 
-      try {
-        await signInWithPopup(auth, googleProvider);
-        setStoredGoogleRedirectAction("");
-        return;
-      } catch (popupError) {
-        if (
-          popupError?.code !== "auth/popup-blocked"
-          && popupError?.code !== "auth/cancelled-popup-request"
-        ) {
-          throw popupError;
-        }
-      }
-
-      setStoredGoogleRedirectAction("signin-google");
-      await signInWithRedirect(auth, googleProvider);
+      await signInWithPopup(auth, googleProvider);
     } catch (signInError) {
-      setStoredGoogleRedirectAction("");
-      setAuthError(friendlyAuthError(signInError));
+      if (
+        signInError?.code === "auth/credential-already-in-use"
+        && auth.currentUser?.isAnonymous
+      ) {
+        try {
+          await auth.currentUser.delete().catch(() => signOut(auth));
+          await signInWithPopup(auth, googleProvider);
+          return;
+        } catch (retryError) {
+          setAuthError(friendlyGoogleAuthError(retryError));
+          setSigningIn(false);
+          return;
+        }
+      }
+      setAuthError(friendlyGoogleAuthError(signInError));
       setSigningIn(false);
     }
   }
@@ -760,10 +685,10 @@ export default function DashboardPage() {
     setPageNotice("");
 
     try {
+      setSubmitting(true);
       if (importJobs.length) {
-        await runImportQueue();
+        await reviewImportQueue();
       } else {
-        setSubmitting(true);
         const response = await runWithTimeout(fetch("/api/parse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -776,46 +701,48 @@ export default function DashboardPage() {
         }
 
         const parsedWithContext = applyQuickAddContext(parsed, quickAddContext);
-        const outcome = await applyParsedActions(user.uid, parsedWithContext, Boolean(displayIncome), bills);
-        if (outcome.savedBills?.length) {
-          setBills((current) => {
-            const next = [...current];
+        const reviewDrafts = buildBillReviewDrafts(parsedWithContext, {
+          sourceText: message,
+          quickAddContext,
+        });
 
-            outcome.savedBills.forEach((savedBill) => {
-              if (next.some((existingBill) => existingBill.id === savedBill.id)) {
-                return;
-              }
-              next.push(savedBill);
-            });
-
-            return next;
-          });
-          billsRef.current = mergeOutcomeBills(billsRef.current || bills, {
-            action: "batch",
-            items: outcome.savedBills.map((savedBill) => ({
-              action: "create_bill",
-              ...savedBill,
-            })),
-          });
+        if (reviewDrafts.length) {
+          setBillReviewDrafts(reviewDrafts);
+          setEditingReviewId("");
+          setAssistantMessage(
+            reviewDrafts.some((draft) => draft.missingFields?.length)
+              ? "Review bill before adding. I found a likely match but still need any missing fields."
+              : "Review bill before adding.",
+          );
+          return;
         }
 
-        const draftBill = outcome.savedBills?.find((savedBill) => !isValidDueDay(savedBill.dueDay));
-        if (draftBill) {
-          setBillListFilter("all");
-          setBillListPage(0);
-          startBillEdit(draftBill);
-          setPageNotice("Bill saved without a due date. Add the day in the bill list.");
+        if (parsedWithContext.action === "set_income") {
+          const outcome = await applyParsedActions(user.uid, parsedWithContext, Boolean(displayIncome), bills);
+          setAssistantMessage(buildOutcomeMessage(parsedWithContext, outcome));
+          return;
         }
-        setAssistantMessage(buildOutcomeMessage(parsedWithContext, outcome));
+
+        const fallbackDraft = buildLooseBillReviewDraft(message, quickAddContext);
+        if (fallbackDraft) {
+          setBillReviewDrafts([fallbackDraft]);
+          setEditingReviewId(fallbackDraft.id);
+          setBillReviewForm({
+            name: fallbackDraft.name,
+            amount: fallbackDraft.amount ? String(fallbackDraft.amount) : "",
+            dueDay: fallbackDraft.dueDay ? String(fallbackDraft.dueDay) : "",
+            category: fallbackDraft.category || "",
+            frequency: fallbackDraft.frequency || "monthly",
+          });
+          setAssistantMessage("Review bill before adding. I found the bill name, but need the amount and due date.");
+          return;
+        }
+
+        setAssistantMessage(parsedWithContext.responseMessage || "I could not turn that into a clean bill yet.");
       }
-
-      setMessage("");
-      setQuickAddContext(null);
-      setVoiceMessage("");
-      transcriptRef.current = "";
     } catch (submitError) {
       if (submitError?.message === "Failed to fetch") {
-        setChatError("The screenshot did not reach the server. Try again with that image.");
+        setChatError("That image did not upload properly. Try the screenshot again, or type the bill in the box.");
       } else {
         setChatError(submitError.message);
       }
@@ -824,7 +751,7 @@ export default function DashboardPage() {
     }
   }
 
-  async function runImportQueue() {
+  async function reviewImportQueue() {
     if (isImporting) return;
 
     setIsImporting(true);
@@ -838,6 +765,7 @@ export default function DashboardPage() {
     let importedTotal = 0;
     let skippedTotal = 0;
     let processedTotal = 0;
+    const collectedDrafts = [];
 
     try {
       for (const job of jobsToRun) {
@@ -856,31 +784,34 @@ export default function DashboardPage() {
 
         try {
 
-          const result = await importSingleImage(job);
+          const result = await importSingleImage(job, { saveBills: false });
 
-          importedTotal += result.importedCount || 0;
+          importedTotal += result.reviewCount || 0;
           skippedTotal += result.skippedCount || 0;
           processedTotal += 1;
+          collectedDrafts.push(...(result.reviewDrafts || []));
 
           {
             const extractedCount = (result.bills || []).length || result.totalBillsFound || 0;
             const qualitySkipped = (result.skippedRows || []).length;
             const queueFinalStatus =
-              (result.importedCount || 0) > 0 || (extractedCount > 0 && (result.skippedCount || 0) > 0)
+              (result.reviewCount || 0) > 0 || (extractedCount > 0 && (result.skippedCount || 0) > 0)
                 ? "done"
                 : "failed";
             updateJob(job.id, {
               status: queueFinalStatus,
-              progressText: buildImportDoneMessage(
-                result.importedCount || 0,
-                result.skippedCount || 0,
-                extractedCount,
-                qualitySkipped,
-              ),
-              importedCount: result.importedCount || 0,
+              progressText: (result.reviewCount || 0) > 0
+                ? `${result.reviewCount || 0} bill${result.reviewCount === 1 ? "" : "s"} ready to review.`
+                : buildImportDoneMessage(
+                  result.reviewCount || 0,
+                  result.skippedCount || 0,
+                  extractedCount,
+                  qualitySkipped,
+                ),
+              importedCount: result.reviewCount || 0,
               skippedCount: result.skippedCount || 0,
               totalBillsFound: result.totalBillsFound || 0,
-              billsSaved: result.importedCount || 0,
+              billsSaved: result.reviewCount || 0,
               billsSkipped: result.skippedCount || 0,
               currentBillIndex: result.totalBillsFound || 0,
               errorMessage: "",
@@ -919,22 +850,26 @@ export default function DashboardPage() {
       const summary = { importedCount: importedTotal, skippedCount: skippedTotal, processedCount: processedTotal };
       setImportSummary(summary);
 
-      const parts = [];
-      if (importedTotal > 0) {
-        parts.push(importedTotal === 1 ? "Import completed. Added 1 bill." : `Import completed. Added ${importedTotal} bills.`);
-        if (skippedTotal > 0) parts.push(`Skipped ${skippedTotal} row${skippedTotal === 1 ? "" : "s"}.`);
+      if (collectedDrafts.length) {
+        setBillReviewDrafts(collectedDrafts);
+        setAssistantMessage(
+          collectedDrafts.length === 1
+            ? "Review bill before adding."
+            : `Review ${collectedDrafts.length} bills before adding.`,
+        );
       } else {
-        parts.push("Import completed. No new bills added.");
-        if (skippedTotal > 0) parts.push(`${skippedTotal} row${skippedTotal === 1 ? "" : "s"} were already imported or skipped.`);
+        const parts = [];
+        parts.push("I could not cleanly extract a bill to review from those screenshots.");
+        if (skippedTotal > 0) parts.push(`${skippedTotal} row${skippedTotal === 1 ? "" : "s"} were unclear or incomplete.`);
+        setAssistantMessage(parts.join(" "));
       }
-      if (parts.length) setAssistantMessage(parts.join(" "));
 
       setIsImporting(false);
       setCurrentImportStep("idle");
     }
   }
 
-  async function importSingleImage(job) {
+  async function importSingleImage(job, { saveBills = true } = {}) {
     setCurrentImportStep("uploading_image");
     updateJob(job.id, {
       status: "uploading",
@@ -980,6 +915,25 @@ export default function DashboardPage() {
     const skippedRows = qualityResults
       .filter((r) => !r.shouldImport)
       .map((r) => ({ name: r.bill.name || "", rawText: r.bill.rawText || r.bill.name || "", reason: r.skipReason }));
+
+    if (!saveBills) {
+      const reviewDrafts = billsToSave
+        .map((bill) => buildBillReviewDraft(bill, {
+          sourceText: bill?.rawText || message,
+          importJobId: job.id,
+          importJobName: job.name,
+        }))
+        .filter(Boolean);
+
+      return {
+        reviewCount: reviewDrafts.length,
+        skippedCount: skippedRows.length,
+        totalBillsFound: bills.length,
+        skippedRows,
+        bills,
+        reviewDrafts,
+      };
+    }
 
     updateJob(job.id, {
       status: "rationalising",
@@ -1240,6 +1194,7 @@ export default function DashboardPage() {
 
     const saveRequestId = balanceSaveRequestRef.current + 1;
     balanceSaveRequestRef.current = saveRequestId;
+    const shouldAdvanceToPayday = setupStep === 1;
 
     setBalanceError("");
     setPageNotice("");
@@ -1267,6 +1222,15 @@ export default function DashboardPage() {
         }
 
         logSecurityEventClient("balance_updated");
+        if (shouldAdvanceToPayday) {
+          setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}. Next, add your payday.`);
+          showOnboardingHelper("payday");
+          window.setTimeout(() => {
+            focusPaydayForm();
+          }, 220);
+          return;
+        }
+
         setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
       })
       .catch((saveError) => {
@@ -1361,6 +1325,7 @@ export default function DashboardPage() {
     const payDayInput = incomeForm.payDay;
     const amount = Number(incomeAmountInput);
     const payDay = Number(payDayInput);
+    const shouldAdvanceToBills = setupStep === 2;
 
     if (!Number.isFinite(amount) || amount < 0) {
       setEditError("Enter your monthly income amount.");
@@ -1400,6 +1365,14 @@ export default function DashboardPage() {
         parsedIncome,
         Boolean(income),
       );
+
+      if (shouldAdvanceToBills) {
+        setPageNotice(`Payday set for the ${formatOrdinal(payDay)}. Next, add your bills.`);
+        showOnboardingHelper("bills");
+        window.setTimeout(() => {
+          focusAddBillComposer();
+        }, 220);
+      }
     } catch (saveError) {
       safeError("[firestore-payday-save] failed", { code: saveError?.code });
       setOptimisticIncome(null);
@@ -1728,7 +1701,7 @@ export default function DashboardPage() {
     });
   }
 
-  function clearImports() {
+  function clearImports({ preserveAssistantMessage = false } = {}) {
     setImportJobs((current) => {
       current.forEach((job) => {
         if (job.previewUrl) {
@@ -1738,7 +1711,9 @@ export default function DashboardPage() {
 
       return [];
     });
-    setAssistantMessage("");
+    if (!preserveAssistantMessage) {
+      setAssistantMessage("");
+    }
     setChatError("");
     setImportSummary(null);
     setLastImportError(null);
@@ -1749,10 +1724,13 @@ export default function DashboardPage() {
   async function handleBillDelete(billId) {
     if (!user || !db) return;
     if (!window.confirm("Remove this bill?")) return;
+    const previousBills = bills;
+    setBills((current) => current.filter((bill) => bill.id !== billId));
     try {
       await deleteDoc(doc(db, "users", user.uid, "bills", billId));
       logSecurityEventClient("bill_deleted");
     } catch {
+      setBills(previousBills);
       setEditError("Could not delete that bill. Try again.");
     }
   }
@@ -1876,10 +1854,147 @@ export default function DashboardPage() {
     focusAddBillComposer();
   }
 
+  function startBillReviewEdit(draft) {
+    setEditingReviewId(draft.id);
+    setBillReviewForm({
+      name: draft.name || "",
+      amount: draft.amount === null || draft.amount === undefined ? "" : String(draft.amount),
+      dueDay: draft.dueDay === null || draft.dueDay === undefined ? "" : String(draft.dueDay),
+      category: draft.category || "",
+      frequency: draft.frequency || "monthly",
+    });
+    setChatError("");
+  }
+
+  function cancelBillReviewDraft(draftId) {
+    setBillReviewDrafts((current) => current.filter((draft) => draft.id !== draftId));
+    if (editingReviewId === draftId) {
+      setEditingReviewId("");
+    }
+  }
+
+  function saveBillReviewEdit(draftId) {
+    const amount = Number(billReviewForm.amount);
+    const dueDay = Number(billReviewForm.dueDay);
+
+    if (!billReviewForm.name.trim()) {
+      setChatError("Add a bill name before continuing.");
+      return;
+    }
+
+    setBillReviewDrafts((current) => current.map((draft) => {
+      if (draft.id !== draftId) {
+        return draft;
+      }
+
+      const classified = classifyBill({ name: billReviewForm.name.trim() });
+
+      return {
+        ...draft,
+        name: billReviewForm.name.trim(),
+        amount: Number.isFinite(amount) && amount > 0 ? amount : null,
+        dueDay: Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : null,
+        category: billReviewForm.category || classified.category || "other",
+        frequency: billReviewForm.frequency || "monthly",
+        subCategory: classified.subCategory || draft.subCategory || null,
+        confidence: draft.confidence || classified.confidence || 0.6,
+        missingFields: [
+          ...(Number.isFinite(amount) && amount > 0 ? [] : ["amount"]),
+          ...(Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31 ? [] : ["dueDay"]),
+        ],
+      };
+    }));
+    setEditingReviewId("");
+    setChatError("");
+  }
+
+  async function confirmBillReviewDraft(draftId) {
+    if (!user) {
+      return;
+    }
+
+    const draft = billReviewDrafts.find((entry) => entry.id === draftId);
+
+    if (!draft) {
+      return;
+    }
+
+    if (!draft.name?.trim()) {
+      setChatError("Add a bill name before saving.");
+      return;
+    }
+
+    if (!Number.isFinite(Number(draft.amount)) || Number(draft.amount) <= 0) {
+      setChatError("I found the bill name, but need the amount and due date.");
+      startBillReviewEdit(draft);
+      return;
+    }
+
+    if (!Number.isInteger(Number(draft.dueDay)) || Number(draft.dueDay) < 1 || Number(draft.dueDay) > 31) {
+      setChatError("I found the bill name, but need the amount and due date.");
+      startBillReviewEdit(draft);
+      return;
+    }
+
+    setSubmitting(true);
+    setChatError("");
+
+    try {
+      const parsedDraft = {
+        action: "create_bill",
+        name: draft.name,
+        amount: Number(draft.amount),
+        dueDay: Number(draft.dueDay),
+        frequency: draft.frequency || "monthly",
+        currency: "GBP",
+        category: draft.category || null,
+        rawText: draft.sourceText || null,
+      };
+      const outcome = await applyParsedActions(user.uid, parsedDraft, Boolean(displayIncome), billsRef.current || bills);
+
+      if (outcome.savedBills?.length) {
+        setBills((current) => {
+          const next = [...current];
+          outcome.savedBills.forEach((savedBill) => {
+            if (!next.some((existingBill) => existingBill.id === savedBill.id)) {
+              next.push(savedBill);
+            }
+          });
+          return next;
+        });
+        billsRef.current = mergeOutcomeBills(billsRef.current || bills, {
+          action: "batch",
+          items: outcome.savedBills.map((savedBill) => ({
+            action: "create_bill",
+            ...savedBill,
+          })),
+        });
+      }
+
+      cancelBillReviewDraft(draftId);
+      setAssistantMessage(`Added ${draft.name}.`);
+
+      const remainingDrafts = billReviewDrafts.filter((entry) => entry.id !== draftId);
+      if (remainingDrafts.length === 0) {
+        setMessage("");
+        setQuickAddContext(null);
+        setVoiceMessage("");
+        transcriptRef.current = "";
+        clearImports({ preserveAssistantMessage: true });
+      }
+    } catch (saveError) {
+      setChatError(saveError.message || "Could not save that bill yet.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleBulkDelete() {
     if (!user || !db || selectedBillIds.size === 0) return;
     const count = selectedBillIds.size;
     if (!window.confirm(`Delete ${count} selected bill${count === 1 ? "" : "s"}?`)) return;
+    const previousBills = bills;
+    setBills((current) => current.filter((bill) => !selectedBillIds.has(bill.id)));
     try {
       const batch = writeBatch(db);
       selectedBillIds.forEach((billId) => {
@@ -1890,6 +2005,7 @@ export default function DashboardPage() {
       setSelectedBillIds(new Set());
       setSelectMode(false);
     } catch {
+      setBills(previousBills);
       setEditError("Could not delete the selected bills. Try again.");
     }
   }
@@ -2101,29 +2217,20 @@ export default function DashboardPage() {
   }
 
   function focusPaydayForm() {
-    const target = hasIncomeAmount ? "payday-day" : "payday-amount";
     setEditingIncome(true);
-    paydaySectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    paydaySettingsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setHighlightPaydayForm(true);
-    setPendingSetupFocus(target);
+    setPendingSetupFocus("payday-settings");
     window.setTimeout(() => {
       setHighlightPaydayForm(false);
     }, 1800);
   }
 
   useEffect(() => {
-    if (pendingSetupFocus === "payday-amount" && editingIncome && paydayAmountInputRef.current) {
-      paydayAmountInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      paydayAmountInputRef.current.focus();
-      paydayAmountInputRef.current.select?.();
-      setPendingSetupFocus("");
-      return;
-    }
-
-    if (pendingSetupFocus === "payday-day" && editingIncome && paydayDayInputRef.current) {
-      paydayDayInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
-      paydayDayInputRef.current.focus();
-      paydayDayInputRef.current.select?.();
+    if (pendingSetupFocus === "payday-settings" && editingIncome && forecastPaydayAmountInputRef.current) {
+      forecastPaydayAmountInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      forecastPaydayAmountInputRef.current.focus();
+      forecastPaydayAmountInputRef.current.select?.();
       setPendingSetupFocus("");
       return;
     }
@@ -2138,6 +2245,20 @@ export default function DashboardPage() {
       setPendingSetupFocus("");
     }
   }, [editingIncome, pendingSetupFocus]);
+
+  function showOnboardingHelper(target) {
+    const nextHelper = getOnboardingHelperContent(target);
+    setOnboardingHelper(nextHelper);
+
+    if (onboardingHelperTimeoutRef.current) {
+      window.clearTimeout(onboardingHelperTimeoutRef.current);
+    }
+
+    onboardingHelperTimeoutRef.current = window.setTimeout(() => {
+      setOnboardingHelper((current) => (current?.target === target ? null : current));
+      onboardingHelperTimeoutRef.current = null;
+    }, 7000);
+  }
 
   async function handleCurrencySave(currency) {
     if (!user || !db) return;
@@ -2328,7 +2449,7 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {!setupDismissed ? (
+      {showSetupCard ? (
         <section className="setup-card">
           <div className="setup-progress">
             <div>
@@ -2487,7 +2608,22 @@ export default function DashboardPage() {
             {balanceError ? <p className="error">{balanceError}</p> : null}
           </section>
 
-          <section className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || (!hasPayday && !editingIncome)) ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}>
+          <section
+            id="payday-settings"
+            ref={paydaySettingsSectionRef}
+            className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || (!hasPayday && !editingIncome)) ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}
+          >
+            {onboardingHelper?.target === "payday" ? (
+              <div className="onboarding-helper-card" role="status" aria-live="polite">
+                <div className="onboarding-helper-copy">
+                  <strong>{onboardingHelper.title}</strong>
+                  <span>{onboardingHelper.detail}</span>
+                </div>
+                <button className="onboarding-helper-dismiss" type="button" onClick={() => setOnboardingHelper(null)}>
+                  Got it
+                </button>
+              </div>
+            ) : null}
             <div className="section-head">
               <div>
                 <h2 style={{ margin: 0 }}>Spending room until payday</h2>
@@ -2528,6 +2664,7 @@ export default function DashboardPage() {
               <form className="edit-form forecast-settings-drawer" onSubmit={handleIncomeSave}>
                 <label className="field-label" htmlFor="forecast-payday-amount">Expected pay</label>
                 <input
+                  ref={forecastPaydayAmountInputRef}
                   id="forecast-payday-amount"
                   inputMode="decimal"
                   disabled={importLocked}
@@ -2719,7 +2856,14 @@ export default function DashboardPage() {
                 className="secondary-button small-button"
                 type="button"
                 disabled={importLocked}
-                onClick={() => setEditingIncome((current) => !current)}
+                onClick={() => {
+                  if (editingIncome) {
+                    setEditingIncome(false);
+                    return;
+                  }
+
+                  focusPaydayForm();
+                }}
               >
                 {editingIncome ? "Cancel" : income ? "Edit" : "Set"}
               </button>
@@ -2897,6 +3041,17 @@ export default function DashboardPage() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
+            {onboardingHelper?.target === "bills" ? (
+              <div className="onboarding-helper-card" role="status" aria-live="polite">
+                <div className="onboarding-helper-copy">
+                  <strong>{onboardingHelper.title}</strong>
+                  <span>{onboardingHelper.detail}</span>
+                </div>
+                <button className="onboarding-helper-dismiss" type="button" onClick={() => setOnboardingHelper(null)}>
+                  Got it
+                </button>
+              </div>
+            ) : null}
             <h2>Add bills</h2>
             {!hasBalanceSnapshot || !hasPayday ? (
               <p className="helper-text helper-tooltip">
@@ -2905,19 +3060,48 @@ export default function DashboardPage() {
                   : "You can add bills now, but ClearTill needs your payday to show what lands before you get paid."}
               </p>
             ) : null}
-            <p className="helper-text helper-tooltip">Type, speak, paste a screenshot, drag one here, or upload a statement. ClearTill will find regular payments.</p>
+            <p className="helper-text helper-tooltip">Type it, say it, or drop in a banking-app screenshot. ClearTill will pull out the bill name, amount, and usual due day.</p>
             <p className="helper-text add-bills-drop-hint">
-              Paste a screenshot into the box below, or drag an image onto this card.
+              Best for screenshots of a bank transaction, bill payment, or statement line that shows the merchant, amount, and date.
             </p>
             {quickAddContext ? (
               <div className="quick-add-note" role="status" aria-live="polite">
                 <div className="quick-add-copy">
-                  <strong>Adding missing utility: {quickAddContext.name}</strong>
-                  <span>Category set to Household. Add the amount and due day, then log it.</span>
+                  <strong>Smart add ready: {quickAddContext.name}</strong>
+                  <span>We have already set the category to Household. Add the amount and due day, then review it.</span>
                 </div>
                 <button className="quick-add-clear" type="button" onClick={() => setQuickAddContext(null)}>
                   Clear
                 </button>
+              </div>
+            ) : null}
+            {billReviewDrafts.length ? (
+              <div className="bill-review-panel">
+                <div className="bill-review-panel-head">
+                  <div>
+                    <h3>Review bill before adding</h3>
+                    <p className="helper-text">
+                      We cleaned the input into bill fields. Confirm or edit it before anything is saved.
+                    </p>
+                  </div>
+                </div>
+                <div className="bill-review-list">
+                  {billReviewDrafts.map((draft) => (
+                    <BillReviewCard
+                      key={draft.id}
+                      draft={draft}
+                      displayCurrency={displayCurrency}
+                      isEditing={editingReviewId === draft.id}
+                      form={editingReviewId === draft.id ? billReviewForm : null}
+                      onFormChange={setBillReviewForm}
+                      onEdit={() => startBillReviewEdit(draft)}
+                      onSave={() => saveBillReviewEdit(draft.id)}
+                      onAdd={() => confirmBillReviewDraft(draft.id)}
+                      onCancelEdit={() => setEditingReviewId("")}
+                      onCancel={() => cancelBillReviewDraft(draft.id)}
+                    />
+                  ))}
+                </div>
               </div>
             ) : null}
             <form className="chat-form" onSubmit={handleSubmit} onPaste={handlePaste}>
@@ -2934,7 +3118,7 @@ export default function DashboardPage() {
               />
               <div className="add-bills-actions">
                 <button className="primary-button" type="submit" disabled={submitting || importLocked}>
-                  {submitting ? "Reading..." : importJobs.length ? "Find regular payments" : "Log it"}
+                  {submitting ? "Reviewing..." : importJobs.length ? "Review bills" : "Review bill"}
                 </button>
                 <button
                   className={`secondary-button${listening ? " is-listening" : ""}`}
@@ -3240,23 +3424,49 @@ function classifyBill(bill) {
 }
 
 const TRACKER_CHECKS = [
-  { label: "Energy", key: "energy", keywords: ["gas", "electric", "electricity", "energy", "octopus", "british gas", "eon", "e.on", "edf", "ovo", "shell energy", "scottish power"] },
-  { label: "Water", key: "water", keywords: ["water", "affinity water", "southern water", "thames water", "severn trent", "united utilities", "yorkshire water", "south east water"] },
-  { label: "Wastewater", key: "wastewater", keywords: ["wastewater", "waste water", "sewerage", "sewage", "drainage", "southern water", "thames water"] },
-  { label: "Council tax", key: "council_tax", keywords: ["council tax", "council"] },
-  { label: "Broadband", key: "broadband", keywords: ["broadband", "wifi", "wi-fi", "internet", "virgin media", "bt", "sky broadband", "talktalk", "vodafone broadband", "plusnet", "ee broadband"] },
-  { label: "Mobile", key: "mobile", keywords: ["mobile", "phone", "o2", "ee", "vodafone", "three", "giffgaff", "lebara", "voxi"] },
+  { label: "Energy", key: "energy", keywords: ["energy", "gas", "electric", "electricity", "octopus", "british gas", "eon", "e.on", "ovo", "bulb", "shell energy"] },
+  { label: "Water", key: "water", keywords: ["water"] },
+  { label: "Wastewater", key: "wastewater", keywords: ["wastewater", "waste water", "sewerage", "sewage"] },
+  { label: "Council tax", key: "council_tax", keywords: ["council tax"] },
+  { label: "Broadband", key: "broadband", keywords: ["broadband", "internet", "fibre", "sky", "virgin", "bt", "plusnet", "talktalk"] },
+  { label: "Mobile", key: "mobile", keywords: ["mobile", "phone", "o2", "vodafone", "ee", "three", "giffgaff"] },
   { label: "Home insurance", key: "home_insurance", keywords: ["home insurance", "contents insurance", "buildings insurance", "aviva", "direct line", "admiral", "churchill", "compare the market"] },
   { label: "Rent / mortgage", key: "rent_mortgage", keywords: ["rent", "mortgage", "landlord", "letting agent", "halifax", "nationwide", "santander mortgage", "barclays mortgage"] },
 ];
 
+function normaliseTrackerText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function trackerBillMatch(billName, keywords) {
-  const text = (billName || "").toLowerCase();
-  return keywords.some((kw) => {
-    if (kw.length <= 3) {
-      return new RegExp("\\b" + kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b").test(text);
+  const text = ` ${normaliseTrackerText(billName)} `;
+  if (!text.trim()) {
+    return false;
+  }
+
+  return keywords.some((keyword) => {
+    const normalisedKeyword = normaliseTrackerText(keyword);
+    if (!normalisedKeyword) {
+      return false;
     }
-    return text.includes(kw);
+
+    return text.includes(` ${normalisedKeyword} `);
+  });
+}
+
+function buildTrackerChecks(bills) {
+  const activeBills = (bills || []).filter((bill) => bill?.active !== false);
+
+  return TRACKER_CHECKS.map((check) => {
+    const matchedBill = activeBills.find((bill) => trackerBillMatch(bill?.name, check.keywords));
+    return {
+      ...check,
+      found: Boolean(matchedBill),
+      matchedBillName: matchedBill?.name || "",
+    };
   });
 }
 
@@ -3373,10 +3583,7 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
 }
 
 function HouseholdTracker({ bills, onAddMissingUtility }) {
-  const checks = TRACKER_CHECKS.map((check) => ({
-    ...check,
-    found: bills.some((bill) => trackerBillMatch(bill.name, check.keywords)),
-  }));
+  const checks = buildTrackerChecks(bills);
   const missingChecks = checks.filter((check) => !check.found);
 
   return (
@@ -3414,6 +3621,128 @@ function HouseholdTracker({ bills, onAddMissingUtility }) {
           Add missing utility
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function BillReviewCard({
+  draft,
+  displayCurrency,
+  isEditing,
+  form,
+  onFormChange,
+  onEdit,
+  onSave,
+  onAdd,
+  onCancelEdit,
+  onCancel,
+}) {
+  const categoryMeta = CATEGORY_META[draft.category] || CATEGORY_META.other;
+  const dueLabel = draft.dueDay ? `${formatOrdinal(draft.dueDay)} of each month` : "Missing";
+  const amountLabel = Number.isFinite(Number(draft.amount)) && Number(draft.amount) > 0
+    ? formatCurrency(Number(draft.amount), displayCurrency)
+    : "Missing";
+  const frequencyLabel = draft.frequency === "monthly" ? "Monthly" : draft.frequency || "Monthly";
+  const subCategoryLabel = draft.subCategory ? prettifySubCategory(draft.subCategory) : categoryMeta.label;
+
+  return (
+    <div className="bill-review-card">
+      {isEditing ? (
+        <div className="bill-review-edit-grid">
+          <div className="field-row">
+            <label className="field-label" htmlFor={`review-name-${draft.id}`}>Bill name</label>
+            <input
+              id={`review-name-${draft.id}`}
+              value={form?.name || ""}
+              onChange={(event) => onFormChange((current) => ({ ...current, name: event.target.value }))}
+            />
+          </div>
+          <div className="field-row">
+            <label className="field-label" htmlFor={`review-amount-${draft.id}`}>Amount</label>
+            <input
+              id={`review-amount-${draft.id}`}
+              inputMode="decimal"
+              value={form?.amount || ""}
+              onChange={(event) => onFormChange((current) => ({ ...current, amount: event.target.value }))}
+            />
+          </div>
+          <div className="field-row">
+            <label className="field-label" htmlFor={`review-dueDay-${draft.id}`}>Due day</label>
+            <input
+              id={`review-dueDay-${draft.id}`}
+              inputMode="numeric"
+              value={form?.dueDay || ""}
+              onChange={(event) => onFormChange((current) => ({ ...current, dueDay: event.target.value }))}
+            />
+          </div>
+          <div className="field-row">
+            <label className="field-label" htmlFor={`review-category-${draft.id}`}>Category</label>
+            <select
+              id={`review-category-${draft.id}`}
+              className="category-select"
+              value={form?.category || ""}
+              onChange={(event) => onFormChange((current) => ({ ...current, category: event.target.value }))}
+            >
+              <option value="household">Household</option>
+              <option value="subscription">Subscription</option>
+              <option value="vehicle">Vehicle</option>
+              <option value="debt">Debt / repayment</option>
+              <option value="family">Children / family</option>
+              <option value="work_side_project">Work / side project</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div className="bill-review-actions">
+            <button className="primary-button small-button" type="button" onClick={onSave}>Save changes</button>
+            <button className="secondary-button small-button" type="button" onClick={onCancelEdit}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="bill-review-head">
+            <div>
+              <h3>{draft.name || "Bill name needed"}</h3>
+              <p className="helper-text">
+                Confidence {Math.round((draft.confidence || 0.65) * 100)}%
+                {draft.sourceText ? " • cleaned from your input" : ""}
+              </p>
+            </div>
+            <span className="bill-review-category">{categoryMeta.icon} {subCategoryLabel}</span>
+          </div>
+          <div className="bill-review-grid">
+            <div className="bill-review-item">
+              <span>Amount</span>
+              <strong>{amountLabel}</strong>
+            </div>
+            <div className="bill-review-item">
+              <span>Due day</span>
+              <strong>{dueLabel}</strong>
+            </div>
+            <div className="bill-review-item">
+              <span>Frequency</span>
+              <strong>{frequencyLabel}</strong>
+            </div>
+            <div className="bill-review-item">
+              <span>Category</span>
+              <strong>{categoryMeta.label}</strong>
+            </div>
+          </div>
+          {draft.missingFields?.length ? (
+            <p className="helper-text helper-tooltip bill-review-helper">
+              {draft.missingFields.includes("amount") && draft.missingFields.includes("dueDay")
+                ? "I found the bill name, but need the amount and due date."
+                : draft.missingFields.includes("amount")
+                  ? "I found the bill name and due date, but need the amount."
+                  : "I found the bill name and amount, but need the due date."}
+            </p>
+          ) : null}
+          <div className="bill-review-actions">
+            <button className="primary-button small-button" type="button" onClick={onAdd}>Add bill</button>
+            <button className="secondary-button small-button" type="button" onClick={onEdit}>Edit</button>
+            <button className="secondary-button small-button" type="button" onClick={onCancel}>Cancel</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -4793,6 +5122,152 @@ function getSetupMessage(setupStep) {
   };
 }
 
+function getOnboardingHelperContent(target) {
+  if (target === "payday") {
+    return {
+      target,
+      title: "Next: add your payday",
+      detail: "Enter your expected pay and payday here so ClearTill can work out what lands before you get paid.",
+    };
+  }
+
+  if (target === "bills") {
+    return {
+      target,
+      title: "Next: add your bills",
+      detail: "Type one in, paste a screenshot, or use the utility shortcuts below to start building your forecast.",
+    };
+  }
+
+  return null;
+}
+
+function buildBillReviewDrafts(parsed, { sourceText = "", quickAddContext = null } = {}) {
+  const items = parsed?.action === "batch" ? parsed.items || [] : [parsed];
+
+  return items
+    .filter((item) => item?.action === "create_bill")
+    .map((item, index) => buildBillReviewDraft(item, {
+      sourceText: item?.sourceText || item?.rawText || sourceText,
+      quickAddContext,
+      draftIndex: index,
+    }))
+    .filter(Boolean);
+}
+
+function buildBillReviewDraft(item, { sourceText = "", quickAddContext = null, importJobId = "", importJobName = "", draftIndex = 0 } = {}) {
+  if (!item?.name) {
+    return null;
+  }
+
+  const inferred = classifyBill({ name: item.name, description: sourceText });
+  const canonicalName = canonicalisePreviewBillName(item.name, inferred);
+
+  return {
+    id: `${importJobId || "draft"}-${draftIndex}-${canonicalName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "bill"}`,
+    name: canonicalName,
+    amount: Number.isFinite(Number(item.amount)) && Number(item.amount) > 0 ? Number(item.amount) : null,
+    dueDay: isValidDueDay(item.dueDay) ? Number(item.dueDay) : null,
+    frequency: item.frequency || "monthly",
+    category: item.category || quickAddContext?.category || inferred.category || "other",
+    subCategory: inferred.subCategory || null,
+    confidence: Number(item.confidence ?? inferred.confidence ?? 0.65),
+    sourceText: sourceText || "",
+    sourceLabel: importJobName || "",
+    missingFields: [
+      ...(Number.isFinite(Number(item.amount)) && Number(item.amount) > 0 ? [] : ["amount"]),
+      ...(isValidDueDay(item.dueDay) ? [] : ["dueDay"]),
+    ],
+  };
+}
+
+function buildLooseBillReviewDraft(sourceText, quickAddContext) {
+  const text = String(sourceText || "").trim();
+  if (!text) {
+    return null;
+  }
+
+  const lower = text.toLowerCase();
+  const amountMatch = lower.match(/(?:£|\bgbp\b|\bpounds?\b|\bquid\b)\s*(\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?)/i)
+    || lower.match(/\b(\d{1,4}(?:\.\d{1,2})?)\s*(?:pounds?|quid)\b/i);
+  const dueMatch = lower.match(/\b([12]?\d|3[01])(st|nd|rd|th)\b/i)
+    || lower.match(/\b(?:on|due(?:\s+on)?|comes out)\s+(?:the\s+)?([12]?\d|3[01])\b/i);
+  const roughName = text
+    .replace(/(?:£|\bgbp\b|\bpounds?\b|\bquid\b)\s*\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?/gi, " ")
+    .replace(/\b\d{1,5}(?:\.\d{1,2})?\b/g, " ")
+    .replace(/\b(my|i|have|its|it's|that|this|comes out|comes|out|around|about|approximately|every|month|each|of|on|the|due)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!roughName) {
+    return null;
+  }
+
+  return buildBillReviewDraft({
+    action: "create_bill",
+    name: roughName,
+    amount: amountMatch ? Number(amountMatch[1].replace(/,/g, "")) : null,
+    dueDay: dueMatch ? Number(dueMatch[1]) : null,
+    frequency: "monthly",
+    category: quickAddContext?.category || null,
+    confidence: 0.52,
+  }, { sourceText: text, quickAddContext });
+}
+
+function canonicalisePreviewBillName(name, classified) {
+  const text = String(name || "").trim().toLowerCase();
+
+  if (!text) {
+    return "";
+  }
+
+  const canonicalMap = [
+    [/octopus/, "Octopus Energy"],
+    [/british gas/, "British Gas"],
+    [/\be\.?on\b/, "E.ON"],
+    [/\bovo\b/, "OVO Energy"],
+    [/shell energy/, "Shell Energy"],
+    [/vodafone/, "Vodafone"],
+    [/\bo2\b/, "O2"],
+    [/\bee\b/, "EE"],
+    [/giffgaff/, "giffgaff"],
+  ];
+
+  const matched = canonicalMap.find(([pattern]) => pattern.test(text));
+  if (matched) {
+    return matched[1];
+  }
+
+  if (!/[a-z]/i.test(text) && classified?.subCategory) {
+    return prettifySubCategory(classified.subCategory);
+  }
+
+  if (classified?.subCategory && ["energy", "water", "wastewater", "council_tax", "broadband", "mobile"].includes(classified.subCategory)) {
+    const genericNames = {
+      energy: "Gas",
+      water: "Water",
+      wastewater: "Wastewater",
+      council_tax: "Council Tax",
+      broadband: "Broadband",
+      mobile: "Mobile",
+    };
+    const plainWords = ["bill", "payment", "direct debit", "standing order"];
+    if (plainWords.some((word) => text === word || text.includes(`${word} `))) {
+      return genericNames[classified.subCategory];
+    }
+  }
+
+  return name;
+}
+
+function prettifySubCategory(value) {
+  return String(value || "")
+    .split("_")
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -4816,6 +5291,30 @@ function friendlyAuthError(error) {
   if (code === "auth/user-disabled") return "This account has been disabled. Contact support.";
 
   return "Something went wrong. Try again.";
+}
+
+function friendlyGoogleAuthError(error) {
+  const code = error?.code || "";
+
+  if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
+    return "Google sign-in was blocked by the browser. Please try again, or use email sign-in.";
+  }
+
+  if (code === "auth/unauthorized-domain") {
+    return "Google sign-in was blocked for this domain. Add this Vercel domain in Firebase Authentication > Settings > Authorized domains.";
+  }
+
+  if (code === "auth/operation-not-allowed") {
+    return "Google sign-in is not enabled in Firebase Authentication yet.";
+  }
+
+  const message = friendlyAuthError(error);
+
+  if (message !== "Something went wrong. Try again.") {
+    return message;
+  }
+
+  return "Google sign-in failed. Check Firebase Google sign-in and Authorized domains, then try again.";
 }
 
 function scoreImportedBillQuality(bill) {

@@ -284,6 +284,8 @@ async function parseMessageWithOpenAI({ message, images }) {
             "Bill names must contain only the merchant or bill name.",
             "Do not include recurrence words, date words, or payment timing words in bill names.",
             "Remove words or phrases like each, monthly, month, every month, each month, due, on, the, per month, on the 27th, and of each month from the bill name.",
+            "Extract a recurring bill from this messy user input. Return only JSON. Do not use filler words as the bill name.",
+            "Prefer a known supplier if present. If no supplier is present, use the utility type such as Gas, Electricity, Water, Council tax, Broadband, Mobile.",
             "If images are attached, read visible recurring payments and return one batch with all clear monthly bills.",
             "Do not invent amounts or due days. Ignore rows without both.",
             "Ignore duplicates across screenshots using name, amount, and due day.",
@@ -458,25 +460,32 @@ function normaliseItem(item) {
 
     if (missingFields.length) {
       if (
-        missingFields.length === 1 &&
-        missingFields[0] === "dueDay" &&
         item.name &&
-        item.amount !== undefined &&
-        item.amount !== null &&
-        item.amount !== ""
+        (
+          (item.amount !== undefined && item.amount !== null && item.amount !== "")
+          || (item.dueDay !== undefined && item.dueDay !== null && item.dueDay !== "")
+        )
       ) {
         const cleanedName = normaliseBillName(item.name);
+        const responseMessage = missingFields.includes("amount") && missingFields.includes("dueDay")
+          ? "I found the bill name, but need the amount and due date."
+          : missingFields.includes("amount")
+            ? "I found the bill name and due date, but need the amount."
+            : "I found the bill name and amount, but need the due date.";
 
         return {
           action: "create_bill",
           name: cleanedName,
-          amount: Number(item.amount),
+          amount: item.amount === undefined || item.amount === null || item.amount === "" ? null : Number(item.amount),
           currency: item.currency || "GBP",
           frequency: "monthly",
-          dueDay: null,
+          dueDay: item.dueDay === undefined || item.dueDay === null || item.dueDay === "" ? null : Number(item.dueDay),
           reminderOffsetDays: Number(item.reminderOffsetDays ?? 1),
-          needsDueDay: true,
-          responseMessage: `Saved ${cleanedName} for ${formatGBP(item.amount)}. What day of month is it due?`,
+          needsReview: true,
+          missingFields,
+          confidence: Number(item.confidence ?? 0.6),
+          sourceText: item.rawText || "",
+          responseMessage,
         };
       }
 
@@ -493,6 +502,9 @@ function normaliseItem(item) {
       frequency: "monthly",
       dueDay: Number(item.dueDay),
       reminderOffsetDays: Number(item.reminderOffsetDays ?? 1),
+      confidence: Number(item.confidence ?? 0.85),
+      sourceText: item.rawText || "",
+      needsReview: false,
       responseMessage: `Logged. ${cleanedName} - ${formatGBP(item.amount)} - due on the ${formatOrdinal(item.dueDay)}. Reminder set for the day before.`,
     };
   }
@@ -675,18 +687,20 @@ function parseQuickEntry(message) {
   const amount = extractAmount(lower);
   const name = extractCompactName(trimmed);
 
-  if (!name || !amount || !dueDay) {
+  if (!name || (!amount && !dueDay)) {
     return null;
   }
 
   return {
     action: "create_bill",
     name,
-    amount,
+    amount: amount || null,
     currency: "GBP",
     frequency: "monthly",
-    dueDay,
+    dueDay: dueDay || null,
     reminderOffsetDays: 1,
+    confidence: amount && dueDay ? 0.82 : 0.62,
+    rawText: trimmed,
   };
 }
 
@@ -738,10 +752,12 @@ function extractOrdinalDay(text) {
 function extractCompactName(text) {
   return normaliseBillName(
     text
+      .replace(/\b(and there(?:'|’)s|there(?:'|’)s|there is|there are|around|about|approximately|approx|roughly)\b.*$/i, " ")
+      .replace(/\b(of every month|of each month)\b/gi, " ")
       .replace(/(?:£|\bgbp\b|\bpounds?\b)\s*\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?/gi, " ")
       .replace(/\b\d{1,5}(?:\.\d{1,2})?\b/g, " ")
       .replace(/\b([12]?\d|3[01])(st|nd|rd|th)\b/gi, " ")
-      .replace(/\b(my|the|is|due|on|every|month|monthly|each|bill|please|log|it|get|paid|payday)\b/gi, " ")
+      .replace(/\b(my|the|is|due|on|every|month|monthly|each|bill|please|log|it|get|paid|payday|of|there|s|are|amount)\b/gi, " ")
       .replace(/\s+/g, " ")
       .trim(),
   );

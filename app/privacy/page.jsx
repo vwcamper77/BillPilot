@@ -85,7 +85,7 @@ export default function PrivacyPage() {
         <h2 className="account-heading" style={{ marginTop: "20px" }}>Contact</h2>
         <p>
           For privacy or support questions, contact us at{" "}
-          <a href="mailto:support@cleartill.money">support@cleartill.money</a>.
+          <a href="mailto:hello@cleartill.money">hello@cleartill.money</a>.
         </p>
 
         <p className="helper-text" style={{ marginTop: "16px" }}>Last updated: 30 June 2026</p>
