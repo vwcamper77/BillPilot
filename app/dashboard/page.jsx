@@ -1227,6 +1227,32 @@ function DashboardPageContent() {
     );
   }
 
+  async function postDashboardBillAction(action, payload = {}) {
+    if (!auth?.currentUser) {
+      throw new Error("Please sign in again before saving that bill.");
+    }
+
+    const idToken = await auth.currentUser.getIdToken();
+    const response = await fetch("/api/dashboard/bills", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        action,
+        ...payload,
+      }),
+    });
+    const responsePayload = await response.json().catch(() => ({}));
+
+    if (!response.ok || !responsePayload?.ok) {
+      throw new Error(responsePayload?.error || "Could not save that bill.");
+    }
+
+    return responsePayload;
+  }
+
   function parseDueDayFromText(value) {
     if (!value) {
       return null;
@@ -1290,41 +1316,35 @@ function DashboardPageContent() {
       return { skipped: true, reason: "duplicate" };
     }
 
-    const billRef = doc(collection(db, "users", userId, "bills"));
     const billDocument = buildBillDocument(parsedBill);
     const payload = {
       ...billDocument,
       dateText: parsedBill.dateText,
       rawText: parsedBill.rawText,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
     };
-    const batch = writeBatch(db);
-
-    batch.set(billRef, payload);
 
     try {
-      await batch.commit();
+      const result = await postDashboardBillAction("create_bill", { fields: payload });
       logSecurityEventClient("bill_created", { source: "import" });
+      const savedBill = {
+        ...billDocument,
+        id: result.billId,
+      };
+
+      billsRef.current = [...currentBills, savedBill];
+      setBills((current) => {
+        if (current.some((existingBill) => existingBill.id === savedBill.id)) {
+          return current;
+        }
+
+        return [...current, savedBill];
+      });
+
+      return { skipped: false };
     } catch (error) {
-      safeError("[firestore-bill-save] failed", { code: error?.code });
+      safeError("[dashboard-bills-save] failed", { code: error?.code });
       throw error;
     }
-    const savedBill = {
-      ...billDocument,
-      id: billRef.id,
-    };
-
-    billsRef.current = [...currentBills, savedBill];
-    setBills((current) => {
-      if (current.some((existingBill) => existingBill.id === savedBill.id)) {
-        return current;
-      }
-
-      return [...current, savedBill];
-    });
-
-    return { skipped: false };
   }
 
   async function handleSkipBalance() {
@@ -1515,18 +1535,20 @@ function DashboardPageContent() {
         updatedAt: serverTimestamp(),
       };
 
-      await runWithTimeout(setDoc(
-        doc(db, "users", user.uid, "bills", billId),
-        payload,
-        { merge: true },
-      ), "Saving that bill is taking too long. Check your connection and try again.");
+      await runWithTimeout(
+        postDashboardBillAction("update_bill", {
+          billId,
+          fields: payload,
+        }),
+        "Saving that bill is taking too long. Check your connection and try again.",
+      );
 
       logSecurityEventClient("bill_updated", { source: "edit" });
       cancelBillEdit();
       setPageNotice("Bill updated.");
     } catch (saveError) {
-      safeError("[firestore-bill-save] failed", { code: saveError?.code });
-      setEditError(saveError.message);
+      safeError("[dashboard-bills-save] failed", { code: saveError?.code });
+      setEditError(friendlyBillSaveError(saveError, "Could not save that bill."));
     } finally {
       setSavingEdit(false);
     }
@@ -1935,16 +1957,16 @@ function DashboardPageContent() {
   }
 
   async function handleBillDelete(billId) {
-    if (!user || !db) return;
+    if (!user) return;
     if (!window.confirm("Remove this bill?")) return;
     const previousBills = bills;
     setBills((current) => current.filter((bill) => bill.id !== billId));
     try {
-      await deleteDoc(doc(db, "users", user.uid, "bills", billId));
+      await postDashboardBillAction("delete_bill", { billId });
       logSecurityEventClient("bill_deleted");
-    } catch {
+    } catch (saveError) {
       setBills(previousBills);
-      setEditError("Could not delete that bill. Try again.");
+      setEditError(friendlyBillSaveError(saveError, "Could not delete that bill. Try again."));
     }
   }
 
@@ -1967,15 +1989,13 @@ function DashboardPageContent() {
 
       try {
         await runWithTimeout(
-          setDoc(
-            doc(db, "users", user.uid, "bills", bill.id),
-            {
+          postDashboardBillAction("update_bill", {
+            billId: bill.id,
+            fields: {
               paidThroughDate: null,
               lastPaidAt: null,
-              updatedAt: serverTimestamp(),
             },
-            { merge: true },
-          ),
+          }),
           "Saving the paid status is taking too long. Check your connection and try again.",
         );
       } catch (saveError) {
@@ -1985,7 +2005,7 @@ function DashboardPageContent() {
             : entry
         )));
         setPageNotice("");
-        setEditError(saveError.message || "Could not reactivate that bill.");
+        setEditError(friendlyBillSaveError(saveError, "Could not reactivate that bill."));
       }
       return;
     }
@@ -2014,15 +2034,13 @@ function DashboardPageContent() {
 
     try {
       await runWithTimeout(
-        setDoc(
-          doc(db, "users", user.uid, "bills", bill.id),
-          {
-            paidThroughDate: cycleDate,
-            lastPaidAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true },
-        ),
+          postDashboardBillAction("update_bill", {
+            billId: bill.id,
+            fields: {
+              paidThroughDate: cycleDate,
+              lastPaidAt: "__SERVER_TIMESTAMP__",
+            },
+          }),
         "Saving the paid status is taking too long. Check your connection and try again.",
       );
     } catch (saveError) {
@@ -2032,7 +2050,7 @@ function DashboardPageContent() {
           : entry
       )));
       setPageNotice("");
-      setEditError(saveError.message || "Could not mark that bill as paid.");
+      setEditError(friendlyBillSaveError(saveError, "Could not mark that bill as paid."));
     }
   }
 
@@ -2203,23 +2221,21 @@ function DashboardPageContent() {
   }
 
   async function handleBulkDelete() {
-    if (!user || !db || selectedBillIds.size === 0) return;
+    if (!user || selectedBillIds.size === 0) return;
     const count = selectedBillIds.size;
     if (!window.confirm(`Delete ${count} selected bill${count === 1 ? "" : "s"}?`)) return;
     const previousBills = bills;
     setBills((current) => current.filter((bill) => !selectedBillIds.has(bill.id)));
     try {
-      const batch = writeBatch(db);
-      selectedBillIds.forEach((billId) => {
-        batch.delete(doc(db, "users", user.uid, "bills", billId));
+      await postDashboardBillAction("bulk_delete_bills", {
+        billIds: Array.from(selectedBillIds),
       });
-      await batch.commit();
       logSecurityEventClient("bill_deleted", { count });
       setSelectedBillIds(new Set());
       setSelectMode(false);
-    } catch {
+    } catch (saveError) {
       setBills(previousBills);
-      setEditError("Could not delete the selected bills. Try again.");
+      setEditError(friendlyBillSaveError(saveError, "Could not delete the selected bills. Try again."));
     }
   }
 
@@ -5653,6 +5669,21 @@ function friendlySettingsError(error, fallbackMessage) {
 
   if (code === "auth/id-token-expired" || code === "auth/invalid-id-token") {
     return "Please sign in again before updating that setting.";
+  }
+
+  return fallbackMessage;
+}
+
+function friendlyBillSaveError(error, fallbackMessage) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+
+  if (code === "permission-denied" || message.toLowerCase().includes("insufficient permissions")) {
+    return "ClearTill could not save that bill right now. Please sign in again and try once more.";
+  }
+
+  if (code === "auth/id-token-expired" || code === "auth/invalid-id-token") {
+    return "Please sign in again before saving that bill.";
   }
 
   return fallbackMessage;
