@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { getFourWeekPayBuckets } from "../../lib/billMath.js";
+import { getFourWeekPayBuckets, buildFourWeekCashflowWaterfall } from "../../lib/billMath.js";
 
 // Reference calendar: Mon 2026-07-06, Mon 2026-07-13, Mon 2026-07-20, Mon 2026-07-27, Thu 2026-07-09.
 
@@ -74,5 +74,74 @@ test.describe("getFourWeekPayBuckets", () => {
     const payDateBucket = buckets.find((bucket) => bucket.containsPayDate);
     expect(payDateBucket.payDateLabel).toBe("Pay date 20 Jul");
     expect(payDateBucket.payDateLabel).not.toContain("Paid date");
+  });
+});
+
+test.describe("buildFourWeekCashflowWaterfall", () => {
+  test("spec example: opening/outflow/closing cascade across the 4 weeks", () => {
+    const bills = [
+      { nextDueDate: "2026-07-08", amount: 65 },
+      { nextDueDate: "2026-07-14", amount: 1155 },
+    ];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-22", 1500, bills, []);
+
+    expect(points).toHaveLength(4);
+
+    expect(points[0].openingBalance).toBe(1500);
+    expect(points[0].weeklyOutflow).toBe(65);
+    expect(points[0].closingBalance).toBe(1435);
+
+    expect(points[1].openingBalance).toBe(1435);
+    expect(points[1].weeklyOutflow).toBe(1155);
+    expect(points[1].closingBalance).toBe(280);
+
+    // No cost this week: opening carries straight through to closing (thin flat line)
+    expect(points[2].openingBalance).toBe(280);
+    expect(points[2].weeklyOutflow).toBe(0);
+    expect(points[2].closingBalance).toBe(280);
+    expect(points[2].containsPayDate).toBe(true);
+    expect(points[2].isAfterPayCycle).toBe(false);
+
+    // Week 4 is after the pay date, so it's muted
+    expect(points[3].openingBalance).toBe(280);
+    expect(points[3].closingBalance).toBe(280);
+    expect(points[3].isAfterPayCycle).toBe(true);
+  });
+
+  test("a large weekly outgoing produces a much bigger drop than a small one", () => {
+    const bills = [
+      { nextDueDate: "2026-07-08", amount: 65 },
+      { nextDueDate: "2026-07-14", amount: 1155 },
+    ];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-22", 1500, bills, []);
+    const week1Drop = points[0].openingBalance - points[0].closingBalance;
+    const week2Drop = points[1].openingBalance - points[1].closingBalance;
+
+    expect(week1Drop).toBe(65);
+    expect(week2Drop).toBe(1155);
+    expect(week2Drop).toBeGreaterThan(week1Drop * 10);
+  });
+
+  test("closing balance crosses below £0 when the weekly cost exceeds the opening balance", () => {
+    const bills = [{ nextDueDate: "2026-07-08", amount: 420 }];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-25", 300, bills, []);
+
+    expect(points[0].openingBalance).toBe(300);
+    expect(points[0].weeklyOutflow).toBe(420);
+    expect(points[0].closingBalance).toBe(-120);
+  });
+
+  test("large costs due before payday also count toward weeklyOutflow", () => {
+    const largeCosts = [{ nextDueDate: "2026-07-09", currentAccountAmount: 200 }];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-25", 500, [], largeCosts);
+
+    expect(points[0].weeklyOutflow).toBe(200);
+    expect(points[0].closingBalance).toBe(300);
+  });
+
+  test("pay date label on the waterfall point reads 'Pay date DD Mon'", () => {
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-20", 1000, [], []);
+    const payDatePoint = points.find((point) => point.containsPayDate);
+    expect(payDatePoint.payDateLabel).toBe("Pay date 20 Jul");
   });
 });

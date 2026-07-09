@@ -27,6 +27,7 @@ import {
 } from "@/lib/firebase";
 import {
   buildBillDocument,
+  buildFourWeekCashflowWaterfall,
   buildLargeCostDocument,
   calculateBillSchedule,
   calculateLargeCostImpact,
@@ -36,7 +37,6 @@ import {
   formatDisplayDate,
   formatDueLabel,
   formatOrdinal,
-  getFourWeekPayBuckets,
   getTodayIso,
   isValidDueDay,
   sanitiseBillDisplayName,
@@ -668,6 +668,27 @@ function DashboardPageContent() {
   const pagedBeforeGroup = pagedBills.filter((b) => beforePaydayIdSet.has(b.id));
   const pagedAfterGroup = pagedBills.filter((b) => !beforePaydayIdSet.has(b.id));
   const totalMonthlyBills = bills.reduce((sum, b) => sum + (b.amount || 0), 0);
+  const billListSummary = useMemo(() => {
+    if (!hasBills) {
+      return null;
+    }
+
+    const total = allBillsForList.reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
+    const label = billListFilter === "before"
+      ? "bills before payday"
+      : billListFilter === "after"
+        ? "bills after payday"
+        : billListFilter === "recent"
+          ? "recently added bills"
+          : billListFilter === "paid"
+            ? "paid bills"
+            : "total monthly bills";
+
+    return {
+      amount: formatCurrency(total, displayCurrency),
+      label,
+    };
+  }, [allBillsForList, billListFilter, displayCurrency, hasBills]);
 
   const monthlySpendingRoomValue = (() => {
     if (!hasIncomeAmount) return "Add expected income";
@@ -2932,12 +2953,6 @@ function DashboardPageContent() {
           {"Payday "}
           <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "not set"}</strong>
         </span>
-        {hasBills ? (
-          <span className="stat-chip">
-            <strong>{formatCurrency(totalMonthlyBills, displayCurrency)}</strong>
-            {" total monthly bills"}
-          </span>
-        ) : null}
         <span className="stat-chip">
           {"Today "}
           <strong>{formatDisplayDate(todayIso)}</strong>
@@ -3259,6 +3274,14 @@ function DashboardPageContent() {
               </div>
             ) : null}
           </div>
+          {billListSummary ? (
+            <div className="bill-list-summary-row" aria-live="polite">
+              <span className="stat-chip bill-list-summary-chip">
+                <strong>{billListSummary.amount}</strong>
+                {` ${billListSummary.label}`}
+              </span>
+            </div>
+          ) : null}
           <section
             ref={paydaySectionRef}
             className={`bill-section ${!hasBalanceSnapshot ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}
@@ -3927,45 +3950,14 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
 
   if (!paydayDate || !hasBalanceSnapshot) return null;
 
-  // 4 rolling, Monday-aligned week buckets from today, with the pay date placed in its own bucket
-  const weekBuckets = getFourWeekPayBuckets(todayIso, paydayDate, currentBalance, dailySpendingRoom || 0);
-  const payDateBucketIndex = weekBuckets.findIndex((bucket) => bucket.containsPayDate);
-  const bucketForDate = (isoDate) => {
-    const index = weekBuckets.findIndex((bucket) => isoDate <= bucket.weekEnd);
-    return index === -1 ? weekBuckets.length - 1 : index;
-  };
+  // Explicit waterfall points: openingBalance -> weeklyOutflow -> closingBalance per week,
+  // on Monday-aligned week buckets, with the pay date placed in its own bucket
+  const waterfall = buildFourWeekCashflowWaterfall(todayIso, paydayDate, currentBalance, beforePayday, dueBeforePaydayLargeCosts);
+  const payDateBucketIndex = waterfall.findIndex((point) => point.containsPayDate);
 
-  // Group bills + account-funded large costs into their matching week bucket
-  const billsThisWeek = [0, 0, 0, 0];
-  for (const bill of beforePayday) {
-    if (bill.nextDueDate && bill.amount > 0) {
-      billsThisWeek[bucketForDate(bill.nextDueDate)] += bill.amount;
-    }
-  }
-  for (const cost of dueBeforePaydayLargeCosts) {
-    const acctAmt = Number(cost.currentAccountAmount) || 0;
-    if (acctAmt > 0 && cost.nextDueDate) {
-      billsThisWeek[bucketForDate(cost.nextDueDate)] += acctAmt;
-    }
-  }
-
-  // Net cash available by the end of each week, running down from today's balance
-  let runningBalance = currentBalance;
-  const cashByWeek = billsThisWeek.map((billTotal) => {
-    runningBalance -= billTotal;
-    return runningBalance;
-  });
-  const lowestBal = cashByWeek[cashByWeek.length - 1];
-  const goesNegative = cashByWeek.some((amount) => amount < 0);
-
-  // Waterfall segments: each bar spans from last week's balance to this week's, so its
-  // size reflects that week's actual cost rather than just where the running total lands
-  let previousBalance = currentBalance;
-  const weekSegments = cashByWeek.map((amount) => {
-    const segment = { from: previousBalance, to: amount };
-    previousBalance = amount;
-    return segment;
-  });
+  const closingBalances = waterfall.map((point) => point.closingBalance);
+  const lowestBal = closingBalances[closingBalances.length - 1];
+  const goesNegative = closingBalances.some((amount) => amount < 0);
 
   // SVG layout
   const W = 400, H = 158;
@@ -3977,16 +3969,16 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
   const barGap = 10;
   const barW = (chartW - (numBars - 1) * barGap) / numBars;
 
-  // Axis scales to the net cash range for the week — including negative dips — not a fixed reference amount
-  const maxCash = Math.max(currentBalance, ...cashByWeek, 1);
-  const minCash = Math.min(0, ...cashByWeek);
+  // One shared Y scale across all 4 bars — including negative dips — not normalised per bar
+  const maxCash = Math.max(currentBalance, ...closingBalances, 1);
+  const minCash = Math.min(0, ...closingBalances);
   const cashRange = Math.max(maxCash - minCash, 1);
   const toY = (value) => plotBottomY - ((value - minCash) / cashRange) * chartH;
   const zeroY = toY(0);
   const toBarX = (i) => PL + i * (barW + barGap);
   const toBarCenterX = (i) => toBarX(i) + barW / 2;
   const dayOffsetX = (isoDate, bucketIndex) => {
-    const offsetDays = Math.min(6, Math.max(0, diffDays(weekBuckets[bucketIndex].weekStart, isoDate)));
+    const offsetDays = Math.min(6, Math.max(0, diffDays(waterfall[bucketIndex].weekStart, isoDate)));
     return toBarX(bucketIndex) + (offsetDays / 6) * barW;
   };
   const anchorForX = (x) => {
@@ -4037,11 +4029,10 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
             <text x={PL - 4} y={referenceY + 3.5} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}{referenceValue}</text>
           </>
         ) : null}
-        {/* Bars: a waterfall from last week's balance to this week's, so bar size matches the cost, not just where the total lands */}
-        {cashByWeek.map((amount, i) => {
-          const { from } = weekSegments[i];
-          const yFrom = toY(from);
-          const yTo = toY(amount);
+        {/* Bars: one shared scale, each spanning openingBalance -> closingBalance so bar size matches that week's cost */}
+        {waterfall.map((point, i) => {
+          const yFrom = toY(point.openingBalance);
+          const yTo = toY(point.closingBalance);
           const endsAtBottomEdge = yTo >= yFrom;
           let barTopY = Math.min(yFrom, yTo);
           let barBottomY = Math.max(yFrom, yTo);
@@ -4051,15 +4042,22 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
             barBottomY = yTo + 1;
           }
           const bh = barBottomY - barTopY;
-          const muted = weekBuckets[i].muted;
-          const negative = amount < 0;
+          const muted = point.isAfterPayCycle;
+          const negative = point.closingBalance < 0;
           const labelFitsInside = bh >= 16;
           const labelY = endsAtBottomEdge
             ? (labelFitsInside ? barBottomY - 6 : barBottomY + 11)
             : (labelFitsInside ? barTopY + 12 : barTopY - 6);
           return (
-            <g key={weekBuckets[i].weekStart}>
+            <g key={point.weekStart}>
               <rect
+                data-testid="waterfall-bar"
+                data-week-index={i}
+                data-week-start={point.weekStart}
+                data-opening-balance={point.openingBalance}
+                data-closing-balance={point.closingBalance}
+                data-weekly-outflow={point.weeklyOutflow}
+                data-muted={muted}
                 x={toBarX(i).toFixed(1)}
                 y={barTopY.toFixed(1)}
                 width={barW.toFixed(1)}
@@ -4069,6 +4067,8 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
                 rx="3"
               />
               <text
+                data-testid="waterfall-bar-label"
+                data-week-index={i}
                 x={toBarCenterX(i).toFixed(1)}
                 y={labelY.toFixed(1)}
                 textAnchor="middle"
@@ -4077,49 +4077,54 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
                 fill={labelFitsInside ? "#ffffff" : "var(--ink)"}
                 opacity={muted ? 0.6 : 1}
               >
-                {formatCurrency(amount, displayCurrency)}
+                {formatCurrency(point.closingBalance, displayCurrency)}
               </text>
             </g>
           );
         })}
         {/* £0 line — floats up from the bottom once a week dips negative */}
-        <line x1={PL} y1={zeroY.toFixed(1)} x2={PL + chartW} y2={zeroY.toFixed(1)} stroke="var(--line)" strokeWidth="1" />
+        <line data-testid="zero-line" x1={PL} y1={zeroY.toFixed(1)} x2={PL + chartW} y2={zeroY.toFixed(1)} stroke="var(--line)" strokeWidth="1" />
         {minCash < 0 ? (
           <text x={PL - 4} y={(zeroY + 3.5).toFixed(1)} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}0</text>
         ) : null}
-        {/* Cost leaving that week */}
-        {billsThisWeek.map((billTotal, i) =>
-          billTotal > 0 ? (
+        {/* Weekly outgoing under each column */}
+        {waterfall.map((point, i) =>
+          point.weeklyOutflow > 0 ? (
             <text
-              key={weekBuckets[i].weekStart}
+              data-testid="weekly-outflow"
+              data-week-index={i}
+              data-amount={point.weeklyOutflow}
+              key={point.weekStart}
               x={toBarCenterX(i).toFixed(1)}
               y={plotBottomY + 13}
               textAnchor="middle"
               fontSize="8.5"
               fontWeight="600"
               fill="var(--warn)"
-              opacity={weekBuckets[i].muted ? 0.5 : 0.85}
+              opacity={point.isAfterPayCycle ? 0.5 : 0.85}
             >
-              -{formatCurrency(billTotal, displayCurrency)}
+              -{formatCurrency(point.weeklyOutflow, displayCurrency)}
             </text>
           ) : null,
         )}
         {/* Week commencing labels */}
-        {weekBuckets.map((bucket, i) => (
+        {waterfall.map((point, i) => (
           <text
-            key={bucket.weekStart}
+            data-testid="week-label"
+            data-week-index={i}
+            key={point.weekStart}
             x={toBarCenterX(i).toFixed(1)}
             y={H - 6}
             textAnchor="middle"
             fontSize="8.5"
             fill="var(--muted)"
-            opacity={bucket.muted ? 0.55 : 1}
+            opacity={point.isAfterPayCycle ? 0.55 : 1}
           >
-            {bucket.weekLabel}
+            {point.weekLabel}
           </text>
         ))}
         {/* Today marker */}
-        <g>
+        <g data-testid="today-marker">
           <line x1={todayX.toFixed(1)} y1={PT} x2={todayX.toFixed(1)} y2={plotBottomY} stroke="var(--ink)" strokeWidth="1" strokeDasharray="2 3" opacity="0.55" />
           <circle cx={todayX.toFixed(1)} cy={PT} r="2.2" fill="var(--ink)" />
           <text x={todayX.toFixed(1)} y={PT - 8} textAnchor={anchorForX(todayX)} fontSize="9" fontWeight="600" fill="var(--ink)">
@@ -4128,7 +4133,7 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
         </g>
         {/* Pay date marker */}
         {paydayX !== null ? (
-          <g>
+          <g data-testid="payday-marker" data-week-index={payDateBucketIndex}>
             <line
               x1={paydayX.toFixed(1)}
               y1={PT}
@@ -4147,7 +4152,7 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
               fontWeight="600"
               fill="var(--accent-dark)"
             >
-              {weekBuckets[payDateBucketIndex].payDateLabel}
+              {waterfall[payDateBucketIndex].payDateLabel}
             </text>
           </g>
         ) : null}
