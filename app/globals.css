@@ -2692,6 +2692,19 @@ h1 {
   letter-spacing: -0.02em;
   margin: 0 0 8px;
 }
+
+.hero-value-prefix,
+.hero-value-suffix {
+  color: inherit;
+}
+
+.hero-value-amount {
+  color: #2BA378;
+}
+
+.hero-value-amount.is-negative {
+  color: #c62828;
+}
 .hero-sub {
   max-width: 560px;
   color: #5f685f;

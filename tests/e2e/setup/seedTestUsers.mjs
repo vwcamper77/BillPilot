@@ -108,6 +108,52 @@ export async function grantTestAccess(uid, email = "") {
   ]);
 }
 
+export async function seedDashboardState(uid, { currentBalance = null, payDay = null, payAmount = null } = {}) {
+  const db = getFirestore(getFirebaseAdminApp());
+  const writes = [];
+
+  if (currentBalance !== null) {
+    writes.push(
+      db.collection("users").doc(uid).collection("settings").doc("balance").set({
+        currentBalance,
+        currency: "GBP",
+        snapshotEntered: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true }),
+    );
+  }
+
+  if (payDay !== null) {
+    writes.push(
+      db.collection("users").doc(uid).collection("income").doc("main").set({
+        type: "income",
+        name: "Payday",
+        amount: payAmount,
+        currency: "GBP",
+        frequency: "monthly",
+        payDay,
+        active: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true }),
+    );
+  }
+
+  await Promise.all(writes);
+}
+
+export async function clearUserBills(uid) {
+  const db = getFirestore(getFirebaseAdminApp());
+  const snapshot = await db.collection("users").doc(uid).collection("bills").get();
+
+  if (snapshot.empty) {
+    return;
+  }
+
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+}
+
 export async function mintCustomToken(uid) {
   const auth = getAuth(getFirebaseAdminApp());
   return auth.createCustomToken(uid);

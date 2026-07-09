@@ -3,11 +3,15 @@
 import { useEffect, useState } from "react";
 import {
   createUserWithEmailAndPassword,
+  getAdditionalUserInfo,
+  linkWithPopup,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
 } from "firebase/auth";
 import CheckoutButton from "./CheckoutButton";
-import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";
+import { auth, authPersistenceReady, googleProvider, isFirebaseClientConfigured } from "@/lib/firebase";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
 
@@ -47,6 +51,56 @@ export default function BillingAccessGate() {
       unsubscribe();
     };
   }, []);
+
+  function trackAccountCreated(method) {
+    trackEvent("account_created", { method, attribution: getStoredAttribution() });
+    trackEvent("onboarding_started");
+  }
+
+  async function handleGoogleSignIn() {
+    if (!auth || !googleProvider) {
+      setStatus({ busy: false, error: "Sign-in is not available right now. Please try again shortly." });
+      return;
+    }
+
+    setStatus({ busy: true, error: "" });
+
+    try {
+      if (auth.currentUser?.isAnonymous) {
+        await linkWithPopup(auth.currentUser, googleProvider);
+        trackAccountCreated("google");
+        setStatus({ busy: false, error: "" });
+        return;
+      }
+
+      const result = await signInWithPopup(auth, googleProvider);
+      if (getAdditionalUserInfo(result)?.isNewUser) {
+        trackAccountCreated("google");
+      } else {
+        trackEvent("login", { method: "google" });
+      }
+      setStatus({ busy: false, error: "" });
+    } catch (error) {
+      if (error?.code === "auth/credential-already-in-use" && auth.currentUser?.isAnonymous) {
+        try {
+          await auth.currentUser.delete().catch(() => signOut(auth));
+          const retryResult = await signInWithPopup(auth, googleProvider);
+          if (getAdditionalUserInfo(retryResult)?.isNewUser) {
+            trackAccountCreated("google");
+          } else {
+            trackEvent("login", { method: "google" });
+          }
+          setStatus({ busy: false, error: "" });
+          return;
+        } catch (retryError) {
+          setStatus({ busy: false, error: friendlyGoogleAuthError(retryError) });
+          return;
+        }
+      }
+
+      setStatus({ busy: false, error: friendlyGoogleAuthError(error) });
+    }
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -115,6 +169,17 @@ export default function BillingAccessGate() {
         <p className="billing-access-note">
           No bank login. No Open Banking. No card details stored by ClearTill.
         </p>
+
+        <button
+          className="primary-button billing-primary-button"
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={status.busy}
+        >
+          {status.busy ? "Signing in…" : "Continue with Google"}
+        </button>
+
+        <div className="auth-divider" aria-hidden="true"><span>or</span></div>
 
         <form className="billing-auth-form" onSubmit={handleSubmit}>
           <div className="field-row">
@@ -203,4 +268,26 @@ function friendlyAuthError(error, mode) {
   return mode === "signup"
     ? "We couldn't create your login right now. Please try again."
     : "We couldn't sign you in right now. Please try again.";
+}
+
+function friendlyGoogleAuthError(error) {
+  const code = String(error?.code || "");
+
+  if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
+    return "Google sign-in was blocked by the browser. Please try again, or use email sign-in.";
+  }
+
+  if (code === "auth/unauthorized-domain") {
+    return "Google sign-in isn't available on this domain yet.";
+  }
+
+  if (code === "auth/operation-not-allowed") {
+    return "Google sign-in is not enabled yet. Please use email sign-in.";
+  }
+
+  if (code === "auth/popup-closed-by-user") {
+    return "Google sign-in was closed before finishing. Please try again.";
+  }
+
+  return "We couldn't sign you in with Google right now. Please try again, or use email sign-in.";
 }

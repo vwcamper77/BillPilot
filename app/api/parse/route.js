@@ -2,6 +2,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { recognize } from "tesseract.js";
 import { formatGBP, formatOrdinal, isValidDueDay, normaliseBillName, normaliseEntityName, resolveBillTitle } from "@/lib/billMath";
+import { inferSupplierContext } from "@/lib/supplierCatalog";
 
 export const runtime = "nodejs";
 
@@ -27,6 +28,8 @@ export async function POST(request) {
   let imageNames;
   let imageDataUrl;
   let imageName;
+  let countryCode;
+  let regionCode;
 
   if (contentType.includes("multipart/form-data")) {
     const form = await request.formData().catch(() => null);
@@ -39,7 +42,7 @@ export async function POST(request) {
       imageName = file.name;
     }
   } else {
-    ({ message, imageDataUrls, imageNames, imageDataUrl, imageName } = await request.json().catch(() => ({})));
+    ({ message, imageDataUrls, imageNames, imageDataUrl, imageName, countryCode, regionCode } = await request.json().catch(() => ({})));
   }
 
   const safeMessage = typeof message === "string" ? message : "";
@@ -49,6 +52,7 @@ export async function POST(request) {
     imageDataUrl,
     imageName,
   });
+  const supplierContext = inferSupplierContext(safeMessage, { countryHint: countryCode, regionHint: regionCode });
 
   if (!safeMessage.trim() && !safeImages.length) {
     return NextResponse.json(
@@ -111,10 +115,10 @@ export async function POST(request) {
     );
   }
 
-  const quickParsed = safeImages.length ? null : parseQuickEntry(safeMessage);
+  const quickParsed = safeImages.length ? null : parseQuickEntry(safeMessage, supplierContext);
 
-  if (quickParsed) {
-    return NextResponse.json(normaliseParsedResult(quickParsed, safeMessage));
+  if (quickParsed && !shouldDeferToAiParsing(safeMessage, quickParsed)) {
+    return NextResponse.json(normaliseParsedResult(quickParsed, safeMessage, false, supplierContext));
   }
 
   try {
@@ -149,7 +153,7 @@ export async function POST(request) {
       message: safeMessage,
       images: safeImages,
     });
-    const normalised = normaliseParsedResult(parsed, safeMessage, safeImages.length > 0);
+    const normalised = normaliseParsedResult(parsed, safeMessage, safeImages.length > 0, supplierContext);
 
     if (safeImages.length && normalised.action === "unknown") {
       const ocrFallback = await parseImagesWithOcr(safeImages);
@@ -414,10 +418,10 @@ async function parseImageImportWithOpenAI({ message, image }) {
   };
 }
 
-function normaliseParsedResult(parsed, message, hasImage = false) {
+function normaliseParsedResult(parsed, message, hasImage = false, supplierContext = {}) {
   if (parsed?.action === "batch") {
     const items = Array.isArray(parsed?.items)
-      ? dedupeParsedItems(parsed.items.map((item) => normaliseItem(item, message)).filter(Boolean))
+      ? dedupeParsedItems(parsed.items.map((item) => normaliseItem(item, message, supplierContext)).filter(Boolean))
       : [];
 
     if (!items.length) {
@@ -439,7 +443,7 @@ function normaliseParsedResult(parsed, message, hasImage = false) {
     };
   }
 
-  const item = normaliseItem(parsed, message);
+  const item = normaliseItem(parsed, message, supplierContext);
 
   if (item) {
     return item;
@@ -454,7 +458,7 @@ function normaliseParsedResult(parsed, message, hasImage = false) {
   };
 }
 
-function normaliseItem(item, fallbackSourceText = "") {
+function normaliseItem(item, fallbackSourceText = "", supplierContext = {}) {
   if (item?.action === "create_bill") {
     const sourceText = item.rawText || fallbackSourceText || "";
     const missingFields = getMissingFields(item, ["name", "amount", "dueDay"]);
@@ -467,7 +471,7 @@ function normaliseItem(item, fallbackSourceText = "") {
           || (item.dueDay !== undefined && item.dueDay !== null && item.dueDay !== "")
         )
       ) {
-        const cleanedName = resolveBillTitle(item.name, sourceText);
+        const cleanedName = resolveBillTitle(item.name, sourceText, supplierContext);
         const responseMessage = missingFields.includes("amount") && missingFields.includes("dueDay")
           ? "I found the bill name, but need the amount and due date."
           : missingFields.includes("amount")
@@ -493,7 +497,7 @@ function normaliseItem(item, fallbackSourceText = "") {
       return missingResponse(missingFields);
     }
 
-    const cleanedName = resolveBillTitle(item.name, sourceText);
+    const cleanedName = resolveBillTitle(item.name, sourceText, supplierContext);
 
     return {
       action: "create_bill",
@@ -657,7 +661,7 @@ function buildIncomeKey(item) {
   return `income:${Number(item.amount).toFixed(2)}|${Number(item.payDay)}`;
 }
 
-function parseQuickEntry(message) {
+function parseQuickEntry(message, supplierContext = {}) {
   const trimmed = String(message || "").trim();
 
   if (!trimmed) {
@@ -686,7 +690,7 @@ function parseQuickEntry(message) {
 
   const dueDay = extractOrdinalDay(lower);
   const amount = extractAmount(lower);
-  const name = resolveBillTitle(extractCompactName(trimmed), trimmed);
+  const name = resolveBillTitle(extractCompactName(trimmed), trimmed, supplierContext);
 
   if (!name || (!amount && !dueDay)) {
     return null;
@@ -703,6 +707,36 @@ function parseQuickEntry(message) {
     confidence: amount && dueDay ? 0.82 : 0.62,
     rawText: trimmed,
   };
+}
+
+function shouldDeferToAiParsing(message, parsed) {
+  if (!message || !parsed || parsed.action !== "create_bill") {
+    return false;
+  }
+
+  const text = String(message || "").trim().toLowerCase();
+  const parsedName = String(parsed.name || "").trim().toLowerCase();
+
+  if (!parsedName) {
+    return true;
+  }
+
+  const utilityKeywords = ["gas", "electric", "electricity", "energy", "dual fuel", "water", "council tax"];
+  const messyPhrases = ["i have", "my ", "comes out", "every month", "per month", "combined", "with ", "bill is"];
+
+  if (utilityKeywords.some((keyword) => text.includes(keyword)) && messyPhrases.some((phrase) => text.includes(phrase))) {
+    return true;
+  }
+
+  if (/\b(?:st|nd|rd|th)\b/i.test(parsedName)) {
+    return true;
+  }
+
+  if (text.split(/\s+/).length >= 7 && parsedName.split(/\s+/).length >= 3) {
+    return true;
+  }
+
+  return false;
 }
 
 function looksLikeIncome(text) {
@@ -758,6 +792,7 @@ function extractCompactName(text) {
       .replace(/(?:£|\bgbp\b|\bpounds?\b)\s*\d{1,4}(?:,\d{3})*(?:\.\d{1,2})?/gi, " ")
       .replace(/\b\d{1,5}(?:\.\d{1,2})?\b/g, " ")
       .replace(/\b([12]?\d|3[01])(st|nd|rd|th)\b/gi, " ")
+      .replace(/\b(?:st|nd|rd|th)\b/gi, " ")
       .replace(/\b(my|the|is|due|on|every|month|monthly|each|bill|please|log|it|get|paid|payday|of|there|s|are|amount)\b/gi, " ")
       .replace(/\s+/g, " ")
       .trim(),
