@@ -2202,6 +2202,10 @@ function DashboardPageContent() {
         });
       }
 
+      if (!outcome.savedBills?.length) {
+        throw new Error("Could not save that bill yet.");
+      }
+
       cancelBillReviewDraft(draftId);
       setAssistantMessage(`Added ${draft.name}.`);
 
@@ -2214,7 +2218,7 @@ function DashboardPageContent() {
         clearImports({ preserveAssistantMessage: true });
       }
     } catch (saveError) {
-      setChatError(saveError.message || "Could not save that bill yet.");
+      setChatError(friendlyBillSaveError(saveError, "Could not save that bill yet."));
     } finally {
       setSavingReviewDraftId("");
     }
@@ -2859,7 +2863,7 @@ function DashboardPageContent() {
             ref={balanceSectionRef}
             className={`chat-panel balance-action-card ${setupStep !== 1 ? "" : "setup-current"} ${highlightBalanceForm ? "form-highlight" : ""}`}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">Step 1 of 3</span> : null}
+            {setupStep < 4 ? <span className="setup-step-badge">{setupStep > 1 ? "Done" : "Step 1 of 3"}</span> : null}
             {onboardingHelper?.target === "balance" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -2932,7 +2936,7 @@ function DashboardPageContent() {
             ref={paydaySettingsSectionRef}
             className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || (!hasPayday && !editingIncome)) ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">Step 2 of 3</span> : null}
+            {setupStep < 4 ? <span className="setup-step-badge">{setupStep > 2 ? "Done" : "Step 2 of 3"}</span> : null}
             {onboardingHelper?.target === "payday" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -3361,7 +3365,7 @@ function DashboardPageContent() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">Step 3 of 3</span> : null}
+            {setupStep < 4 ? <span className="setup-step-badge">{setupStep > 3 ? "Done" : "Step 3 of 3"}</span> : null}
             {onboardingHelper?.target === "bills" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -5069,6 +5073,32 @@ async function saveIncome(userId, parsed, hasExistingIncome) {
   await setDoc(doc(db, "users", userId, "income", "main"), payload, { merge: true });
 }
 
+async function postDashboardBillActionFromClient(action, payload = {}) {
+  if (!auth?.currentUser) {
+    throw new Error("Please sign in again before saving that bill.");
+  }
+
+  const idToken = await auth.currentUser.getIdToken();
+  const response = await fetch("/api/dashboard/bills", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify({
+      action,
+      ...payload,
+    }),
+  });
+  const responsePayload = await response.json().catch(() => ({}));
+
+  if (!response.ok || !responsePayload?.ok) {
+    throw new Error(responsePayload?.error || "Could not save that bill.");
+  }
+
+  return responsePayload;
+}
+
 function applyQuickAddContext(parsed, quickAddContext) {
   if (!quickAddContext?.name || !parsed) {
     return parsed;
@@ -5121,21 +5151,17 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
 
   if (billItems.toCreate.length) {
     const saveResults = await Promise.allSettled(
-      billItems.toCreate.map((item) => {
-        const billRef = doc(collection(db, "users", userId, "bills"));
+      billItems.toCreate.map(async (item) => {
         const bill = buildBillDocument(item);
-        const batch = writeBatch(db);
         const payload = {
           ...bill,
           category: item.category || null,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
         };
-        batch.set(billRef, payload);
-        return batch.commit().then(() => ({
-          id: billRef.id,
+        const result = await postDashboardBillActionFromClient("create_bill", { fields: payload });
+        return {
+          id: result.billId,
           ...payload,
-        }));
+        };
       }),
     );
     outcome.createdBills = saveResults.filter((r) => r.status === "fulfilled").length;
@@ -5145,6 +5171,9 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
     const failures = saveResults.filter((r) => r.status === "rejected");
     if (failures.length) {
       safeError("[applyParsedActions] some bill saves failed", { count: failures.length });
+      if (!outcome.createdBills) {
+        throw failures[0].reason || new Error("Could not save that bill.");
+      }
     }
   }
 
