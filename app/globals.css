@@ -3921,10 +3921,33 @@ h1 {
   line-height: 1.55;
 }
 
+.billing-access-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.billing-auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.billing-auth-form input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink);
+  padding: 0 14px;
+}
+
 .billing-access-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .billing-primary-button {
@@ -3932,6 +3955,14 @@ h1 {
   width: fit-content;
   padding: 0 22px;
   border: 0;
+}
+
+.billing-access-toggle {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
 }
 
 .billing-error {

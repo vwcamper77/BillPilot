@@ -59,7 +59,7 @@ export default function CheckoutButton() {
         onClick={handleCheckout}
         disabled={status.busy}
       >
-        {status.busy ? "Redirecting to Stripe..." : "Become a Founding Member \u2014 \u00A35"}
+        {status.busy ? "Opening secure checkout..." : "Pay £5 securely with Stripe"}
       </button>
       {status.error ? (
         <p className="helper-text billing-error" aria-live="polite">

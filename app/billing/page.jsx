@@ -18,12 +18,17 @@ export default function BillingPage() {
           <h1 className="brand" style={{ fontSize: "2rem" }}>Billing &amp; payments</h1>
         </div>
         <div className="topbar-actions">
-          <Link className="secondary-button" href="/account">Back to account</Link>
-          <Link className="secondary-button" href="/dashboard">Dashboard</Link>
+          <Link className="secondary-button" href="/account">Account</Link>
+          <Link className="secondary-button" href="/">Home</Link>
         </div>
       </header>
 
-      <TrustShield className="page-trust-banner" compact />
+      <TrustShield
+        className="page-trust-banner"
+        compact
+        subtext="No bank login • No Open Banking • You control your data"
+        note="Sensible privacy. Secure checkout by Stripe."
+      />
 
       <section className="billing-hero">
         <div className="billing-panel billing-panel-highlight">
@@ -42,9 +47,6 @@ export default function BillingPage() {
             <li>No judgement</li>
           </ul>
           <BillingAccessGate />
-          <p className="helper-text">
-            Secure checkout is hosted by Stripe. ClearTill does not store card details.
-          </p>
         </div>
 
         <aside className="billing-panel billing-summary-panel billing-offer-panel" aria-label="Offer summary">
@@ -73,18 +75,18 @@ export default function BillingPage() {
         <div className="billing-steps">
           <article>
             <span>01</span>
-            <h3>Create or sign in</h3>
-            <p>Use your ClearTill login first so founding access is attached to your account.</p>
+            <h3>Save your access</h3>
+            <p>Create your ClearTill login here so your founding member access stays with you.</p>
           </article>
           <article>
             <span>02</span>
             <h3>Complete secure checkout</h3>
-            <p>Pay through Stripe to secure your &pound;5 founding access.</p>
+            <p>Pay through Stripe to activate your &pound;5 founding member access.</p>
           </article>
           <article>
             <span>03</span>
             <h3>Get early access</h3>
-            <p>Your feedback directly influences the product while the offer is still early.</p>
+            <p>Open ClearTill and start using your 3 months of early access straight away.</p>
           </article>
         </div>
       </section>

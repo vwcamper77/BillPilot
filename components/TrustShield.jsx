@@ -1,4 +1,11 @@
-export default function TrustShield({ className = "", compact = false, showTitle = true, showNote = true }) {
+export default function TrustShield({
+  className = "",
+  compact = false,
+  showTitle = true,
+  showNote = true,
+  subtext = "No bank login • No Open Banking • You control your data",
+  note = "Sensitive data encrypted where supported",
+}) {
   const classes = ["trust-shield", compact ? "trust-shield--compact" : "", className]
     .filter(Boolean)
     .join(" ");
@@ -12,9 +19,9 @@ export default function TrustShield({ className = "", compact = false, showTitle
           </span>
         ) : null}
         <span className="trust-shield__subtext">
-          No bank login &bull; No Open Banking &bull; You control your data
+          {subtext}
         </span>
-        {showNote ? <span className="trust-shield__note">Sensitive data encrypted where supported</span> : null}
+        {showNote ? <span className="trust-shield__note">{note}</span> : null}
       </span>
     </div>
   );
