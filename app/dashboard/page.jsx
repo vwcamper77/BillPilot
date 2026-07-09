@@ -1328,7 +1328,7 @@ function DashboardPageContent() {
   }
 
   async function handleSkipBalance() {
-    if (!user) {
+    if (!user || !auth?.currentUser) {
       return;
     }
 
@@ -1337,23 +1337,35 @@ function DashboardPageContent() {
     setOptimisticBalance(null);
     setBalanceInput("");
 
-    const payload = {
-      currentBalance: null,
-      currency: "GBP",
-      updatedAt: serverTimestamp(),
-      createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
-    };
-
-    void setDoc(doc(db, "users", user.uid, "settings", "balance"), payload, { merge: true })
-      .catch((saveError) => {
-        safeError("[firestore-balance-skip] failed", { code: saveError?.code });
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const response = await fetch("/api/dashboard/settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          action: "save_balance",
+          currentBalance: null,
+          currency: "GBP",
+          snapshotEntered: false,
+        }),
       });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Current available money could not be saved.");
+      }
+    } catch (saveError) {
+      safeError("[dashboard-settings-balance-skip] failed", { code: saveError?.code });
+    }
   }
 
   async function handleBalanceSave(event) {
     event.preventDefault();
 
-    if (!user) {
+    if (!user || !auth?.currentUser) {
       return;
     }
 
@@ -1365,16 +1377,28 @@ function DashboardPageContent() {
       setOptimisticBalance(null);
       setBalanceInput("");
 
-      const payload = {
-        currentBalance: null,
-        currency: "GBP",
-        updatedAt: serverTimestamp(),
-        createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
-      };
-
-      void setDoc(doc(db, "users", user.uid, "settings", "balance"), payload, { merge: true })
+      void auth.currentUser.getIdToken()
+        .then((idToken) => fetch("/api/dashboard/settings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            action: "save_balance",
+            currentBalance: null,
+            currency: "GBP",
+            snapshotEntered: false,
+          }),
+        }))
+        .then((response) => response.json().catch(() => ({})).then((payload) => ({ response, payload })))
+        .then(({ response, payload }) => {
+          if (!response.ok || !payload?.ok) {
+            throw new Error(payload?.error || "Current available money could not be saved.");
+          }
+        })
         .catch((saveError) => {
-          safeError("[firestore-balance-save] failed", { code: saveError?.code });
+          safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
         });
       return;
     }
@@ -1399,20 +1423,26 @@ function DashboardPageContent() {
     setSavingBalance(false);
     setPageNotice(`Current available money updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
 
-    const payload = {
-      currentBalance: parsedBalance,
-      currency: "GBP",
-      updatedAt: serverTimestamp(),
-      snapshotEnteredAt: serverTimestamp(),
-      createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
-    };
+    void auth.currentUser.getIdToken()
+      .then((idToken) => fetch("/api/dashboard/settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          action: "save_balance",
+          currentBalance: parsedBalance,
+          currency: "GBP",
+          snapshotEntered: true,
+        }),
+      }))
+      .then((response) => response.json().catch(() => ({})).then((payload) => ({ response, payload })))
+      .then(({ response, payload }) => {
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || "Current available money could not be saved.");
+        }
 
-    void setDoc(
-      doc(db, "users", user.uid, "settings", "balance"),
-      payload,
-      { merge: true },
-    )
-      .then(() => {
         if (balanceSaveRequestRef.current !== saveRequestId) {
           return;
         }
@@ -1426,10 +1456,10 @@ function DashboardPageContent() {
         }
 
         setupAdvanceIntentRef.current = "";
-        safeError("[firestore-balance-save] failed", { code: saveError?.code });
+        safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
         setOptimisticBalance(null);
         setPageNotice("");
-        setBalanceError(saveError.message || "Current available money could not be saved.");
+        setBalanceError(friendlySettingsError(saveError, "Current available money could not be saved."));
       });
   }
 
@@ -2443,12 +2473,30 @@ function DashboardPageContent() {
   }
 
   async function handleCurrencySave(currency) {
-    if (!user || !db) return;
+    if (!user || !auth?.currentUser) return;
     setDisplayCurrency(currency);
+    setBalanceError("");
     try {
-      await setDoc(doc(db, "users", user.uid, "settings", "preferences"), { currency }, { merge: true });
-    } catch {
-      // Currency preference updated locally; Firestore sync failed silently
+      const idToken = await auth.currentUser.getIdToken();
+      const response = await fetch("/api/dashboard/settings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          action: "save_preferences",
+          currency,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || "Display currency could not be saved.");
+      }
+    } catch (saveError) {
+      safeError("[dashboard-settings-preferences-save] failed", { code: saveError?.code });
+      setBalanceError(friendlySettingsError(saveError, "Display currency could not be saved."));
     }
   }
 
@@ -5593,6 +5641,21 @@ function friendlyGoogleAuthError(error) {
   }
 
   return "Google sign-in failed. Check Firebase Google sign-in and Authorized domains, then try again.";
+}
+
+function friendlySettingsError(error, fallbackMessage) {
+  const code = String(error?.code || "");
+  const message = String(error?.message || "");
+
+  if (code === "permission-denied" || message.toLowerCase().includes("insufficient permissions")) {
+    return "ClearTill could not save that setting right now. Please sign in again and try once more.";
+  }
+
+  if (code === "auth/id-token-expired" || code === "auth/invalid-id-token") {
+    return "Please sign in again before updating that setting.";
+  }
+
+  return fallbackMessage;
 }
 
 function scoreImportedBillQuality(bill) {
