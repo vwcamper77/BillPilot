@@ -144,7 +144,7 @@ export default function BigCostsPlanPage() {
     const unsubscribeAccount = onSnapshot(doc(db, "users", user.uid, "settings", "balance"), (snapshot) => {
       setAccount(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
     });
-    const unsubscribeBilling = onSnapshot(doc(db, "users", user.uid, "settings", "billing"), (snapshot) => {
+    const unsubscribeBilling = onSnapshot(doc(db, "users", user.uid), (snapshot) => {
       setBilling(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
       setBillingLoaded(true);
     });

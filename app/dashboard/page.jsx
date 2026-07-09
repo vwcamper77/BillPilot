@@ -401,7 +401,7 @@ function DashboardPageContent() {
       safeWarn("[account-load] listener error", error);
       setAccountLoaded(true);
     });
-    const unsubscribeBilling = onSnapshot(doc(db, "users", user.uid, "settings", "billing"), (snapshot) => {
+    const unsubscribeBilling = onSnapshot(doc(db, "users", user.uid), (snapshot) => {
       const nextBilling = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setBilling(nextBilling);
       setBillingLoaded(true);

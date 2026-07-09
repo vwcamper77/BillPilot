@@ -4,6 +4,7 @@ import TrustShield from "@/components/TrustShield";
 import FoundingFeedbackForm from "./FoundingFeedbackForm";
 import { grantFoundingAccessFromCheckoutSessionId } from "@/lib/billingAccess.server";
 import { formatBillingExpiry } from "@/lib/billingAccess";
+import { getFirebaseProjectId } from "@/lib/firebaseAdmin";
 
 export const metadata = {
   title: "Payment received | ClearTill",
@@ -22,8 +23,15 @@ export default async function BillingSuccessPage({ searchParams }) {
     } catch (error) {
       // The underlying SDK error (Stripe/Firestore/Auth) is for logs only —
       // never surface raw error text to the user.
-      console.error("Failed to grant founding access from checkout session", error);
-      accessError = "We're finishing setting up your access. If it isn't live in a few minutes, get in touch and we'll sort it directly.";
+      console.error("Failed to grant founding access from checkout session", {
+        stripeSessionId: sessionId,
+        uid: error?.context?.uid || null,
+        email: error?.context?.email || null,
+        firebaseProjectId: error?.context?.firebaseProjectId || getFirebaseProjectId(),
+        attemptedUserDocPath: error?.context?.attemptedUserDocPath || "",
+        attemptedBillingDocPath: error?.context?.attemptedBillingDocPath || "",
+      }, error);
+      accessError = "Payment received, but we could not activate your access automatically. Please contact hello@cleartill.money.";
     }
   } else {
     console.error("Billing success page loaded without a checkout session id.");

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { grantFoundingAccessFromCheckoutSession } from "@/lib/billingAccess.server";
+import { getFirebaseProjectId } from "@/lib/firebaseAdmin";
 import { getStripeServerClient } from "@/lib/stripe";
 
 export const runtime = "nodejs";
@@ -15,19 +16,27 @@ export async function POST(request) {
     );
   }
 
+  let payload = "";
+
   try {
-    const payload = await request.text();
+    payload = await request.text();
     const event = getStripeServerClient().webhooks.constructEvent(payload, signature, webhookSecret);
 
     if (event.type === "checkout.session.completed") {
-      await grantFoundingAccessFromCheckoutSession(event.data.object);
+      await grantFoundingAccessFromCheckoutSession(event.data.object, {
+        stripeEventId: event.id,
+      });
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
+    console.error("[stripe-webhook] checkout handling failed", {
+      firebaseProjectId: getFirebaseProjectId(),
+    }, error);
+
     return NextResponse.json(
       { error: error?.message || "Stripe webhook handling failed." },
-      { status: 400 },
+      { status: payload ? 500 : 400 },
     );
   }
 }

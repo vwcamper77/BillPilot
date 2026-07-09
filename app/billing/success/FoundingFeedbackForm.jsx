@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { auth } from "@/lib/firebase";
 
 export default function FoundingFeedbackForm() {
   const [answer, setAnswer] = useState("");
@@ -18,12 +19,26 @@ export default function FoundingFeedbackForm() {
     setStatus({ busy: true, error: "", success: "" });
 
     try {
+      const headers = {
+        "Content-Type": "application/json",
+      };
+      const currentUser = auth?.currentUser;
+
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken().catch(() => "");
+
+        if (idToken) {
+          headers.Authorization = `Bearer ${idToken}`;
+        }
+      }
+
       const response = await fetch("/api/founding-feedback", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ answer: trimmedAnswer }),
+        headers,
+        body: JSON.stringify({
+          message: trimmedAnswer,
+          page: "stripe-success",
+        }),
       });
 
       const payload = await response.json().catch(() => ({}));
