@@ -584,6 +584,9 @@ function DashboardPageContent() {
   const hasPayday = isValidDueDay(displayIncome?.payDay);
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
   const hasBills = bills.length > 0;
+  const isBalanceStepComplete = hasBalanceSnapshot;
+  const isPaydayStepComplete = hasPayday;
+  const isBillsStepComplete = hasBills;
   const setupStep = !hasBalanceSnapshot ? 1 : !hasPayday ? 2 : !hasBills ? 3 : 4;
 
   useEffect(() => {
@@ -2789,13 +2792,13 @@ function DashboardPageContent() {
             </div>
             <div className="setup-chip-row" aria-label="Setup progress">
               <button className={`setup-chip ${getSetupChipState(1, setupStep)}`} type="button" onClick={focusBalanceSnapshotForm}>
-                <span>{setupStep > 1 ? "✓" : "1"}</span> Money
+                <span>{isBalanceStepComplete ? "✓" : "1"}</span> Money
               </button>
               <button className={`setup-chip ${getSetupChipState(2, setupStep)}`} type="button" onClick={focusPaydayForm}>
-                <span>{setupStep > 2 ? "✓" : "2"}</span> Payday
+                <span>{isPaydayStepComplete ? "✓" : "2"}</span> Payday
               </button>
               <button className={`setup-chip ${getSetupChipState(3, setupStep)}`} type="button" onClick={focusAddBillComposer}>
-                <span>{setupStep > 3 ? "✓" : "3"}</span> Bills
+                <span>{isBillsStepComplete ? "✓" : "3"}</span> Bills
               </button>
             </div>
           </div>
@@ -2863,7 +2866,7 @@ function DashboardPageContent() {
             ref={balanceSectionRef}
             className={`chat-panel balance-action-card ${setupStep !== 1 ? "" : "setup-current"} ${highlightBalanceForm ? "form-highlight" : ""}`}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">{setupStep > 1 ? "Done" : "Step 1 of 3"}</span> : null}
+            {setupStep < 4 ? <span className="setup-step-badge">{isBalanceStepComplete ? "Done" : "Step 1 of 3"}</span> : null}
             {onboardingHelper?.target === "balance" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -2936,7 +2939,7 @@ function DashboardPageContent() {
             ref={paydaySettingsSectionRef}
             className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || (!hasPayday && !editingIncome)) ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">{setupStep > 2 ? "Done" : "Step 2 of 3"}</span> : null}
+            {setupStep < 4 ? <span className="setup-step-badge">{isPaydayStepComplete ? "Done" : "Step 2 of 3"}</span> : null}
             {onboardingHelper?.target === "payday" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -3365,7 +3368,7 @@ function DashboardPageContent() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">{setupStep > 3 ? "Done" : "Step 3 of 3"}</span> : null}
+            {setupStep < 4 ? <span className="setup-step-badge">{isBillsStepComplete ? "Done" : "Step 3 of 3"}</span> : null}
             {onboardingHelper?.target === "bills" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
