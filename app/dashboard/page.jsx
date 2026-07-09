@@ -70,14 +70,14 @@ function getIncomeStatusText(income, currency = "GBP") {
   }
 
   if (hasValidAmount) {
-    return "Add pay date";
+    return "Add payday";
   }
 
   if (hasValidPayday) {
-    return `Pay date: ${formatOrdinal(income.payDay)} of each month`;
+    return `Payday: ${formatOrdinal(income.payDay)} of each month`;
   }
 
-  return "No pay date set yet.";
+  return "No payday set yet.";
 }
 
 const BILLS_PER_PAGE = 6;
@@ -615,7 +615,6 @@ function DashboardPageContent() {
 
     if (setupAdvanceIntentRef.current === "payday" && previousStep === 1 && setupStep === 2) {
       setOnboardingHelper(null);
-      setPageNotice("Current available money saved. Next, add when you get paid.");
       showOnboardingHelper("payday");
       window.setTimeout(() => {
         focusPaydayForm();
@@ -623,7 +622,7 @@ function DashboardPageContent() {
       setupAdvanceIntentRef.current = "";
     } else if (setupAdvanceIntentRef.current === "bills" && previousStep === 2 && setupStep === 3) {
       setOnboardingHelper(null);
-      setPageNotice("Pay date saved. Next, add your bills.");
+      setPageNotice("Payday saved. Next, add your bills.");
       showOnboardingHelper("bills");
       window.setTimeout(() => {
         focusAddBillComposer();
@@ -725,17 +724,17 @@ function DashboardPageContent() {
   })();
   const spendingRoomValue = (() => {
     if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
-    if (!hasPayday) return "Set your pay date";
+    if (!hasPayday) return "Set your payday";
     if (spendingRoomUntilPayday === null) return "—";
-    if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before you're paid`;
+    if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
     return formatCurrency(spendingRoomUntilPayday, displayCurrency);
   })();
   const spendingRoomSummary = (() => {
     if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
-    if (!hasPayday) return "Set your pay date";
+    if (!hasPayday) return "Set your payday";
     if (spendingRoomUntilPayday === null) return "Spending room unavailable";
-    if (spendingRoomUntilPayday < 0) return `You're ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} short before you're paid`;
-    return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
+    if (spendingRoomUntilPayday < 0) return `You're ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} short before payday`;
+    return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left till payday`;
   })();
   const spendingRoomHelper = (() => {
     if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
@@ -745,9 +744,9 @@ function DashboardPageContent() {
       if (bigCostsDueBeforePayday > 0) {
         return `This is mainly because ${formatCurrency(bigCostsDueBeforePayday, displayCurrency)} of big costs are coming from your current account.`;
       }
-      return `You need ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} more before you're paid.`;
+      return `You need ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} more before payday.`;
     }
-    return `About ${formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day until you're paid.`;
+    return `About ${formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day till payday.`;
   })();
   const spendingRoomFallbackCopy = (() => {
     if (!hasBalanceSnapshot || !hasPayday || spendingRoomUntilPayday === null || spendingRoomUntilPayday >= 0 || totalProtectedSavings <= 0) {
@@ -757,8 +756,8 @@ function DashboardPageContent() {
   })();
   const clearTillStatus = spendingRoomStatus;
   const paydayCountdownLabel = dashboard.paydayDate
-    ? `${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"} until you're paid`
-    : "Pay date not set";
+    ? `${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"} till payday`
+    : "Payday not set";
   const beforePaydayPreviewBills = dashboard.beforePayday.slice(0, 4);
 
   const largeCostsWithStatus = useMemo(
@@ -1459,7 +1458,6 @@ function DashboardPageContent() {
       }
 
       logSecurityEventClient("balance_updated");
-      setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
     } catch (saveError) {
       if (balanceSaveRequestRef.current !== saveRequestId) {
         return;
@@ -1584,7 +1582,7 @@ function DashboardPageContent() {
     }
 
     if (!Number.isInteger(payDay) || payDay < 1 || payDay > 31) {
-      setEditError("Enter a pay date between 1 and 31.");
+      setEditError("Enter a payday between 1 and 31.");
       return;
     }
 
@@ -2662,7 +2660,7 @@ function DashboardPageContent() {
       <main className="dashboard-shell">
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
-          <h1>Loading your pay-date forecast…</h1>
+          <h1>Loading your payday forecast…</h1>
         </section>
       </main>
     );
@@ -2867,7 +2865,7 @@ function DashboardPageContent() {
                 <span>{isBalanceStepComplete ? "✓" : "1"}</span> Money
               </button>
               <button className={`setup-chip ${getSetupChipState(2, setupStep)}`} type="button" onClick={focusPaydayForm}>
-                <span>{isPaydayStepComplete ? "✓" : "2"}</span> Pay date
+                <span>{isPaydayStepComplete ? "✓" : "2"}</span> Payday
               </button>
               <button className={`setup-chip ${getSetupChipState(3, setupStep)}`} type="button" onClick={focusAddBillComposer}>
                 <span>{isBillsStepComplete ? "✓" : "3"}</span> Bills
@@ -2876,7 +2874,7 @@ function DashboardPageContent() {
           </div>
           <div className="setup-cta-row">
             {setupStep === 1 ? <button className="primary-button" type="button" onClick={focusBalanceSnapshotForm}>Add current available money</button> : null}
-            {setupStep === 2 ? <button className="primary-button" type="button" onClick={focusPaydayForm}>Add pay date</button> : null}
+            {setupStep === 2 ? <button className="primary-button" type="button" onClick={focusPaydayForm}>Add payday</button> : null}
             {setupStep === 3 ? <button className="primary-button" type="button" onClick={focusAddBillComposer}>Add bills</button> : null}
           </div>
         </section>
@@ -2886,10 +2884,10 @@ function DashboardPageContent() {
         status={clearTillStatus}
         headline={(() => {
           if (!hasBalanceSnapshot) return "Add your current available money to get started";
-          if (spendingRoomUntilPayday === null) return "Set your pay date to get started";
-          if (clearTillStatus === "negative") return `You're short: ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before you're paid`;
+          if (spendingRoomUntilPayday === null) return "Set your payday to get started";
+          if (clearTillStatus === "negative") return `You're short: ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
           if (clearTillStatus === "low") return `Almost clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
-          return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
+          return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left till payday`;
         })()}
         subLine={(() => {
           if (!(hasBalanceSnapshot && hasPayday)) return null;
@@ -2897,10 +2895,10 @@ function DashboardPageContent() {
           if (spendingRoomUntilPayday < 0) {
             return totalProtectedSavings > 0
               ? "Your savings now could cover this, but ClearTill does not count savings as daily spending money."
-              : "You need to use savings or find another way to fund this before you're paid.";
+              : "You need to use savings or find another way to fund this before payday.";
           }
           if (dailySpendingRoom === null) return null;
-          return `about ${formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day until you're paid on ${formatDisplayDate(dashboard.paydayDate)}`;
+          return `about ${formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day till payday on ${formatDisplayDate(dashboard.paydayDate)}`;
         })()}
         onUpdateBalance={focusBalanceSnapshotForm}
         trustLine="ClearTill Trust: No bank login • No Open Banking • You control your data"
@@ -2914,10 +2912,10 @@ function DashboardPageContent() {
         </span>
         <span className="stat-chip">
           <strong>{hasBalanceSnapshot && hasPayday ? formatCurrency(dashboard.totalBeforePayday, displayCurrency) : "—"}</strong>
-          {" bills before you're paid"}
+          {" bills before payday"}
         </span>
         <span className="stat-chip">
-          {"Pay date "}
+          {"Payday "}
           <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "not set"}</strong>
         </span>
         {hasBills ? (
@@ -2953,7 +2951,7 @@ function DashboardPageContent() {
             <div className="section-head">
               <div>
                 <h2 style={{ margin: 0 }}>Current Balance</h2>
-                <p className="helper-text balance-copy">Update this when your cash position changes. ClearTill uses it to work out what is still clear to spend until you're paid.</p>
+                <p className="helper-text balance-copy">Update this when your cash position changes. ClearTill uses it to work out what is still clear to spend till payday.</p>
               </div>
             </div>
             <p className="balance-action-value">
@@ -3027,16 +3025,16 @@ function DashboardPageContent() {
             ) : null}
             <div className="section-head">
               <div>
-                <h2 style={{ margin: 0 }}>Spending room until you're paid</h2>
-                <p className="helper-text">This uses current available money only, after bills and large costs due before you're paid.</p>
+                <h2 style={{ margin: 0 }}>Spending room till payday</h2>
+                <p className="helper-text">This uses current available money only, after bills and large costs due before payday.</p>
               </div>
             </div>
             <div className="forecast-header">
               <div>
-                <span className="forecast-label">Pay-date countdown</span>
+                <span className="forecast-label">Payday countdown</span>
                 <p className="forecast-countdown">{paydayCountdownLabel}</p>
                 <div className="forecast-meta-list">
-                  <span className="forecast-meta-chip">Pay date: <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "Not set"}</strong></span>
+                  <span className="forecast-meta-chip">Payday: <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "Not set"}</strong></span>
                   <span className="forecast-meta-chip">Expected pay: <strong>{hasIncomeAmount ? formatCurrency(Number(displayIncome.amount), displayCurrency) : "Not set"}</strong></span>
                 </div>
                 <button
@@ -3097,7 +3095,7 @@ function DashboardPageContent() {
                   <strong>{hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "—"}</strong>
                 </div>
                 <div className="forecast-breakdown-row">
-                  <span>Less bills before you're paid</span>
+                  <span>Less bills before payday</span>
                   <strong>-{hasPayday ? formatCurrency(dashboard.totalBeforePayday, displayCurrency) : "—"}</strong>
                 </div>
                 <div className="forecast-breakdown-row">
@@ -3105,7 +3103,7 @@ function DashboardPageContent() {
                   <strong>-{hasPayday ? formatCurrency(bigCostsDueBeforePayday, displayCurrency) : "—"}</strong>
                 </div>
                 <div className="forecast-breakdown-row total">
-                  <span>Spending room until you're paid</span>
+                  <span>Spending room till payday</span>
                   <strong>{spendingRoomValue}</strong>
                 </div>
               </div>
@@ -3312,7 +3310,7 @@ function DashboardPageContent() {
                   </div>
                 ) : null}
                 {displayIncome && hasIncomeAmount && !hasPayday ? (
-                  <p className="helper-text helper-tooltip">Add pay date</p>
+                  <p className="helper-text helper-tooltip">Add payday</p>
                 ) : null}
                 {displayIncome && hasPayday && !hasIncomeAmount ? (
                   <p className="helper-text helper-tooltip">Add income amount if you want ClearTill to show monthly spending room.</p>
@@ -3463,8 +3461,8 @@ function DashboardPageContent() {
             {!hasBalanceSnapshot || !hasPayday ? (
               <p className="helper-text helper-tooltip">
                 {!hasBalanceSnapshot
-                  ? "Bills can be added now, but the forecast works best after balance and your pay date are set."
-                  : "You can add bills now, but ClearTill needs your pay date to show what lands before you get paid."}
+                  ? "Bills can be added now, but the forecast works best after your balance and payday are set."
+                  : "You can add bills now, but ClearTill needs your payday to show what lands before payday."}
               </p>
             ) : null}
             <p className="helper-text helper-tooltip">Type it, say it, or drop in a banking-app screenshot. ClearTill will pull out the bill name, amount, and usual due day.</p>
@@ -3951,14 +3949,17 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
   const PL = 34, PR = 10, PT = 30, PB = 40;
   const chartW = W - PL - PR;
   const chartH = H - PT - PB;
-  const baseY = PT + chartH;
+  const plotBottomY = PT + chartH;
   const numBars = 4;
   const barGap = 10;
   const barW = (chartW - (numBars - 1) * barGap) / numBars;
 
-  // Axis scales to the net cash range for the week, not a fixed reference amount
+  // Axis scales to the net cash range for the week — including negative dips — not a fixed reference amount
   const maxCash = Math.max(currentBalance, ...cashByWeek, 1);
-  const toBarH = (amt) => (Math.max(0, amt) / maxCash) * chartH;
+  const minCash = Math.min(0, ...cashByWeek);
+  const cashRange = Math.max(maxCash - minCash, 1);
+  const toY = (value) => plotBottomY - ((value - minCash) / cashRange) * chartH;
+  const zeroY = toY(0);
   const toBarX = (i) => PL + i * (barW + barGap);
   const toBarCenterX = (i) => toBarX(i) + barW / 2;
   const dayOffsetX = (isoDate, bucketIndex) => {
@@ -3972,7 +3973,7 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
   };
 
   const referenceValue = niceAxisStep(maxCash / 2);
-  const referenceY = baseY - toBarH(referenceValue);
+  const referenceY = toY(referenceValue);
   const sym = displayCurrency === "EUR" ? "€" : displayCurrency === "USD" ? "$" : "£";
 
   const todayX = dayOffsetX(todayIso, 0);
@@ -3998,25 +3999,26 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
           </span>
         ) : null}
         <span className="curve-stat">
-          <span className="curve-stat-label">Pay date</span>
+          <span className="curve-stat-label">Payday</span>
           <strong>{formatDisplayDate(paydayDate)}</strong>
         </span>
       </div>
       {goesNegative ? (
-        <p className="spend-curve-warning">You may go below £0 before you're paid.</p>
+        <p className="spend-curve-warning">You may go below £0 before payday.</p>
       ) : null}
       <svg viewBox={`0 0 ${W} ${H}`} className="spend-curve-svg" role="img" aria-label="Your next 4 weeks until pay day">
         {/* Reference gridline, scaled to this week's net cash range */}
-        {referenceY > PT && referenceY < baseY ? (
+        {referenceY > PT && referenceY < zeroY ? (
           <>
             <line x1={PL} y1={referenceY} x2={PL + chartW} y2={referenceY} stroke="var(--line)" strokeWidth="0.8" strokeDasharray="3 3" />
             <text x={PL - 4} y={referenceY + 3.5} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}{referenceValue}</text>
           </>
         ) : null}
-        {/* Bars: available cash by the end of each week */}
+        {/* Bars: available cash by the end of each week, extending below the £0 line when it dips negative */}
         {cashByWeek.map((amount, i) => {
-          const bh = Math.max(toBarH(amount), 2);
-          const barTopY = baseY - bh;
+          const scaledH = (Math.abs(amount) / cashRange) * chartH;
+          const bh = Math.max(scaledH, 2);
+          const barTopY = amount >= 0 ? zeroY - bh : zeroY;
           const muted = weekBuckets[i].muted;
           const negative = amount < 0;
           const labelFitsInside = bh >= 16;
@@ -4045,15 +4047,18 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
             </g>
           );
         })}
-        {/* Baseline */}
-        <line x1={PL} y1={baseY} x2={PL + chartW} y2={baseY} stroke="var(--line)" strokeWidth="1" />
+        {/* £0 line — floats up from the bottom once a week dips negative */}
+        <line x1={PL} y1={zeroY.toFixed(1)} x2={PL + chartW} y2={zeroY.toFixed(1)} stroke="var(--line)" strokeWidth="1" />
+        {minCash < 0 ? (
+          <text x={PL - 4} y={(zeroY + 3.5).toFixed(1)} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}0</text>
+        ) : null}
         {/* Cost leaving that week */}
         {billsThisWeek.map((billTotal, i) =>
           billTotal > 0 ? (
             <text
               key={weekBuckets[i].weekStart}
               x={toBarCenterX(i).toFixed(1)}
-              y={baseY + 13}
+              y={plotBottomY + 13}
               textAnchor="middle"
               fontSize="8.5"
               fontWeight="600"
@@ -4080,7 +4085,7 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
         ))}
         {/* Today marker */}
         <g>
-          <line x1={todayX.toFixed(1)} y1={PT} x2={todayX.toFixed(1)} y2={baseY} stroke="var(--ink)" strokeWidth="1" strokeDasharray="2 3" opacity="0.55" />
+          <line x1={todayX.toFixed(1)} y1={PT} x2={todayX.toFixed(1)} y2={plotBottomY} stroke="var(--ink)" strokeWidth="1" strokeDasharray="2 3" opacity="0.55" />
           <circle cx={todayX.toFixed(1)} cy={PT} r="2.2" fill="var(--ink)" />
           <text x={todayX.toFixed(1)} y={PT - 8} textAnchor={anchorForX(todayX)} fontSize="9" fontWeight="600" fill="var(--ink)">
             Today
@@ -4093,7 +4098,7 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
               x1={paydayX.toFixed(1)}
               y1={PT}
               x2={paydayX.toFixed(1)}
-              y2={baseY}
+              y2={plotBottomY}
               stroke="var(--accent-dark)"
               strokeWidth="1"
               strokeDasharray="2 3"
@@ -4101,7 +4106,7 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
             <circle cx={paydayX.toFixed(1)} cy={PT} r="2.2" fill="var(--accent-dark)" />
             <text
               x={paydayX.toFixed(1)}
-              y={paydaySharesWeekWithToday ? baseY - 6 : PT - 8}
+              y={paydaySharesWeekWithToday ? plotBottomY - 6 : PT - 8}
               textAnchor={anchorForX(paydayX)}
               fontSize="9"
               fontWeight="600"
@@ -4381,7 +4386,7 @@ function ForecastLargeCostsSection({
     <section className="forecast-large-costs">
       <div className="section-head">
         <div>
-          <h3 style={{ margin: 0 }}>Large costs before you're paid</h3>
+          <h3 style={{ margin: 0 }}>Large costs before payday</h3>
           <p className="helper-text">Only costs hitting the current account change daily spending room.</p>
         </div>
         <button className="secondary-button small-button" type="button" onClick={showForm ? onCancel : onStartAdd}>
@@ -4562,12 +4567,12 @@ function ForecastLargeCostsSection({
             )})}
           </ul>
           ) : (
-            <p className="empty large-costs-empty">None due before you're paid.</p>
+            <p className="empty large-costs-empty">None due before payday.</p>
           )}
         </>
       ) : (
         <p className="empty large-costs-empty">
-          Set your pay date first, then ClearTill will show which large costs land before it.
+          Set your payday first, then ClearTill will show which large costs land before it.
         </p>
       )}
 
@@ -5792,7 +5797,7 @@ function getSetupMessage(setupStep) {
   if (setupStep === 2) {
     return {
       title: "Step 2 of 3 — When do you get paid?",
-      detail: "Once your pay date is set, ClearTill can show what lands before you're paid.",
+      detail: "Once your payday is set, ClearTill can show what lands before payday.",
     };
   }
 
@@ -5804,8 +5809,8 @@ function getSetupMessage(setupStep) {
   }
 
   return {
-    title: "Setup complete — ClearTill can now show your pay-date forecast.",
-    detail: "You can update your snapshot, pay date, or bills any time.",
+    title: "Setup complete — ClearTill can now show your payday forecast.",
+    detail: "You can update your snapshot, payday, or bills any time.",
   };
 }
 
@@ -6177,7 +6182,7 @@ function buildOutcomeMessage(parsed, outcome) {
   }
 
   if (outcome.savedIncome) {
-    parts.push("Pay date updated.");
+    parts.push("Payday updated.");
   }
 
   if (parsed.responseMessage) {
@@ -6207,7 +6212,7 @@ function buildBatchOutcomeMessage(outcome, sourceCount) {
   }
 
   if (outcome.savedIncome) {
-    parts.push("Pay date updated.");
+    parts.push("Payday updated.");
   }
 
   if (sourceCount > 1 && parts.length) {
