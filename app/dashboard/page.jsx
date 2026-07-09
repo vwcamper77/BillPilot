@@ -145,6 +145,7 @@ function DashboardPageContent() {
   const [savingBalance, setSavingBalance] = useState(false);
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [billingLoaded, setBillingLoaded] = useState(false);
+  const [billingError, setBillingError] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
@@ -353,6 +354,7 @@ function DashboardPageContent() {
       setAccountLoaded(false);
       setBilling(null);
       setBillingLoaded(false);
+      setBillingError("");
       hasAutoFocused.current = false;
       setReminders([]);
       return undefined;
@@ -375,7 +377,7 @@ function DashboardPageContent() {
 
     const unsubscribeBills = onSnapshot(billsQuery, (snapshot) => {
       setBills(snapshot.docs.map((billDoc) => ({ id: billDoc.id, ...billDoc.data() })));
-    });
+    }, (error) => safeWarn("[bills-load] listener error", error));
     const unsubscribeIncome = onSnapshot(doc(db, "users", user.uid, "income", "main"), (snapshot) => {
       const loadedIncome = snapshot.exists() ? snapshot.data() : null;
       if (loadedIncome && !isValidDueDay(loadedIncome.payDay)) {
@@ -388,36 +390,55 @@ function DashboardPageContent() {
         amount: nextIncome?.amount === null || nextIncome?.amount === undefined ? "" : String(nextIncome.amount),
         payDay: nextIncome?.payDay === null || nextIncome?.payDay === undefined ? "" : String(nextIncome.payDay),
       });
-    });
+    }, (error) => safeWarn("[income-load] listener error", error));
     const unsubscribeAccount = onSnapshot(balanceDocRef, (snapshot) => {
       const nextAccount = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setAccount(nextAccount);
       setAccountLoaded(true);
       setOptimisticBalance(null);
       setBalanceInput(nextAccount?.currentBalance?.toString() || "");
+    }, (error) => {
+      safeWarn("[account-load] listener error", error);
+      setAccountLoaded(true);
     });
     const unsubscribeBilling = onSnapshot(doc(db, "users", user.uid, "settings", "billing"), (snapshot) => {
       const nextBilling = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setBilling(nextBilling);
       setBillingLoaded(true);
+      setBillingError("");
+    }, (error) => {
+      safeWarn("[billing-load] listener error", error);
+      setBillingLoaded(true);
+      setBillingError("We couldn't check your access just now. Please try again.");
     });
     const unsubscribeLargeCosts = onSnapshot(largeCostsQuery, (snapshot) => {
       setLargeCosts(snapshot.docs.map((costDoc) => ({ id: costDoc.id, ...costDoc.data() })));
-    });
+    }, (error) => safeWarn("[large-costs-load] listener error", error));
     const unsubscribeSavings = onSnapshot(doc(db, "users", user.uid, "settings", "savings"), (snapshot) => {
       const nextSavings = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setSavings(nextSavings);
       setSavingsInput(nextSavings?.totalSetAside === undefined || nextSavings?.totalSetAside === null ? "" : String(nextSavings.totalSetAside));
-    });
+    }, (error) => safeWarn("[savings-load] listener error", error));
     const unsubscribeReminders = onSnapshot(remindersQuery, (snapshot) => {
       setReminders(snapshot.docs.map((reminderDoc) => ({ id: reminderDoc.id, ...reminderDoc.data() })));
-    });
+    }, (error) => safeWarn("[reminders-load] listener error", error));
     const unsubscribePreferences = onSnapshot(doc(db, "users", user.uid, "settings", "preferences"), (snapshot) => {
       if (snapshot.exists()) {
         const prefs = snapshot.data();
         if (prefs.currency) setDisplayCurrency(prefs.currency);
       }
-    });
+    }, (error) => safeWarn("[preferences-load] listener error", error));
+
+    const billingTimeout = setTimeout(() => {
+      setBillingLoaded((alreadyLoaded) => {
+        if (!alreadyLoaded) {
+          safeWarn("[billing-load] timed out waiting for Firestore");
+          setBillingError("We couldn't check your access just now. Please try again.");
+          return true;
+        }
+        return alreadyLoaded;
+      });
+    }, 15000);
 
     return () => {
       unsubscribeBills();
@@ -428,6 +449,7 @@ function DashboardPageContent() {
       unsubscribeSavings();
       unsubscribeReminders();
       unsubscribePreferences();
+      clearTimeout(billingTimeout);
     };
   }, [user]);
 
@@ -2489,6 +2511,29 @@ function DashboardPageContent() {
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
           <h1>Checking your access…</h1>
+        </section>
+      </main>
+    );
+  }
+
+  if (billingError) {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>Checking your access…</h1>
+          <p className="helper-text">{billingError}</p>
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => {
+              setBillingLoaded(false);
+              setBillingError("");
+              window.location.reload();
+            }}
+          >
+            Try again
+          </button>
         </section>
       </main>
     );
