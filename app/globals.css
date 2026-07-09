@@ -2210,6 +2210,8 @@ h1 {
 .category-select { min-height:44px; border:1px solid var(--line); border-radius:8px; background:white; color:var(--ink); padding:0 14px; font:inherit; cursor:pointer; }
 
 /* Bill list filter tabs */
+.bill-list-summary-row { margin: 2px 0 10px; }
+.bill-list-summary-chip { max-width: 100%; }
 .bill-filter-tabs { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 2px; }
 .bill-filter-tab { min-height:30px; padding:0 11px; font-size:0.82rem; font-weight:600; border-radius:999px; border:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer; transition:background-color 120ms,border-color 120ms,color 120ms; }
 .bill-filter-tab:hover { background:rgba(244,241,235,0.9); color:var(--ink); }

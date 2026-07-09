@@ -60,6 +60,88 @@ function buildTitlePattern(title) {
   return new RegExp(`^${escapeRegex(title)}$`);
 }
 
+function parseMoneyText(value) {
+  const match = String(value || "").match(/-?\d[\d,]*(?:\.\d{1,2})?/);
+  return match ? Number(match[0].replace(/,/g, "")) : 0;
+}
+
+function formatCurrencyText(amount) {
+  const value = Number(amount) || 0;
+
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+    minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+    maximumFractionDigits: Number.isInteger(value) ? 0 : 2,
+  }).format(value);
+}
+
+async function sumVisibleBillAmounts(page) {
+  const amounts = await page.locator(".bill-list li .bill-row-details .bill-meta-pair:first-child strong").allTextContents();
+  return amounts.reduce((sum, text) => sum + parseMoneyText(text), 0);
+}
+
+async function goToFirstBillPage(page) {
+  const pagination = page.locator(".bill-pagination").first();
+  if (await pagination.count() === 0) {
+    return;
+  }
+
+  const previousButton = pagination.getByRole("button", { name: /Previous/ });
+
+  while (!await previousButton.isDisabled()) {
+    await previousButton.click();
+  }
+}
+
+async function sumAllBillAmounts(page) {
+  await goToFirstBillPage(page);
+
+  const pagination = page.locator(".bill-pagination").first();
+  if (await pagination.count() === 0) {
+    return sumVisibleBillAmounts(page);
+  }
+
+  const nextButton = pagination.getByRole("button", { name: /Next/ });
+  let total = 0;
+
+  while (true) {
+    total += await sumVisibleBillAmounts(page);
+    if (await nextButton.isDisabled()) {
+      break;
+    }
+    await nextButton.click();
+  }
+
+  await goToFirstBillPage(page);
+  return total;
+}
+
+async function findBillTitle(page, titlePattern) {
+  await goToFirstBillPage(page);
+
+  const pagination = page.locator(".bill-pagination").first();
+  const nextButton = pagination.getByRole("button", { name: /Next/ });
+
+  while (true) {
+    const locator = page.locator(".bill-row-title").filter({ hasText: titlePattern }).last();
+    if (await locator.count()) {
+      return locator;
+    }
+
+    if (await pagination.count() === 0 || await nextButton.isDisabled()) {
+      return locator;
+    }
+
+    await nextButton.click();
+  }
+}
+
+async function findBillRow(page, titlePattern) {
+  const title = await findBillTitle(page, titlePattern);
+  return title.locator("xpath=ancestor::li[1]");
+}
+
 let billUser;
 const TEST_PASSWORD = "cleartill-e2e-test-password";
 
@@ -78,11 +160,6 @@ test("utility bill titles stay clean in review and after save", async ({ page })
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Add bills" })).toBeVisible();
   await expect(page.getByText(/You're clear -|Almost clear -|You're short -/)).toHaveCount(0);
-
-  const balanceInput = page.locator("#account-balance");
-  await balanceInput.click();
-  await balanceInput.fill("2500");
-  await expect(balanceInput).toHaveValue("2500");
 
   const composer = page.locator("form.chat-form textarea");
 
@@ -103,9 +180,7 @@ test("utility bill titles stay clean in review and after save", async ({ page })
 
     await reviewCard.getByRole("button", { name: "Add bill" }).click();
 
-    const savedTitle = page.locator(".bill-row-title").filter({
-      hasText: buildTitlePattern(billCase.title),
-    }).last();
+    const savedTitle = await findBillTitle(page, buildTitlePattern(billCase.title));
     await expect(savedTitle).toBeVisible({ timeout: 10000 });
     for (const part of billCase.title.split(" - ")) {
       await expect(savedTitle).toContainText(part);
@@ -114,15 +189,44 @@ test("utility bill titles stay clean in review and after save", async ({ page })
     await expect(savedTitle).not.toContainText(/Pounds|Combined|I Have|Every Month/i);
   }
 
-  const knownSupplierRow = page.locator("li").filter({
-    has: page.locator(".bill-row-title", { hasText: /^British Gas - Gas & electricity$/ }),
-  }).last();
+  const billListSummary = page.locator(".bill-list-summary-chip");
+  const billFilterTabs = page.locator(".bill-filter-tabs");
+
+  await billFilterTabs.getByRole("button", { name: "All" }).click();
+  await expect(billListSummary).toContainText("total monthly bills");
+  await expect(billListSummary).toContainText(formatCurrencyText(await sumAllBillAmounts(page)));
+
+  await billFilterTabs.getByRole("button", { name: "Before you're paid" }).click();
+  await expect(billListSummary).toContainText("bills before payday");
+  await expect(billListSummary).toContainText(formatCurrencyText(await sumAllBillAmounts(page)));
+
+  await billFilterTabs.getByRole("button", { name: "After you're paid" }).click();
+  await expect(billListSummary).toContainText("bills after payday");
+  await expect(billListSummary).toContainText(formatCurrencyText(await sumAllBillAmounts(page)));
+
+  await billFilterTabs.getByRole("button", { name: "Recently added" }).click();
+  await expect(billListSummary).toContainText("recently added bills");
+  await expect(billListSummary).toContainText(formatCurrencyText(await sumAllBillAmounts(page)));
+
+  await billFilterTabs.getByRole("button", { name: "All" }).click();
+  const paidRow = await findBillRow(page, /^Affinity Water - Water$/);
+  await paidRow.getByRole("button", { name: "Paid" }).click();
+
+  await billFilterTabs.getByRole("button", { name: "Paid", exact: true }).click();
+  await expect(billListSummary).toContainText("paid bills");
+  await expect(billListSummary).toContainText(formatCurrencyText(await sumAllBillAmounts(page)));
+
+  await billFilterTabs.getByRole("button", { name: "All" }).click();
+  await expect(billListSummary).toContainText("total monthly bills");
+  await expect(billListSummary).toContainText(formatCurrencyText(await sumAllBillAmounts(page)));
+
+  const knownSupplierRow = await findBillRow(page, /^British Gas - Gas & electricity$/);
   await knownSupplierRow.getByRole("button", { name: "Edit" }).click();
   const editForm = page.locator(".bill-edit-form").last();
   await editForm.locator('input[id^="bill-supplier-"]').fill("Con Edison");
   await editForm.locator('input[id^="bill-name-"]').fill("Electricity");
   await editForm.getByRole("button", { name: "Save" }).click();
-  await expect(page.locator(".bill-row-title").filter({ hasText: /^Con Edison - Electricity$/ }).last()).toBeVisible({ timeout: 10000 });
+  await expect((await findBillTitle(page, /^Con Edison - Electricity$/))).toBeVisible({ timeout: 10000 });
 
   await page.getByRole("button", { name: "Add manually" }).click();
   await page.locator('input[id^="review-supplier-"]').fill("Toronto Hydro");
@@ -135,5 +239,5 @@ test("utility bill titles stay clean in review and after save", async ({ page })
   await expect(manualReviewCard).toContainText("Toronto Hydro");
   await expect(manualReviewCard).toContainText("Electricity");
   await manualReviewCard.getByRole("button", { name: "Add bill" }).click();
-  await expect(page.locator(".bill-row-title").filter({ hasText: /^Toronto Hydro - Electricity$/ }).last()).toBeVisible({ timeout: 10000 });
+  await expect((await findBillTitle(page, /^Toronto Hydro - Electricity$/))).toBeVisible({ timeout: 10000 });
 });
