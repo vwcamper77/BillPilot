@@ -2390,13 +2390,24 @@ function DashboardPageContent() {
         }, todayIso),
       };
 
-      await runWithTimeout(
+      const result = await runWithTimeout(
         postDashboardLargeCostAction("save_large_cost", {
           costId: editingLargeCostId || null,
           fields: payload,
         }),
         "Saving that large cost is taking too long. Check your connection and try again.",
       );
+      const resolvedCostId = editingLargeCostId || result?.costId || null;
+      setLargeCosts((current) => {
+        const savedCost = { ...payload, id: resolvedCostId || `${Date.now()}` };
+        const existingIndex = current.findIndex((cost) => cost.id === savedCost.id);
+
+        if (existingIndex >= 0) {
+          return current.map((cost) => (cost.id === savedCost.id ? { ...cost, ...savedCost } : cost));
+        }
+
+        return [...current, savedCost];
+      });
       setPageNotice(editingLargeCostId ? "Large cost updated." : "Large cost added.");
       resetLargeCostForm();
     } catch (saveError) {
@@ -2412,9 +2423,11 @@ function DashboardPageContent() {
     if (!window.confirm("Remove this large cost?")) return;
     try {
       await postDashboardLargeCostAction("delete_large_cost", { costId });
+      setLargeCosts((current) => current.filter((cost) => cost.id !== costId));
       if (editingLargeCostId === costId) {
         resetLargeCostForm();
       }
+      setPageNotice("Large cost removed.");
     } catch (saveError) {
       setLargeCostError(friendlySettingsError(saveError, "We could not delete that large cost."));
     }
@@ -2460,7 +2473,13 @@ function DashboardPageContent() {
           amountAlreadySaved,
         },
       });
+      setLargeCosts((current) => current.map((entry) => (
+        entry.id === cost.id
+          ? { ...entry, fundingStatus, amountAlreadySaved }
+          : entry
+      )));
       closeFundingEditor();
+      setPageNotice("Large cost funding updated.");
     } catch (saveError) {
       setLargeCostError(friendlySettingsError(saveError, "We could not update how that cost is funded."));
     }
@@ -3928,8 +3947,8 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
   const goesNegative = cashByWeek.some((amount) => amount < 0);
 
   // SVG layout
-  const W = 400, H = 144;
-  const PL = 34, PR = 10, PT = 30, PB = 26;
+  const W = 400, H = 158;
+  const PL = 34, PR = 10, PT = 30, PB = 40;
   const chartW = W - PL - PR;
   const chartH = H - PT - PB;
   const baseY = PT + chartH;
@@ -4028,6 +4047,23 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
         })}
         {/* Baseline */}
         <line x1={PL} y1={baseY} x2={PL + chartW} y2={baseY} stroke="var(--line)" strokeWidth="1" />
+        {/* Cost leaving that week */}
+        {billsThisWeek.map((billTotal, i) =>
+          billTotal > 0 ? (
+            <text
+              key={weekBuckets[i].weekStart}
+              x={toBarCenterX(i).toFixed(1)}
+              y={baseY + 13}
+              textAnchor="middle"
+              fontSize="8.5"
+              fontWeight="600"
+              fill="var(--warn)"
+              opacity={weekBuckets[i].muted ? 0.5 : 0.85}
+            >
+              -{formatCurrency(billTotal, displayCurrency)}
+            </text>
+          ) : null,
+        )}
         {/* Week commencing labels */}
         {weekBuckets.map((bucket, i) => (
           <text
