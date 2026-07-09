@@ -2,6 +2,10 @@ import Script from "next/script";
 import "./globals.css";
 import Footer from "@/components/Footer";
 import MetaPixel from "@/components/MetaPixel";
+import AttributionTracker from "@/components/AttributionTracker";
+import TestAuthBridge from "@/components/TestAuthBridge";
+
+const isTestAuthBridgeEnabled = process.env.NODE_ENV !== "production";
 
 const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const gtmContainerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID;
@@ -53,6 +57,8 @@ export default function RootLayout({ children }) {
           </noscript>
         ) : null}
         <MetaPixel />
+        <AttributionTracker />
+        {isTestAuthBridgeEnabled ? <TestAuthBridge /> : null}
         {gaMeasurementId ? (
           <>
             <Script

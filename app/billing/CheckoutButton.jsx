@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { auth } from "@/lib/firebase";
+import { trackEvent } from "@/lib/analytics/track";
 
 export default function CheckoutButton() {
   const [status, setStatus] = useState({ busy: false, error: "" });
@@ -25,6 +26,8 @@ export default function CheckoutButton() {
         currency: "GBP",
       });
     }
+
+    trackEvent("checkout_started");
 
     try {
       const idToken = await auth.currentUser.getIdToken();

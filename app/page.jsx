@@ -29,7 +29,7 @@ const REAL_LIFE_POINTS = [
 ];
 
 const FOUNDING_POINTS = [
-  "30 days access",
+  "90 days early access",
   "direct input into what gets built next",
   "early founder pricing if ClearTill launches fully",
   "your \u00A35 credited against your first paid plan",
@@ -217,9 +217,9 @@ export default async function HomePage() {
         <div className="landing-offer-card">
           <div className="landing-offer-copy">
             <p className="eyebrow">Founding beta offer</p>
-            <h2>Get 30 days of ClearTill beta access for {"\u00A35"}.</h2>
+            <h2>Get 90 days of ClearTill beta access for {"\u00A35"}.</h2>
             <p>
-              This is an early version, so founding users get 30 days access, direct input
+              This is an early version, so founding users get 90 days of ClearTill beta access, direct input
               into what gets built next, early founder pricing if ClearTill launches fully,
               and their {"\u00A35"} credited against their first paid plan.
             </p>
@@ -231,7 +231,7 @@ export default async function HomePage() {
           </div>
           <div className="landing-offer-cta">
             <p className="landing-offer-price">{"\u00A35"}</p>
-            <p className="landing-offer-caption">30 days early access</p>
+            <p className="landing-offer-caption">90 days early access</p>
             <p className="landing-offer-body">
               See what bills are due before payday. Know what money is really safe to spend.
               No bank login.

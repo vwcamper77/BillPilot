@@ -10,6 +10,7 @@ import TrustShield from "@/components/TrustShield";
 import AdminFoundingAccessForm from "@/components/AdminFoundingAccessForm";
 import { auth, authPersistenceReady, db, isFirebaseClientConfigured } from "@/lib/firebase";
 import { formatBillingExpiry, hasActiveBillingAccess } from "@/lib/billingAccess";
+import { trackEvent } from "@/lib/analytics/track";
 
 const ACCOUNT_DIALOGS = {
   reset_data: {
@@ -51,6 +52,7 @@ export default function AccountPage() {
   const [feedback, setFeedback] = useState({ type: "", message: "" });
   const [billing, setBilling] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isAnalyticsAdmin, setIsAnalyticsAdmin] = useState(false);
 
   useEffect(() => {
     if (!auth) {
@@ -105,6 +107,31 @@ export default function AccountPage() {
       })
       .catch(() => {
         if (!cancelled) setIsAdmin(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setIsAnalyticsAdmin(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    user.getIdToken().then((idToken) =>
+      fetch("/api/admin/analytics/access", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      }),
+    ).then((response) => response.json())
+      .then((payload) => {
+        if (!cancelled) setIsAnalyticsAdmin(Boolean(payload?.isAdmin));
+      })
+      .catch(() => {
+        if (!cancelled) setIsAnalyticsAdmin(false);
       });
 
     return () => {
@@ -182,6 +209,7 @@ export default function AccountPage() {
     setFeedback({ type: "", message: "" });
 
     try {
+      trackEvent("logout");
       await signOut(auth);
       router.replace("/");
     } catch (error) {
@@ -444,6 +472,19 @@ export default function AccountPage() {
               Manual override for founding access by email.
             </p>
             <AdminFoundingAccessForm />
+          </section>
+        ) : null}
+
+        {isAnalyticsAdmin ? (
+          <section className="account-panel">
+            <p className="account-section-label">Admin</p>
+            <Link href="/admin/analytics" className="account-row">
+              <div>
+                <strong>Analytics</strong>
+                <span>Signups, funnel drop-off, ad performance and customer detail.</span>
+              </div>
+              <span aria-hidden="true">→</span>
+            </Link>
           </section>
         ) : null}
       </div>

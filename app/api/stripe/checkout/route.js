@@ -34,7 +34,7 @@ export async function POST(request) {
                 currency: "gbp",
                 product_data: {
                   name: "ClearTill Founding Member",
-                  description: "3 months of early access for one customer.",
+                  description: "90 days of early access for one customer.",
                 },
                 unit_amount: 500,
               },

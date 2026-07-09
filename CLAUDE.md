@@ -37,6 +37,7 @@ Copy `.env.example` to `.env.local`. Two sets of Firebase credentials are needed
 - **Admin** (`FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`) — used in API routes via `lib/firebaseAdmin.js`
 - **OpenAI** (`OPENAI_API_KEY`) — required for the chat/image parser; falls back to Tesseract OCR when GPT-4o fails
 - **Cron** (`CRON_SECRET`) — `Authorization: Bearer <secret>` header required on `/api/reminders`
+- **Admin** (`ADMIN_EMAILS`) — comma-separated allowlist for `/admin/analytics`, separate from `FOUNDING_ACCESS_ADMIN_EMAILS`
 
 ## Architecture
 
@@ -108,3 +109,21 @@ Key component class families: `.summary-card`, `.runway` / `.runway-item`, `.bil
 ### Auth
 
 Anonymous sign-in on first visit; users can upgrade to Google or email/password (`linkWithPopup`). `authPersistenceReady` is awaited before any Firestore read so auth state is stable.
+
+### Admin analytics (`/admin/analytics`)
+
+Internal-only acquisition/funnel dashboard, gated by `ADMIN_EMAILS` (checked via `lib/adminAuth.server.js`). Three top-level, server-only Firestore collections — never touched by the client SDK, so `firestore.rules` doesn't need to know about them:
+
+| Collection | Written by |
+|---|---|
+| `analyticsEvents/{autoId}` | `lib/customerProfile.server.js`'s `recordAnalyticsEvent()`, called from `/api/track` and the Stripe webhook |
+| `customers/{uid}` | Denormalized read-model keyed by Firebase uid — created on `account_created`, updated by `touchCustomerActivity()` from bill/settings/forecast routes and the Stripe webhook |
+| `adSpend/{autoId}` | Manually entered by admins via `/api/admin/ad-spend` |
+
+`app/api/track/route.js` is the one intentionally public, unauthenticated-capable write endpoint in the app — most funnel events (`landing_page_view`, `hero_cta_clicked`, `signup_started`) happen before any Firebase user exists. Don't "fix" it by requiring a Bearer token; `account_created` is the one event that does require one.
+
+Client-side event firing goes through `trackEvent()` in `lib/analytics/track.js` (fire-and-forget, mirrors `lib/security/clientSecurity.js`'s pattern). First-touch UTM/referrer attribution is captured once per browser by `lib/analytics/attribution.js` into `localStorage`, and attached to the `customers/{uid}` doc at `account_created`.
+
+`customers.totalPaid` is stored in pence (Stripe/billing convention); `adSpend.spend` is entered in whole pounds — the aggregation route (`app/api/admin/analytics/route.js`) converts pence→pounds before combining them for CAC/ROAS/ARPU. Stripe checkout is currently one-time-payment only (no subscriptions), so MRR/trial KPIs render "N/A" rather than a fabricated number.
+
+e2e coverage: `tests/e2e/admin-analytics.spec.js` (run via `npm run test:e2e`). Seeds test users and a sample customer via `tests/e2e/setup/seedTestUsers.mjs`, and uses a dev-only `window.__cleartillTestSignIn` hook (`components/TestAuthBridge.jsx`, never mounted in production) to sign into a real browser session as a specific seeded Firebase user without a real OAuth flow.

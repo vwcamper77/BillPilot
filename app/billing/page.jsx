@@ -39,7 +39,7 @@ export default function BillingPage() {
             land, what big costs are coming, and what is actually safe to spend.
           </p>
           <p className="billing-founder-message">
-            Become a founding member today and get 3 months&apos; early access for &pound;5.
+            Become a founding member today and get 90 days early access for &pound;5.
           </p>
           <ul className="billing-feature-list">
             <li>No bank login</li>
@@ -56,7 +56,7 @@ export default function BillingPage() {
             <span>one-off founding member payment</span>
           </div>
           <ul className="billing-offer-list">
-            <li>3 months early access</li>
+            <li>90 days early access</li>
             <li>See if your money will reach payday</li>
             <li>Bills still to land</li>
             <li>Big costs coming up</li>
@@ -64,7 +64,7 @@ export default function BillingPage() {
             <li>Help shape ClearTill</li>
           </ul>
           <p className="billing-renewal-note">
-            After 3 months, you can choose to continue for &pound;3.99/month or &pound;27/year.
+            After 90 days, you can choose to continue for &pound;3.99/month or &pound;27/year.
             No automatic renewal unless you choose it later.
           </p>
         </aside>
@@ -86,7 +86,7 @@ export default function BillingPage() {
           <article>
             <span>03</span>
             <h3>Get early access</h3>
-            <p>Open ClearTill and start using your 3 months of early access straight away.</p>
+            <p>Open ClearTill and start using your 90 days of early access straight away.</p>
           </article>
         </div>
       </section>

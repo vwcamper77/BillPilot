@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "firebase": "^11.10.0",
@@ -15,5 +16,8 @@
     "react-dom": "^19.0.0",
     "stripe": "^22.3.0",
     "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }

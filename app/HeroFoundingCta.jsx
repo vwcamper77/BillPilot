@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { track } from "@/components/MetaPixel";
+import { trackEvent } from "@/lib/analytics/track";
 
 const CAPACITY = 50;
 
@@ -23,6 +24,7 @@ export default function HeroFoundingCta({ foundingCount }) {
       content_name: "ClearTill founding access",
       content_category: "early_access",
     });
+    trackEvent("hero_cta_clicked");
   }
 
   async function handleWaitlistSubmit(event) {

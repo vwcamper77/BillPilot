@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { FieldValue, getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { touchCustomerActivity } from "@/lib/customerProfile.server";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,11 @@ export async function POST(request) {
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
+
+        void touchCustomerActivity({
+          uid: decodedToken.uid,
+          patch: { billsCount: FieldValue.increment(1), onboardingStatus: "bills_added" },
+        });
 
         return NextResponse.json({
           ok: true,

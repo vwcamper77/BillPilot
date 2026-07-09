@@ -67,7 +67,7 @@ export default async function BillingSuccessPage({ searchParams }) {
         <p className="billing-status-kicker">Founding member confirmed</p>
         <h2 className="billing-status-headline">You&apos;re in — thank you for becoming a ClearTill founding member.</h2>
         <p className="billing-status-copy">
-          You now have 3 months of early access. I&apos;m building ClearTill with real
+          You now have 90 days of early access. I&apos;m building ClearTill with real
           feedback from people who want a clearer answer to one question:
         </p>
         <p className="billing-success-question">Will my money last until payday?</p>

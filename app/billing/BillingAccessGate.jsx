@@ -8,6 +8,8 @@ import {
 } from "firebase/auth";
 import CheckoutButton from "./CheckoutButton";
 import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";
+import { trackEvent } from "@/lib/analytics/track";
+import { getStoredAttribution } from "@/lib/analytics/attribution";
 
 const INITIAL_FORM = { email: "", password: "" };
 
@@ -36,6 +38,7 @@ export default function BillingAccessGate() {
         setUser(currentUser);
         setAuthReady(true);
         setStatus({ busy: false, error: "" });
+        trackEvent("paywall_viewed");
       });
     });
 
@@ -65,9 +68,13 @@ export default function BillingAccessGate() {
 
     try {
       if (mode === "signup") {
+        trackEvent("signup_started", { method: "password" });
         await createUserWithEmailAndPassword(auth, email, password);
+        trackEvent("account_created", { method: "password", attribution: getStoredAttribution() });
+        trackEvent("onboarding_started");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
+        trackEvent("login", { method: "password" });
       }
 
       setForm(INITIAL_FORM);
@@ -168,7 +175,7 @@ export default function BillingAccessGate() {
     <div className="billing-access-panel">
       <p className="billing-access-title">Ready to activate your access</p>
       <p className="billing-access-copy">
-        Your ClearTill login is ready. Continue to Stripe to activate 3 months&apos; founding member access for £5.
+        Your ClearTill login is ready. Continue to Stripe to activate 90 days of founding member access for £5.
       </p>
       <p className="billing-access-status">
         Access will be saved to {user.email || user.displayName || "your ClearTill login"}.

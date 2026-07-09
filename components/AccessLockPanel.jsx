@@ -1,8 +1,16 @@
+"use client";
+
+import { useEffect } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
+import { trackEvent } from "@/lib/analytics/track";
 
 export default function AccessLockPanel({ shellClassName = "dashboard-shell" }) {
+  useEffect(() => {
+    trackEvent("paywall_viewed", { source: "access_lock" });
+  }, []);
+
   return (
     <main className={shellClassName}>
       <section className="auth-panel">
