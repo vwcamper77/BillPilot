@@ -144,4 +144,34 @@ test.describe("buildFourWeekCashflowWaterfall", () => {
     const payDatePoint = points.find((point) => point.containsPayDate);
     expect(payDatePoint.payDateLabel).toBe("Pay date 20 Jul");
   });
+
+  test("income lands in the week containing the pay date, so money comes back in", () => {
+    const bills = [
+      { nextDueDate: "2026-07-08", amount: 65 },
+      { nextDueDate: "2026-07-14", amount: 1155 },
+    ];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-22", 1500, bills, [], 2200);
+
+    // Weeks before the pay date get no income
+    expect(points[0].incomeReceived).toBe(0);
+    expect(points[1].incomeReceived).toBe(0);
+
+    // Pay date falls in week 3 (WC 20 Jul): closing balance jumps up by the income amount
+    expect(points[2].containsPayDate).toBe(true);
+    expect(points[2].incomeReceived).toBe(2200);
+    expect(points[2].openingBalance).toBe(280);
+    expect(points[2].weeklyOutflow).toBe(0);
+    expect(points[2].closingBalance).toBe(2480);
+
+    // The boosted balance carries forward into the following (muted) week
+    expect(points[3].openingBalance).toBe(2480);
+    expect(points[3].isAfterPayCycle).toBe(true);
+  });
+
+  test("with no income amount set, closing balance is unaffected", () => {
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-22", 1500, [], [], 0);
+    const payDatePoint = points.find((point) => point.containsPayDate);
+    expect(payDatePoint.incomeReceived).toBe(0);
+    expect(payDatePoint.closingBalance).toBe(payDatePoint.openingBalance);
+  });
 });

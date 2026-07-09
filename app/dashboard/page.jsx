@@ -3778,6 +3778,7 @@ function DashboardPageContent() {
               hasBalanceSnapshot={hasBalanceSnapshot}
               todayIso={todayIso}
               displayCurrency={displayCurrency}
+              incomeAmount={hasIncomeAmount ? Number(displayIncome.amount) : 0}
             />
           </div>
         </section>
@@ -3945,19 +3946,20 @@ function niceAxisStep(value) {
   return niceResidual * magnitude;
 }
 
-function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoom, hasBalanceSnapshot, todayIso, displayCurrency }) {
-  const { currentBalance, paydayDate, beforePayday } = dashboard;
+function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoom, hasBalanceSnapshot, todayIso, displayCurrency, incomeAmount = 0 }) {
+  const { currentBalance, paydayDate, beforePayday, leftBeforePayday } = dashboard;
 
   if (!paydayDate || !hasBalanceSnapshot) return null;
 
   // Explicit waterfall points: openingBalance -> weeklyOutflow -> closingBalance per week,
-  // on Monday-aligned week buckets, with the pay date placed in its own bucket
-  const waterfall = buildFourWeekCashflowWaterfall(todayIso, paydayDate, currentBalance, beforePayday, dueBeforePaydayLargeCosts);
+  // on Monday-aligned week buckets. The pay amount lands in the week containing the pay
+  // date, so weeks after payday show money coming back in rather than staying flat.
+  const waterfall = buildFourWeekCashflowWaterfall(todayIso, paydayDate, currentBalance, beforePayday, dueBeforePaydayLargeCosts, incomeAmount);
   const payDateBucketIndex = waterfall.findIndex((point) => point.containsPayDate);
 
   const closingBalances = waterfall.map((point) => point.closingBalance);
-  const lowestBal = closingBalances[closingBalances.length - 1];
-  const goesNegative = closingBalances.some((amount) => amount < 0);
+  const lowestBal = leftBeforePayday;
+  const goesNegative = lowestBal < 0;
 
   // SVG layout
   const W = 400, H = 158;
@@ -4077,26 +4079,50 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
         {minCash < 0 ? (
           <text x={PL - 4} y={(zeroY + 3.5).toFixed(1)} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}0</text>
         ) : null}
-        {/* Weekly outgoing under each column */}
-        {waterfall.map((point, i) =>
-          point.weeklyOutflow > 0 ? (
-            <text
-              data-testid="weekly-outflow"
-              data-week-index={i}
-              data-amount={point.weeklyOutflow}
-              key={point.weekStart}
-              x={toBarCenterX(i).toFixed(1)}
-              y={plotBottomY + 13}
-              textAnchor="middle"
-              fontSize="8.5"
-              fontWeight="600"
-              fill="var(--warn)"
-              opacity={point.isAfterPayCycle ? 0.5 : 0.85}
-            >
-              -{formatCurrency(point.weeklyOutflow, displayCurrency)}
-            </text>
-          ) : null,
-        )}
+        {/* Weekly outgoing and money coming in (payday) under each column */}
+        {waterfall.map((point, i) => {
+          const hasOutflow = point.weeklyOutflow > 0;
+          const hasIncome = point.incomeReceived > 0;
+          if (!hasOutflow && !hasIncome) return null;
+          const bothPresent = hasOutflow && hasIncome;
+          const outflowX = bothPresent ? toBarX(i) + barW * 0.27 : toBarCenterX(i);
+          const incomeX = bothPresent ? toBarX(i) + barW * 0.73 : toBarCenterX(i);
+          return (
+            <g key={point.weekStart}>
+              {hasOutflow ? (
+                <text
+                  data-testid="weekly-outflow"
+                  data-week-index={i}
+                  data-amount={point.weeklyOutflow}
+                  x={outflowX.toFixed(1)}
+                  y={plotBottomY + 13}
+                  textAnchor="middle"
+                  fontSize="8.5"
+                  fontWeight="600"
+                  fill="var(--warn)"
+                  opacity={point.isAfterPayCycle ? 0.5 : 0.85}
+                >
+                  -{formatCurrency(point.weeklyOutflow, displayCurrency)}
+                </text>
+              ) : null}
+              {hasIncome ? (
+                <text
+                  data-testid="weekly-income"
+                  data-week-index={i}
+                  data-amount={point.incomeReceived}
+                  x={incomeX.toFixed(1)}
+                  y={plotBottomY + 13}
+                  textAnchor="middle"
+                  fontSize="8.5"
+                  fontWeight="600"
+                  fill="var(--accent-dark)"
+                >
+                  +{formatCurrency(point.incomeReceived, displayCurrency)}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
         {/* Week commencing labels */}
         {waterfall.map((point, i) => (
           <text

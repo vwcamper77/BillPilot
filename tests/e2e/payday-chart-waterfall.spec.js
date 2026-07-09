@@ -133,7 +133,9 @@ test.describe("payday chart waterfall", () => {
   });
 
   test("an unchanged balance (no cost that week) renders the same bar height as the week before", async ({ page }) => {
-    const payDay = dayOfMonth(addDaysIso(todayIsoLondon(), 16));
+    // Payday lands today (week 1, index 0) so weeks 2 and 3 are unaffected by the income bump
+    // and stay directly comparable to each other.
+    const payDay = dayOfMonth(todayIsoLondon());
     await seedDashboardState(uid, { currentBalance: 1500, payDay, payAmount: 2200 });
     await setBills([
       { name: "Small bill", amount: 65, dueDay: dayOfMonth(addDaysIso(todayIsoLondon(), 2)) },
@@ -143,16 +145,17 @@ test.describe("payday chart waterfall", () => {
     await signInAsBrowserUser(page, uid);
     await gotoDashboardChart(page);
 
-    // Weeks 2 and 3 both close at £280 (no bill in week 3), so their bars should match
+    // Weeks 2 and 3 close at the same balance (no bill in week 3), so their bars should match
     const bar1 = page.locator('[data-testid="waterfall-bar"][data-week-index="1"]');
     const bar2 = page.locator('[data-testid="waterfall-bar"][data-week-index="2"]');
-    expect(await bar2.getAttribute("data-closing-balance")).toBe("280");
+    const closing1 = await bar1.getAttribute("data-closing-balance");
+    expect(await bar2.getAttribute("data-closing-balance")).toBe(closing1);
     expect(await bar2.getAttribute("data-weekly-outflow")).toBe("0");
     const height1 = Number(await bar1.getAttribute("height"));
     const height2 = Number(await bar2.getAttribute("height"));
     expect(height2).toBeCloseTo(height1, 0);
 
-    // Week 4 is after the pay date, so it should be muted
+    // Weeks 2-4 are all after the pay date (which fell in week 1), so they should be muted
     const bar3 = page.locator('[data-testid="waterfall-bar"][data-week-index="3"]');
     expect(await bar3.getAttribute("data-muted")).toBe("true");
   });
@@ -195,6 +198,29 @@ test.describe("payday chart waterfall", () => {
 
     const weekLabel = page.locator(`[data-testid="week-label"][data-week-index="${expectedIndex}"]`);
     await expect(weekLabel).toContainText("WC");
+  });
+
+  test("after payday, the chart shows income coming back in", async ({ page }) => {
+    const offsetDays = 10;
+    const expectedIndex = weekIndexForOffset(offsetDays);
+    const payDay = dayOfMonth(addDaysIso(todayIsoLondon(), offsetDays));
+    await seedDashboardState(uid, { currentBalance: 400, payDay, payAmount: 2000 });
+    await setBills([]);
+
+    await signInAsBrowserUser(page, uid);
+    await gotoDashboardChart(page);
+
+    const incomeText = page.locator(`[data-testid="weekly-income"][data-week-index="${expectedIndex}"]`);
+    await expect(incomeText).toBeVisible();
+    expect(await incomeText.getAttribute("data-amount")).toBe("2000");
+    await expect(incomeText).toContainText("+£2,000");
+
+    const payDateBar = page.locator(`[data-testid="waterfall-bar"][data-week-index="${expectedIndex}"]`);
+    expect(await payDateBar.getAttribute("data-closing-balance")).toBe("2400");
+
+    // No bills at all this scenario, so no earlier week should show an income bump
+    const earlierIncome = page.locator('[data-testid="weekly-income"]');
+    expect(await earlierIncome.count()).toBe(1);
   });
 
   test("mobile 320px: WC labels, cost labels, and markers do not overlap", async ({ page }) => {
