@@ -3,6 +3,7 @@ import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import FoundingFeedbackForm from "./FoundingFeedbackForm";
 import RepairAccessButton from "./RepairAccessButton";
+import RememberCheckoutSession from "./RememberCheckoutSession";
 import { grantFoundingAccessFromCheckoutSessionId } from "@/lib/billingAccess.server";
 import { formatBillingExpiry } from "@/lib/billingAccess";
 import { getFirebaseProjectId } from "@/lib/firebaseAdmin";
@@ -42,6 +43,7 @@ export default async function BillingSuccessPage({ searchParams }) {
 
   return (
     <main className="billing-shell billing-shell-success">
+      {sessionId ? <RememberCheckoutSession sessionId={sessionId} /> : null}
       <header className="topbar">
         <div>
           <Link className="brand-link" href="/" aria-label="ClearTill home">
@@ -62,7 +64,17 @@ export default async function BillingSuccessPage({ searchParams }) {
         <p className="billing-status-copy">Your feedback will directly shape what gets built next.</p>
         {accessMessage ? <p className="helper-text billing-success">{accessMessage}</p> : null}
         {accessError ? <p className="helper-text billing-error">{accessError}</p> : null}
-        {accessError && sessionId ? <RepairAccessButton sessionId={sessionId} /> : null}
+        {accessError && sessionId ? (
+          <div className="billing-repair-block">
+            <p className="billing-status-copy">Payment received. Activate my access</p>
+            <RepairAccessButton
+              sessionId={sessionId}
+              idleLabel="Activate my access"
+              busyLabel="Activating access..."
+              successMessage="Your ClearTill access is active."
+            />
+          </div>
+        ) : null}
       </section>
 
       <TrustShield className="page-trust-banner billing-trust-banner" compact />

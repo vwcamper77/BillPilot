@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import AccessLockPanel from "@/components/AccessLockPanel";
+import RepairAccessButton from "@/app/billing/success/RepairAccessButton";
 import {
   collection,
   deleteDoc,
@@ -37,7 +38,6 @@ import {
   isFirebaseClientConfigured,
   missingFirebaseClientEnv,
 } from "@/lib/firebase";
-import { hasActiveBillingAccess } from "@/lib/billingAccess";
 import {
   buildBillDocument,
   buildIncomeDocument,
@@ -59,6 +59,7 @@ import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clien
 import { safeError, safeWarn } from "@/lib/security/safeLog";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
+const RECENT_SESSION_STORAGE_KEY = "cleartill_recent_checkout_session_id";
 
 function isValidIncomeAmount(value) {
   const amount = Number(value);
@@ -122,7 +123,12 @@ function DashboardPageContent() {
   const [savings, setSavings] = useState(null);
   const [income, setIncome] = useState(null);
   const [account, setAccount] = useState(null);
-  const [billing, setBilling] = useState(null);
+  const [accessCheck, setAccessCheck] = useState({
+    state: "signed_out",
+    accessActive: false,
+    accessUntil: null,
+    stripeCheckoutSessionId: null,
+  });
   const [reminders, setReminders] = useState([]);
   const [message, setMessage] = useState("");
   const [balanceInput, setBalanceInput] = useState("");
@@ -144,8 +150,8 @@ function DashboardPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [savingBalance, setSavingBalance] = useState(false);
   const [accountLoaded, setAccountLoaded] = useState(false);
-  const [billingLoaded, setBillingLoaded] = useState(false);
-  const [billingError, setBillingError] = useState("");
+  const [accessLoaded, setAccessLoaded] = useState(false);
+  const [recentCheckoutSessionId, setRecentCheckoutSessionId] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
@@ -225,6 +231,9 @@ function DashboardPageContent() {
         setUser(currentUser);
         setAuthReady(true);
         setSigningIn(false);
+        console.info("[dashboard access] auth loaded", {
+          uid: currentUser?.uid || null,
+        });
       });
     });
 
@@ -232,6 +241,17 @@ function DashboardPageContent() {
       isMounted = false;
       unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedSessionId = window.localStorage.getItem(RECENT_SESSION_STORAGE_KEY) || "";
+    if (storedSessionId) {
+      setRecentCheckoutSessionId(storedSessionId);
+    }
   }, []);
 
   useEffect(() => {
@@ -246,6 +266,101 @@ function DashboardPageContent() {
 
     router.replace(requestedNextPath);
   }, [authReady, requestedNextPath, router, user]);
+
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
+    if (!user) {
+      setAccessCheck({
+        state: "signed_out",
+        accessActive: false,
+        accessUntil: null,
+        stripeCheckoutSessionId: null,
+      });
+      setAccessLoaded(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAccess() {
+      setAccessLoaded(false);
+
+      try {
+        console.info("[dashboard access] requesting access check", {
+          uid: user.uid,
+        });
+
+        const idToken = await user.getIdToken();
+
+        if (cancelled) {
+          return;
+        }
+
+        console.info("[dashboard access] token acquired", {
+          uid: user.uid,
+        });
+
+        const response = await fetch("/api/access", {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        console.info("[dashboard access] API status code", {
+          status: response.status,
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (cancelled) {
+          return;
+        }
+
+        console.info("[dashboard access] API JSON response", payload);
+
+        setAccessCheck({
+          state: payload?.state || "access_check_error",
+          accessActive: Boolean(payload?.accessActive),
+          accessUntil: payload?.accessUntil || null,
+          stripeCheckoutSessionId: payload?.stripeCheckoutSessionId || null,
+        });
+
+        if (payload?.stripeCheckoutSessionId && typeof window !== "undefined") {
+          window.localStorage.setItem(RECENT_SESSION_STORAGE_KEY, payload.stripeCheckoutSessionId);
+          setRecentCheckoutSessionId(payload.stripeCheckoutSessionId);
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        console.error("[dashboard access] access check failed", error);
+        setAccessCheck({
+          state: "access_check_error",
+          accessActive: false,
+          accessUntil: null,
+          stripeCheckoutSessionId: null,
+        });
+      } finally {
+        if (!cancelled) {
+          setAccessLoaded(true);
+        }
+      }
+    }
+
+    loadAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, user]);
 
   useEffect(() => {
     billsRef.current = bills;
@@ -352,9 +467,13 @@ function DashboardPageContent() {
       setIncome(null);
       setAccount(null);
       setAccountLoaded(false);
-      setBilling(null);
-      setBillingLoaded(false);
-      setBillingError("");
+      setAccessCheck({
+        state: user ? "access_check_error" : "signed_out",
+        accessActive: false,
+        accessUntil: null,
+        stripeCheckoutSessionId: null,
+      });
+      setAccessLoaded(false);
       hasAutoFocused.current = false;
       setReminders([]);
       return undefined;
@@ -401,16 +520,6 @@ function DashboardPageContent() {
       safeWarn("[account-load] listener error", error);
       setAccountLoaded(true);
     });
-    const unsubscribeBilling = onSnapshot(doc(db, "users", user.uid), (snapshot) => {
-      const nextBilling = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
-      setBilling(nextBilling);
-      setBillingLoaded(true);
-      setBillingError("");
-    }, (error) => {
-      safeWarn("[billing-load] listener error", error);
-      setBillingLoaded(true);
-      setBillingError("We couldn't check your access just now. Please try again.");
-    });
     const unsubscribeLargeCosts = onSnapshot(largeCostsQuery, (snapshot) => {
       setLargeCosts(snapshot.docs.map((costDoc) => ({ id: costDoc.id, ...costDoc.data() })));
     }, (error) => safeWarn("[large-costs-load] listener error", error));
@@ -429,27 +538,14 @@ function DashboardPageContent() {
       }
     }, (error) => safeWarn("[preferences-load] listener error", error));
 
-    const billingTimeout = setTimeout(() => {
-      setBillingLoaded((alreadyLoaded) => {
-        if (!alreadyLoaded) {
-          safeWarn("[billing-load] timed out waiting for Firestore");
-          setBillingError("We couldn't check your access just now. Please try again.");
-          return true;
-        }
-        return alreadyLoaded;
-      });
-    }, 15000);
-
     return () => {
       unsubscribeBills();
       unsubscribeIncome();
       unsubscribeAccount();
-      unsubscribeBilling();
       unsubscribeLargeCosts();
       unsubscribeSavings();
       unsubscribeReminders();
       unsubscribePreferences();
-      clearTimeout(billingTimeout);
     };
   }, [user]);
 
@@ -2505,7 +2601,7 @@ function DashboardPageContent() {
     );
   }
 
-  if (!billingLoaded) {
+  if (!accessLoaded) {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
@@ -2516,30 +2612,71 @@ function DashboardPageContent() {
     );
   }
 
-  if (billingError) {
+  if (accessCheck.state === "signed_out") {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
           <h1>Checking your access…</h1>
-          <p className="helper-text">{billingError}</p>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => {
-              setBillingLoaded(false);
-              setBillingError("");
-              window.location.reload();
-            }}
-          >
-            Try again
-          </button>
+          <p className="helper-text">Your ClearTill login needs to be active before we can open your dashboard.</p>
+          <div className="topbar-actions">
+            <Link className="primary-link" href="/billing">Go to billing</Link>
+            <Link className="secondary-button" href="/">Home</Link>
+          </div>
         </section>
       </main>
     );
   }
 
-  if (!hasActiveBillingAccess(billing)) {
+  if (accessCheck.state === "access_missing") {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>We could not find active access for this account.</h1>
+          <p className="helper-text">If you have already paid, repair your access without going back to Stripe.</p>
+          <div className="topbar-actions">
+            <Link className="primary-link" href="/billing">Go to billing</Link>
+            <Link className="secondary-button" href="/account">Account</Link>
+          </div>
+          {recentCheckoutSessionId ? (
+            <RepairAccessButton
+              sessionId={recentCheckoutSessionId}
+              successMessage="Your ClearTill access is active."
+              onSuccess={() => window.location.reload()}
+            />
+          ) : null}
+        </section>
+      </main>
+    );
+  }
+
+  if (accessCheck.state === "access_check_error") {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>Sign in to continue.</h1>
+          <p className="helper-text">We hit a problem while checking access for this account.</p>
+          <div className="topbar-actions">
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                setAccessLoaded(false);
+                window.location.reload();
+              }}
+            >
+              Try again
+            </button>
+            <Link className="secondary-button" href="/billing">Go to billing</Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (accessCheck.state === "access_expired") {
     return <AccessLockPanel shellClassName="dashboard-shell" />;
   }
 
