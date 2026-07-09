@@ -4029,25 +4029,15 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
             <text x={PL - 4} y={referenceY + 3.5} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}{referenceValue}</text>
           </>
         ) : null}
-        {/* Bars: one shared scale, each spanning openingBalance -> closingBalance so bar size matches that week's cost */}
+        {/* Bars: grounded at £0 — positive balances rise above the line, negative balances hang below it */}
         {waterfall.map((point, i) => {
-          const yFrom = toY(point.openingBalance);
-          const yTo = toY(point.closingBalance);
-          const endsAtBottomEdge = yTo >= yFrom;
-          let barTopY = Math.min(yFrom, yTo);
-          let barBottomY = Math.max(yFrom, yTo);
-          if (barBottomY - barTopY < 2) {
-            // No change this week — show a thin flat marker at the balance instead of an invisible bar
-            barTopY = yTo - 1;
-            barBottomY = yTo + 1;
-          }
-          const bh = barBottomY - barTopY;
-          const muted = point.isAfterPayCycle;
+          const scaledH = (Math.abs(point.closingBalance) / cashRange) * chartH;
+          const bh = Math.max(scaledH, 2);
           const negative = point.closingBalance < 0;
+          const barTopY = negative ? zeroY : zeroY - bh;
+          const muted = point.isAfterPayCycle;
           const labelFitsInside = bh >= 16;
-          const labelY = endsAtBottomEdge
-            ? (labelFitsInside ? barBottomY - 6 : barBottomY + 11)
-            : (labelFitsInside ? barTopY + 12 : barTopY - 6);
+          const labelY = labelFitsInside ? barTopY + 13 : barTopY - 5;
           return (
             <g key={point.weekStart}>
               <rect

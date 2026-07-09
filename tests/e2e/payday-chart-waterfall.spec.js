@@ -96,7 +96,7 @@ test.beforeAll(async () => {
 });
 
 test.describe("payday chart waterfall", () => {
-  test("normal positive waterfall: a large weekly outgoing is visibly larger than a small one", async ({ page }) => {
+  test("normal positive weeks: bars are grounded at £0, and closing balances are correct", async ({ page }) => {
     const payDay = dayOfMonth(addDaysIso(todayIsoLondon(), 16)); // lands in week 3 (index 2)
     await seedDashboardState(uid, { currentBalance: 1500, payDay, payAmount: 2200 });
     await setBills([
@@ -112,18 +112,27 @@ test.describe("payday chart waterfall", () => {
     await expect(bar0).toBeVisible();
     await expect(bar1).toBeVisible();
 
+    expect(await bar0.getAttribute("data-closing-balance")).toBe("1435");
+    expect(await bar1.getAttribute("data-closing-balance")).toBe("280");
+    expect(await bar0.getAttribute("data-weekly-outflow")).toBe("65");
+    expect(await bar1.getAttribute("data-weekly-outflow")).toBe("1155");
+
+    // Both positive bars must sit on (touch) the £0 line, not float away from it
+    const zeroLine = page.locator('[data-testid="zero-line"]');
+    const zeroY = Number(await zeroLine.getAttribute("y1"));
+    for (const bar of [bar0, bar1]) {
+      const y = Number(await bar.getAttribute("y"));
+      const height = Number(await bar.getAttribute("height"));
+      expect(y + height).toBeCloseTo(zeroY, 0);
+    }
+
+    // A bigger balance still produces a taller bar than a smaller one
     const height0 = Number(await bar0.getAttribute("height"));
     const height1 = Number(await bar1.getAttribute("height"));
-
-    expect(height1).toBeGreaterThan(height0 * 4);
-
-    const closing0 = Number(await bar0.getAttribute("data-closing-balance"));
-    const closing1 = Number(await bar1.getAttribute("data-closing-balance"));
-    expect(closing0).toBe(1435);
-    expect(closing1).toBe(280);
+    expect(height0).toBeGreaterThan(height1);
   });
 
-  test("no-cost week renders as a thin flat line, not a full-height block", async ({ page }) => {
+  test("an unchanged balance (no cost that week) renders the same bar height as the week before", async ({ page }) => {
     const payDay = dayOfMonth(addDaysIso(todayIsoLondon(), 16));
     await seedDashboardState(uid, { currentBalance: 1500, payDay, payAmount: 2200 });
     await setBills([
@@ -134,18 +143,21 @@ test.describe("payday chart waterfall", () => {
     await signInAsBrowserUser(page, uid);
     await gotoDashboardChart(page);
 
+    // Weeks 2 and 3 both close at £280 (no bill in week 3), so their bars should match
+    const bar1 = page.locator('[data-testid="waterfall-bar"][data-week-index="1"]');
     const bar2 = page.locator('[data-testid="waterfall-bar"][data-week-index="2"]');
-    await expect(bar2).toBeVisible();
-    const height2 = Number(await bar2.getAttribute("height"));
-    expect(height2).toBeLessThanOrEqual(3);
+    expect(await bar2.getAttribute("data-closing-balance")).toBe("280");
     expect(await bar2.getAttribute("data-weekly-outflow")).toBe("0");
+    const height1 = Number(await bar1.getAttribute("height"));
+    const height2 = Number(await bar2.getAttribute("height"));
+    expect(height2).toBeCloseTo(height1, 0);
 
     // Week 4 is after the pay date, so it should be muted
     const bar3 = page.locator('[data-testid="waterfall-bar"][data-week-index="3"]');
     expect(await bar3.getAttribute("data-muted")).toBe("true");
   });
 
-  test("negative week: the bar crosses below the £0 line", async ({ page }) => {
+  test("negative week: the bar hangs below the £0 line, touching it", async ({ page }) => {
     await seedDashboardState(uid, { currentBalance: 300, payDay: dayOfMonth(addDaysIso(todayIsoLondon(), 20)), payAmount: 1800 });
     await setBills([{ name: "Big bill", amount: 420, dueDay: dayOfMonth(addDaysIso(todayIsoLondon(), 2)) }]);
 
@@ -163,6 +175,8 @@ test.describe("payday chart waterfall", () => {
 
     // SVG y grows downward: the bar's bottom edge must sit below (>) the £0 line
     expect(barY + barHeight).toBeGreaterThan(zeroY);
+    // ...and its top edge must touch the £0 line, not float above it
+    expect(barY).toBeCloseTo(zeroY, 0);
   });
 
   test("pay date marker sits in the correct WC column", async ({ page }) => {
