@@ -9,6 +9,7 @@ import AccessLockPanel from "@/components/AccessLockPanel";
 import RepairAccessButton from "@/app/billing/success/RepairAccessButton";
 import {
   createUserWithEmailAndPassword,
+  getAdditionalUserInfo,
   linkWithPopup,
   onAuthStateChanged,
   signInAnonymously,
@@ -38,10 +39,13 @@ import {
   getTodayIso,
   isValidDueDay,
   normaliseLargeCostFundingStatus,
+  resolveBillTitle,
 } from "@/lib/billMath";
 import { analyseCsvText } from "@/lib/csvBillFinder";
 import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clientSecurity";
 import { safeError, safeWarn } from "@/lib/security/safeLog";
+import { trackEvent } from "@/lib/analytics/track";
+import { getStoredAttribution } from "@/lib/analytics/attribution";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
 const RECENT_SESSION_STORAGE_KEY = "cleartill_recent_checkout_session_id";
@@ -93,6 +97,8 @@ function DashboardPageContent() {
   const uploadInputRef = useRef(null);
   const addBillSectionRef = useRef(null);
   const messageInputRef = useRef(null);
+  const billInputStartedRef = useRef(false);
+  const forecastViewedRef = useRef(false);
   const balanceSectionRef = useRef(null);
   const balanceInputRef = useRef(null);
   const paydaySectionRef = useRef(null);
@@ -159,6 +165,7 @@ function DashboardPageContent() {
   const [csvError, setCsvError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
   const [authMode, setAuthMode] = useState("signin");
+  const [isAnalyticsAdmin, setIsAnalyticsAdmin] = useState(false);
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
@@ -227,6 +234,31 @@ function DashboardPageContent() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setIsAnalyticsAdmin(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    user.getIdToken().then((idToken) =>
+      fetch("/api/admin/analytics/access", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      }),
+    ).then((response) => response.json())
+      .then((payload) => {
+        if (!cancelled) setIsAnalyticsAdmin(Boolean(payload?.isAdmin));
+      })
+      .catch(() => {
+        if (!cancelled) setIsAnalyticsAdmin(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -597,6 +629,13 @@ function DashboardPageContent() {
   }, [setupStep]);
 
   useEffect(() => {
+    if (setupStep === 4 && !forecastViewedRef.current) {
+      forecastViewedRef.current = true;
+      trackEvent("forecast_viewed");
+    }
+  }, [setupStep]);
+
+  useEffect(() => {
     if (!authReady || !user || !accountLoaded) return;
     if (hasAutoFocused.current) return;
     hasAutoFocused.current = true;
@@ -760,6 +799,11 @@ function DashboardPageContent() {
     clientConfigured: Boolean(isFirebaseClientConfigured),
   };
 
+  function trackAccountCreated(method) {
+    trackEvent("account_created", { method, attribution: getStoredAttribution() });
+    trackEvent("onboarding_started");
+  }
+
   async function handleSignIn() {
     if (!auth) {
       setAuthError("Sign-in is not available right now. Try again later.");
@@ -793,10 +837,16 @@ function DashboardPageContent() {
 
       if (auth.currentUser?.isAnonymous) {
         await linkWithPopup(auth.currentUser, googleProvider);
+        trackAccountCreated("google");
         return;
       }
 
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      if (getAdditionalUserInfo(result)?.isNewUser) {
+        trackAccountCreated("google");
+      } else {
+        trackEvent("login", { method: "google" });
+      }
     } catch (signInError) {
       if (
         signInError?.code === "auth/credential-already-in-use"
@@ -804,7 +854,12 @@ function DashboardPageContent() {
       ) {
         try {
           await auth.currentUser.delete().catch(() => signOut(auth));
-          await signInWithPopup(auth, googleProvider);
+          const retryResult = await signInWithPopup(auth, googleProvider);
+          if (getAdditionalUserInfo(retryResult)?.isNewUser) {
+            trackAccountCreated("google");
+          } else {
+            trackEvent("login", { method: "google" });
+          }
           return;
         } catch (retryError) {
           setAuthError(friendlyGoogleAuthError(retryError));
@@ -840,13 +895,19 @@ function DashboardPageContent() {
     setSigningIn(true);
     setAuthError("");
 
+    if (authMode === "signup") {
+      trackEvent("signup_started", { method: "password" });
+    }
+
     try {
       await authPersistenceReady;
 
       if (authMode === "signup") {
         await createUserWithEmailAndPassword(auth, email, password);
+        trackAccountCreated("password");
       } else {
         await signInWithEmailAndPassword(auth, email, password);
+        trackEvent("login", { method: "password" });
       }
     } catch (emailError) {
       setAuthError(friendlyAuthError(emailError));
@@ -890,6 +951,7 @@ function DashboardPageContent() {
 
         if (reviewDrafts.length) {
           setBillReviewDrafts(reviewDrafts);
+          trackEvent("bill_reviewed", { draftCount: reviewDrafts.length, source: "chat" });
           setEditingReviewId("");
           setAssistantMessage(
             reviewDrafts.some((draft) => draft.missingFields?.length)
@@ -908,6 +970,7 @@ function DashboardPageContent() {
         const fallbackDraft = buildLooseBillReviewDraft(message, quickAddContext);
         if (fallbackDraft) {
           setBillReviewDrafts([fallbackDraft]);
+          trackEvent("bill_reviewed", { draftCount: 1, source: "chat" });
           setEditingReviewId("");
           setAssistantMessage("Review bill before adding. I found the bill name, but need the amount and due date.");
           return;
@@ -1027,6 +1090,7 @@ function DashboardPageContent() {
 
       if (collectedDrafts.length) {
         setBillReviewDrafts(collectedDrafts);
+        trackEvent("bill_reviewed", { draftCount: collectedDrafts.length, source: "import" });
         setAssistantMessage(
           collectedDrafts.length === 1
             ? "Review bill before adding."
@@ -1288,6 +1352,7 @@ function DashboardPageContent() {
     try {
       const result = await postDashboardBillAction("create_bill", { fields: payload });
       logSecurityEventClient("bill_created", { source: "import" });
+      trackEvent("bill_added", { source: "import" });
       const savedBill = {
         ...billDocument,
         id: result.billId,
@@ -1524,6 +1589,7 @@ function DashboardPageContent() {
 
     try {
       await saveIncome(parsedIncome, Boolean(income));
+      trackEvent("payday_added");
       setPageNotice("Forecast settings saved.");
     } catch (saveError) {
       setupAdvanceIntentRef.current = "";
@@ -1719,6 +1785,7 @@ function DashboardPageContent() {
       setCsvSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
       setCsvSavedCount((n) => n + 1);
       logSecurityEventClient("bill_created", { source: "csv" });
+      trackEvent("bill_added", { source: "csv" });
     } catch (saveError) {
       setCsvError(friendlyBillSaveError(saveError, "We could not add this bill."));
     } finally {
@@ -1773,6 +1840,7 @@ function DashboardPageContent() {
       setCsvEditingId(null);
       setCsvSavedCount((n) => n + 1);
       logSecurityEventClient("bill_created", { source: "csv" });
+      trackEvent("bill_added", { source: "csv" });
     } catch (saveError) {
       setCsvError(friendlyBillSaveError(saveError, "We could not add this bill."));
     } finally {
@@ -2044,11 +2112,12 @@ function DashboardPageContent() {
         return draft;
       }
 
-      const classified = classifyBill({ name: billReviewForm.name.trim() });
+      const cleanedName = resolveBillTitle(billReviewForm.name.trim(), draft.sourceText || billReviewForm.name.trim());
+      const classified = classifyBill({ name: cleanedName });
 
       return {
         ...draft,
-        name: billReviewForm.name.trim(),
+        name: cleanedName,
         amount: Number.isFinite(amount) && amount > 0 ? amount : null,
         dueDay: Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : null,
         category: billReviewForm.category || classified.category || "other",
@@ -2132,12 +2201,14 @@ function DashboardPageContent() {
         throw new Error("Could not save that bill yet.");
       }
 
+      trackEvent("bill_added", { source: "chat" });
       cancelBillReviewDraft(draftId);
       setAssistantMessage(`Added ${draft.name}.`);
 
       const remainingDrafts = billReviewDrafts.filter((entry) => entry.id !== draftId);
       if (remainingDrafts.length === 0) {
         setMessage("");
+        billInputStartedRef.current = false;
         setQuickAddContext(null);
         setVoiceMessage("");
         transcriptRef.current = "";
@@ -2679,6 +2750,9 @@ function DashboardPageContent() {
             </button>
           ) : null}
           <Link className="secondary-button" href="/account">Account</Link>
+          {isAnalyticsAdmin ? (
+            <Link className="secondary-button" href="/admin/analytics">Analytics</Link>
+          ) : null}
         </div>
       </header>
 
@@ -3346,6 +3420,12 @@ function DashboardPageContent() {
                 value={message}
                 disabled={submitting || importLocked}
                 onChange={(event) => setMessage(event.target.value)}
+                onFocus={() => {
+                  if (!billInputStartedRef.current) {
+                    billInputStartedRef.current = true;
+                    trackEvent("bill_input_started");
+                  }
+                }}
                 placeholder={
                   quickAddContext
                     ? `Example: ${quickAddContext.name} is £28 due on the 14th each month.`
@@ -5515,8 +5595,9 @@ function buildBillReviewDraft(item, { sourceText = "", quickAddContext = null, i
     return null;
   }
 
-  const inferred = classifyBill({ name: item.name, description: sourceText });
-  const canonicalName = canonicalisePreviewBillName(item.name, inferred);
+  const resolvedName = resolveBillTitle(item.name, sourceText);
+  const inferred = classifyBill({ name: resolvedName, description: sourceText });
+  const canonicalName = canonicalisePreviewBillName(resolvedName, inferred);
 
   return {
     id: `${importJobId || "draft"}-${draftIndex}-${canonicalName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "bill"}`,
@@ -5570,7 +5651,21 @@ function buildLooseBillReviewDraft(sourceText, quickAddContext) {
 }
 
 function canonicalisePreviewBillName(name, classified) {
-  const text = String(name || "").trim().toLowerCase();
+  if (/\s+[—-]\s+/.test(String(name || ""))) {
+    return name;
+  }
+
+  const rawName = String(name || "");
+
+  if (rawName.includes(" - ") || rawName.includes("â€”")) {
+    return name;
+  }
+
+  const text = rawName.trim().toLowerCase();
+
+  if (text.includes("electricity") || text.includes("water")) {
+    return name;
+  }
 
   if (!text) {
     return "";

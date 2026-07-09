@@ -1,7 +1,7 @@
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { recognize } from "tesseract.js";
-import { formatGBP, formatOrdinal, isValidDueDay, normaliseBillName, normaliseEntityName } from "@/lib/billMath";
+import { formatGBP, formatOrdinal, isValidDueDay, normaliseBillName, normaliseEntityName, resolveBillTitle } from "@/lib/billMath";
 
 export const runtime = "nodejs";
 
@@ -417,7 +417,7 @@ async function parseImageImportWithOpenAI({ message, image }) {
 function normaliseParsedResult(parsed, message, hasImage = false) {
   if (parsed?.action === "batch") {
     const items = Array.isArray(parsed?.items)
-      ? dedupeParsedItems(parsed.items.map(normaliseItem).filter(Boolean))
+      ? dedupeParsedItems(parsed.items.map((item) => normaliseItem(item, message)).filter(Boolean))
       : [];
 
     if (!items.length) {
@@ -439,7 +439,7 @@ function normaliseParsedResult(parsed, message, hasImage = false) {
     };
   }
 
-  const item = normaliseItem(parsed);
+  const item = normaliseItem(parsed, message);
 
   if (item) {
     return item;
@@ -454,8 +454,9 @@ function normaliseParsedResult(parsed, message, hasImage = false) {
   };
 }
 
-function normaliseItem(item) {
+function normaliseItem(item, fallbackSourceText = "") {
   if (item?.action === "create_bill") {
+    const sourceText = item.rawText || fallbackSourceText || "";
     const missingFields = getMissingFields(item, ["name", "amount", "dueDay"]);
 
     if (missingFields.length) {
@@ -466,7 +467,7 @@ function normaliseItem(item) {
           || (item.dueDay !== undefined && item.dueDay !== null && item.dueDay !== "")
         )
       ) {
-        const cleanedName = normaliseBillName(item.name);
+        const cleanedName = resolveBillTitle(item.name, sourceText);
         const responseMessage = missingFields.includes("amount") && missingFields.includes("dueDay")
           ? "I found the bill name, but need the amount and due date."
           : missingFields.includes("amount")
@@ -484,7 +485,7 @@ function normaliseItem(item) {
           needsReview: true,
           missingFields,
           confidence: Number(item.confidence ?? 0.6),
-          sourceText: item.rawText || "",
+          sourceText,
           responseMessage,
         };
       }
@@ -492,7 +493,7 @@ function normaliseItem(item) {
       return missingResponse(missingFields);
     }
 
-    const cleanedName = normaliseBillName(item.name);
+    const cleanedName = resolveBillTitle(item.name, sourceText);
 
     return {
       action: "create_bill",
@@ -503,7 +504,7 @@ function normaliseItem(item) {
       dueDay: Number(item.dueDay),
       reminderOffsetDays: Number(item.reminderOffsetDays ?? 1),
       confidence: Number(item.confidence ?? 0.85),
-      sourceText: item.rawText || "",
+      sourceText,
       needsReview: false,
       responseMessage: `Logged. ${cleanedName} - ${formatGBP(item.amount)} - due on the ${formatOrdinal(item.dueDay)}. Reminder set for the day before.`,
     };
@@ -685,7 +686,7 @@ function parseQuickEntry(message) {
 
   const dueDay = extractOrdinalDay(lower);
   const amount = extractAmount(lower);
-  const name = extractCompactName(trimmed);
+  const name = resolveBillTitle(extractCompactName(trimmed), trimmed);
 
   if (!name || (!amount && !dueDay)) {
     return null;
