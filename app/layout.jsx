@@ -1,6 +1,7 @@
 import Script from "next/script";
 import "./globals.css";
 import Footer from "@/components/Footer";
+import MetaPixel from "@/components/MetaPixel";
 
 const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 
@@ -30,6 +31,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en-GB">
       <body>
+        <MetaPixel />
         {gaMeasurementId ? (
           <>
             <Script

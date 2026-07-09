@@ -1,5 +1,9 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import HeroFoundingCta from "./HeroFoundingCta";
+import { getFoundingMemberCount } from "@/lib/billingAccess.server";
+
+export const revalidate = 30;
 
 const SAFE_POINTS = [
   "what is in your account now",
@@ -38,7 +42,9 @@ const DUE_BILLS = [
   { name: "Car insurance", due: "22 Jul", amount: "\u00A361" },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const foundingCount = await getFoundingMemberCount();
+
   return (
     <main className="landing-shell">
       <header className="landing-header">
@@ -51,9 +57,10 @@ export default function HomePage() {
       <section className="landing-hero">
         <div className="landing-copy">
           <p className="landing-kicker">Payday clarity without bank access</p>
-          <h1>Know what bills are due before payday, before you spend.</h1>
+          <h1>Will your money last until payday?</h1>
           <p className="landing-lead">
-            ClearTill shows what money is really safe to spend before your next payday.
+            ClearTill shows what&rsquo;s actually safe to spend after bills before your
+            next payday &mdash; without connecting your bank.
           </p>
           <div className="landing-pill-row" aria-label="No bank login required">
             <span className="trust-pill">No bank login</span>
@@ -66,14 +73,7 @@ export default function HomePage() {
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <div className="landing-cta-row">
-            <Link className="primary-link landing-primary-cta" href="/billing">
-              Get early access for {"\u00A35"}
-            </Link>
-            <a className="secondary-button landing-secondary-cta" href="#beta-offer">
-              See beta offer
-            </a>
-          </div>
+          <HeroFoundingCta foundingCount={foundingCount} />
           <p className="landing-signin-note">
             Already joined?{" "}
             <Link href="/dashboard?auth=signin">

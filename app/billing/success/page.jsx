@@ -4,6 +4,7 @@ import TrustShield from "@/components/TrustShield";
 import FoundingFeedbackForm from "./FoundingFeedbackForm";
 import RepairAccessButton from "./RepairAccessButton";
 import RememberCheckoutSession from "./RememberCheckoutSession";
+import PurchasePixel from "./PurchasePixel";
 import { grantFoundingAccessFromCheckoutSessionId } from "@/lib/billingAccess.server";
 import { formatBillingExpiry } from "@/lib/billingAccess";
 import { getFirebaseProjectId } from "@/lib/firebaseAdmin";
@@ -17,11 +18,17 @@ export default async function BillingSuccessPage({ searchParams }) {
   const sessionId = String(resolvedSearchParams?.session_id || "").trim();
   let accessMessage = "";
   let accessError = "";
+  let purchaseAmount = 5;
+  let purchaseCurrency = "GBP";
 
   if (sessionId) {
     try {
       const billingRecord = await grantFoundingAccessFromCheckoutSessionId(sessionId);
       accessMessage = `Access is live through ${formatBillingExpiry(billingRecord)}.`;
+      purchaseAmount = Number.isFinite(Number(billingRecord?.amountPaid))
+        ? Number(billingRecord.amountPaid) / 100
+        : 5;
+      purchaseCurrency = String(billingRecord?.currency || "gbp").toUpperCase();
     } catch (error) {
       // The underlying SDK error (Stripe/Firestore/Auth) is for logs only —
       // never surface raw error text to the user.
@@ -44,6 +51,9 @@ export default async function BillingSuccessPage({ searchParams }) {
   return (
     <main className="billing-shell billing-shell-success">
       {sessionId ? <RememberCheckoutSession sessionId={sessionId} /> : null}
+      {accessMessage && !accessError ? (
+        <PurchasePixel sessionId={sessionId} amount={purchaseAmount} currency={purchaseCurrency} />
+      ) : null}
       <header className="topbar">
         <div>
           <Link className="brand-link" href="/" aria-label="ClearTill home">

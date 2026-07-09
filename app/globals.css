@@ -8,6 +8,7 @@
   --accent-dark: #0b514c;
   --warn: #9a3412;
   --soft: #e8f3ef;
+  --brand-green: #2BA378;
 }
 
 * {
@@ -3500,6 +3501,38 @@ h1 {
 
 .landing-signin-note a:hover {
   text-decoration: underline;
+}
+
+.landing-scarcity {
+  margin: 2px 0 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--brand-green);
+}
+
+.landing-waitlist-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.landing-waitlist-input {
+  flex: 1 1 220px;
+  min-height: 48px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  padding: 0 18px;
+  font-size: 0.95rem;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.landing-waitlist-success {
+  margin: 4px 0 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--brand-green);
 }
 
 .landing-hero-card {
