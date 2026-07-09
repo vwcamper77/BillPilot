@@ -10,6 +10,12 @@ export async function POST(request) {
     const action = String(body?.action || "").trim();
     const userRef = getAdminDb().collection("users").doc(decodedToken.uid).collection("bills");
 
+    console.info("[dashboard-bills] request", {
+      action,
+      uid: decodedToken.uid,
+      billId: body?.billId || null,
+    });
+
     switch (action) {
       case "create_bill": {
         const fields = normaliseFields(body?.fields || {});

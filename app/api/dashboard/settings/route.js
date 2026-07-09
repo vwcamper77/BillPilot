@@ -10,6 +10,11 @@ export async function POST(request) {
     const action = String(body?.action || "").trim();
     const db = getAdminDb();
 
+    console.info("[dashboard-settings] request", {
+      action,
+      uid: decodedToken.uid,
+    });
+
     switch (action) {
       case "save_balance": {
         const balanceRef = db.collection("users").doc(decodedToken.uid).collection("settings").doc("balance");
@@ -31,6 +36,27 @@ export async function POST(request) {
         }
 
         await balanceRef.set(payload, { merge: true });
+
+        return NextResponse.json({ ok: true, action });
+      }
+
+      case "save_savings": {
+        const savingsRef = db.collection("users").doc(decodedToken.uid).collection("settings").doc("savings");
+        const totalSetAside = Number(body?.totalSetAside || 0);
+
+        if (!Number.isFinite(totalSetAside) || totalSetAside < 0) {
+          return NextResponse.json(
+            { ok: false, error: "Savings not assigned to a big cost must be zero or more." },
+            { status: 400 },
+          );
+        }
+
+        const existingSnapshot = await savingsRef.get();
+        await savingsRef.set({
+          totalSetAside,
+          updatedAt: FieldValue.serverTimestamp(),
+          ...(existingSnapshot.exists ? {} : { createdAt: FieldValue.serverTimestamp() }),
+        }, { merge: true });
 
         return NextResponse.json({ ok: true, action });
       }

@@ -8,19 +8,6 @@ import TrustShield from "@/components/TrustShield";
 import AccessLockPanel from "@/components/AccessLockPanel";
 import RepairAccessButton from "@/app/billing/success/RepairAccessButton";
 import {
-  collection,
-  deleteDoc,
-  doc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  setDoc,
-  where,
-  writeBatch,
-} from "firebase/firestore";
-import {
   createUserWithEmailAndPassword,
   linkWithPopup,
   onAuthStateChanged,
@@ -33,14 +20,12 @@ import {
   app as firebaseApp,
   auth,
   authPersistenceReady,
-  db,
   googleProvider,
   isFirebaseClientConfigured,
   missingFirebaseClientEnv,
 } from "@/lib/firebase";
 import {
   buildBillDocument,
-  buildIncomeDocument,
   buildLargeCostDocument,
   calculateBillSchedule,
   calculateLargeCostImpact,
@@ -460,12 +445,17 @@ function DashboardPageContent() {
 
 
   useEffect(() => {
-    if (!user || !db) {
+    let cancelled = false;
+
+    if (!user) {
       setBills([]);
       setLargeCosts([]);
       setSavings(null);
+      setSavingsInput("");
       setIncome(null);
+      setIncomeForm({ amount: "", payDay: "" });
       setAccount(null);
+      setBalanceInput("");
       setAccountLoaded(false);
       setAccessCheck({
         state: user ? "access_check_error" : "signed_out",
@@ -479,73 +469,61 @@ function DashboardPageContent() {
       return undefined;
     }
 
-    const balanceDocRef = doc(db, "users", user.uid, "settings", "balance");
-    const billsQuery = query(
-      collection(db, "users", user.uid, "bills"),
-      where("active", "==", true),
-    );
-    const remindersQuery = query(
-      collection(db, "users", user.uid, "reminders"),
-      orderBy("createdAt", "desc"),
-      limit(5),
-    );
-    const largeCostsQuery = query(
-      collection(db, "users", user.uid, "largeCosts"),
-      where("active", "==", true),
-    );
+    setAccountLoaded(false);
 
-    const unsubscribeBills = onSnapshot(billsQuery, (snapshot) => {
-      setBills(snapshot.docs.map((billDoc) => ({ id: billDoc.id, ...billDoc.data() })));
-    }, (error) => safeWarn("[bills-load] listener error", error));
-    const unsubscribeIncome = onSnapshot(doc(db, "users", user.uid, "income", "main"), (snapshot) => {
-      const loadedIncome = snapshot.exists() ? snapshot.data() : null;
-      if (loadedIncome && !isValidDueDay(loadedIncome.payDay)) {
-        safeWarn("[payday-load] invalid payDay");
-      }
-      const nextIncome = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
-      setIncome(nextIncome);
-      setOptimisticIncome(null);
-      setIncomeForm({
-        amount: nextIncome?.amount === null || nextIncome?.amount === undefined ? "" : String(nextIncome.amount),
-        payDay: nextIncome?.payDay === null || nextIncome?.payDay === undefined ? "" : String(nextIncome.payDay),
+    void postDashboardStateAction()
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+
+        const nextIncome = payload?.income || null;
+        const nextAccount = payload?.balance || null;
+        const nextSavings = payload?.savings || null;
+
+        if (nextIncome && !isValidDueDay(nextIncome.payDay)) {
+          safeWarn("[payday-load] invalid payDay");
+        }
+
+        setBills(Array.isArray(payload?.bills) ? payload.bills : []);
+        setLargeCosts(Array.isArray(payload?.largeCosts) ? payload.largeCosts : []);
+        setSavings(nextSavings);
+        setSavingsInput(nextSavings?.totalSetAside === undefined || nextSavings?.totalSetAside === null ? "" : String(nextSavings.totalSetAside));
+        setIncome(nextIncome);
+        setOptimisticIncome(null);
+        setIncomeForm({
+          amount: nextIncome?.amount === null || nextIncome?.amount === undefined ? "" : String(nextIncome.amount),
+          payDay: nextIncome?.payDay === null || nextIncome?.payDay === undefined ? "" : String(nextIncome.payDay),
+        });
+        setAccount(nextAccount);
+        setOptimisticBalance(null);
+        setBalanceInput(nextAccount?.currentBalance?.toString() || "");
+        setReminders(Array.isArray(payload?.reminders) ? payload.reminders : []);
+
+        if (payload?.preferences?.currency) {
+          setDisplayCurrency(payload.preferences.currency);
+        }
+      })
+      .catch((error) => {
+        safeWarn("[dashboard-state-load] error", error);
+        if (cancelled) {
+          return;
+        }
+        setBills([]);
+        setLargeCosts([]);
+        setSavings(null);
+        setIncome(null);
+        setAccount(null);
+        setReminders([]);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAccountLoaded(true);
+        }
       });
-    }, (error) => safeWarn("[income-load] listener error", error));
-    const unsubscribeAccount = onSnapshot(balanceDocRef, (snapshot) => {
-      const nextAccount = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
-      setAccount(nextAccount);
-      setAccountLoaded(true);
-      setOptimisticBalance(null);
-      setBalanceInput(nextAccount?.currentBalance?.toString() || "");
-    }, (error) => {
-      safeWarn("[account-load] listener error", error);
-      setAccountLoaded(true);
-    });
-    const unsubscribeLargeCosts = onSnapshot(largeCostsQuery, (snapshot) => {
-      setLargeCosts(snapshot.docs.map((costDoc) => ({ id: costDoc.id, ...costDoc.data() })));
-    }, (error) => safeWarn("[large-costs-load] listener error", error));
-    const unsubscribeSavings = onSnapshot(doc(db, "users", user.uid, "settings", "savings"), (snapshot) => {
-      const nextSavings = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
-      setSavings(nextSavings);
-      setSavingsInput(nextSavings?.totalSetAside === undefined || nextSavings?.totalSetAside === null ? "" : String(nextSavings.totalSetAside));
-    }, (error) => safeWarn("[savings-load] listener error", error));
-    const unsubscribeReminders = onSnapshot(remindersQuery, (snapshot) => {
-      setReminders(snapshot.docs.map((reminderDoc) => ({ id: reminderDoc.id, ...reminderDoc.data() })));
-    }, (error) => safeWarn("[reminders-load] listener error", error));
-    const unsubscribePreferences = onSnapshot(doc(db, "users", user.uid, "settings", "preferences"), (snapshot) => {
-      if (snapshot.exists()) {
-        const prefs = snapshot.data();
-        if (prefs.currency) setDisplayCurrency(prefs.currency);
-      }
-    }, (error) => safeWarn("[preferences-load] listener error", error));
 
     return () => {
-      unsubscribeBills();
-      unsubscribeIncome();
-      unsubscribeAccount();
-      unsubscribeLargeCosts();
-      unsubscribeSavings();
-      unsubscribeReminders();
-      unsubscribePreferences();
+      cancelled = true;
     };
   }, [user]);
 
@@ -779,7 +757,7 @@ function DashboardPageContent() {
     uid: auth?.currentUser?.uid || user?.uid || "none",
     envProjectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
     appProjectId: firebaseApp?.options?.projectId || "",
-    dbExists: Boolean(db),
+    clientConfigured: Boolean(isFirebaseClientConfigured),
   };
 
   async function handleSignIn() {
@@ -922,7 +900,7 @@ function DashboardPageContent() {
         }
 
         if (parsedWithContext.action === "set_income") {
-          const outcome = await applyParsedActions(user.uid, parsedWithContext, Boolean(displayIncome), bills);
+          const outcome = await applyParsedActions(parsedWithContext, Boolean(displayIncome), bills);
           setAssistantMessage(buildOutcomeMessage(parsedWithContext, outcome));
           return;
         }
@@ -1231,29 +1209,10 @@ function DashboardPageContent() {
   }
 
   async function postDashboardBillAction(action, payload = {}) {
-    if (!auth?.currentUser) {
-      throw new Error("Please sign in again before saving that bill.");
-    }
-
-    const idToken = await auth.currentUser.getIdToken();
-    const response = await fetch("/api/dashboard/bills", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${idToken}`,
-      },
-      body: JSON.stringify({
-        action,
-        ...payload,
-      }),
+    return postDashboardRequest("/api/dashboard/bills", action, payload, {
+      unauthenticatedMessage: "Please sign in again before saving that bill.",
+      fallbackError: "Could not save that bill.",
     });
-    const responsePayload = await response.json().catch(() => ({}));
-
-    if (!response.ok || !responsePayload?.ok) {
-      throw new Error(responsePayload?.error || "Could not save that bill.");
-    }
-
-    return responsePayload;
   }
 
   function parseDueDayFromText(value) {
@@ -1361,25 +1320,11 @@ function DashboardPageContent() {
     setBalanceInput("");
 
     try {
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch("/api/dashboard/settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          action: "save_balance",
-          currentBalance: null,
-          currency: "GBP",
-          snapshotEntered: false,
-        }),
+      await postDashboardSettingsAction("save_balance", {
+        currentBalance: null,
+        currency: "GBP",
+        snapshotEntered: false,
       });
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || "Current available money could not be saved.");
-      }
     } catch (saveError) {
       safeError("[dashboard-settings-balance-skip] failed", { code: saveError?.code });
     }
@@ -1400,29 +1345,15 @@ function DashboardPageContent() {
       setOptimisticBalance(null);
       setBalanceInput("");
 
-      void auth.currentUser.getIdToken()
-        .then((idToken) => fetch("/api/dashboard/settings", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idToken}`,
-          },
-          body: JSON.stringify({
-            action: "save_balance",
-            currentBalance: null,
-            currency: "GBP",
-            snapshotEntered: false,
-          }),
-        }))
-        .then((response) => response.json().catch(() => ({})).then((payload) => ({ response, payload })))
-        .then(({ response, payload }) => {
-          if (!response.ok || !payload?.ok) {
-            throw new Error(payload?.error || "Current available money could not be saved.");
-          }
-        })
-        .catch((saveError) => {
-          safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
+      try {
+        await postDashboardSettingsAction("save_balance", {
+          currentBalance: null,
+          currency: "GBP",
+          snapshotEntered: false,
         });
+      } catch (saveError) {
+        safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
+      }
       return;
     }
 
@@ -1443,47 +1374,36 @@ function DashboardPageContent() {
     setPageNotice("");
     setOptimisticBalance(parsedBalance);
     setBalanceInput(parsedBalance.toString());
-    setSavingBalance(false);
-    setPageNotice(`Current available money updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
+    setSavingBalance(true);
 
-    void auth.currentUser.getIdToken()
-      .then((idToken) => fetch("/api/dashboard/settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          action: "save_balance",
-          currentBalance: parsedBalance,
-          currency: "GBP",
-          snapshotEntered: true,
-        }),
-      }))
-      .then((response) => response.json().catch(() => ({})).then((payload) => ({ response, payload })))
-      .then(({ response, payload }) => {
-        if (!response.ok || !payload?.ok) {
-          throw new Error(payload?.error || "Current available money could not be saved.");
-        }
-
-        if (balanceSaveRequestRef.current !== saveRequestId) {
-          return;
-        }
-
-        logSecurityEventClient("balance_updated");
-        setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
-      })
-      .catch((saveError) => {
-        if (balanceSaveRequestRef.current !== saveRequestId) {
-          return;
-        }
-
-        setupAdvanceIntentRef.current = "";
-        safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
-        setOptimisticBalance(null);
-        setPageNotice("");
-        setBalanceError(friendlySettingsError(saveError, "Current available money could not be saved."));
+    try {
+      await postDashboardSettingsAction("save_balance", {
+        currentBalance: parsedBalance,
+        currency: "GBP",
+        snapshotEntered: true,
       });
+
+      if (balanceSaveRequestRef.current !== saveRequestId) {
+        return;
+      }
+
+      logSecurityEventClient("balance_updated");
+      setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
+    } catch (saveError) {
+      if (balanceSaveRequestRef.current !== saveRequestId) {
+        return;
+      }
+
+      setupAdvanceIntentRef.current = "";
+      safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
+      setOptimisticBalance(null);
+      setPageNotice("");
+      setBalanceError(friendlySettingsError(saveError, "Current available money could not be saved."));
+    } finally {
+      if (balanceSaveRequestRef.current === saveRequestId) {
+        setSavingBalance(false);
+      }
+    }
   }
 
   function startBillEdit(bill) {
@@ -1535,7 +1455,6 @@ function DashboardPageContent() {
         ...updatedBill,
         category: editingBillForm.category || null,
         lastPaidAt: existingBill?.lastPaidAt || null,
-        updatedAt: serverTimestamp(),
       };
 
       await runWithTimeout(
@@ -1602,21 +1521,17 @@ function DashboardPageContent() {
     };
 
     setEditingIncome(false);
-    setPageNotice(`Payday set for the ${formatOrdinal(payDay)}.`);
 
     try {
-      await saveIncome(
-        user.uid,
-        parsedIncome,
-        Boolean(income),
-      );
+      await saveIncome(parsedIncome, Boolean(income));
+      setPageNotice("Forecast settings saved.");
     } catch (saveError) {
       setupAdvanceIntentRef.current = "";
       safeError("[firestore-payday-save] failed", { code: saveError?.code });
       setOptimisticIncome(null);
       setEditingIncome(true);
       setPageNotice("");
-      setEditError(saveError.message);
+      setEditError(friendlySettingsError(saveError, "We could not save your forecast settings."));
     } finally {
       setSavingEdit(false);
     }
@@ -1777,7 +1692,7 @@ function DashboardPageContent() {
   }
 
   async function handleCsvAddBill(suggestion) {
-    if (!user || !db) return;
+    if (!user) return;
     setCsvSavingId(suggestion.id);
     setCsvError("");
     try {
@@ -1788,21 +1703,24 @@ function DashboardPageContent() {
         dueDay: suggestion.usualPaymentDay,
         currency: "GBP",
       }, todayIso);
-      const billRef = doc(collection(db, "users", user.uid, "bills"));
-      await setDoc(billRef, {
-        ...billDoc,
-        source: "csv_detected",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      const result = await postDashboardBillAction("create_bill", {
+        fields: {
+          ...billDoc,
+          source: "csv_detected",
+        },
       });
-      const saved = { ...billDoc, id: billRef.id, source: "csv_detected" };
+      const saved = {
+        ...billDoc,
+        id: result.billId,
+        source: "csv_detected",
+      };
       setBills((current) => current.some((b) => b.id === saved.id) ? current : [...current, saved]);
       billsRef.current = [...(billsRef.current || []), saved];
       setCsvSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
       setCsvSavedCount((n) => n + 1);
       logSecurityEventClient("bill_created", { source: "csv" });
-    } catch {
-      setCsvError("Could not save that bill. Try again.");
+    } catch (saveError) {
+      setCsvError(friendlyBillSaveError(saveError, "We could not add this bill."));
     } finally {
       setCsvSavingId(null);
     }
@@ -1820,7 +1738,7 @@ function DashboardPageContent() {
   }
 
   async function handleCsvEditSave(suggestion) {
-    if (!user || !db) return;
+    if (!user) return;
     const amount = parseFloat(csvEditForm.amount);
     const dueDay = parseInt(csvEditForm.dueDay, 10);
     if (!csvEditForm.name.trim() || !Number.isFinite(amount) || amount <= 0) {
@@ -1838,22 +1756,25 @@ function DashboardPageContent() {
         currency: "GBP",
         category: csvEditForm.category || null,
       }, todayIso);
-      const billRef = doc(collection(db, "users", user.uid, "bills"));
-      await setDoc(billRef, {
-        ...billDoc,
-        source: "csv_detected",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      const result = await postDashboardBillAction("create_bill", {
+        fields: {
+          ...billDoc,
+          source: "csv_detected",
+        },
       });
-      const saved = { ...billDoc, id: billRef.id, source: "csv_detected" };
+      const saved = {
+        ...billDoc,
+        id: result.billId,
+        source: "csv_detected",
+      };
       setBills((current) => current.some((b) => b.id === saved.id) ? current : [...current, saved]);
       billsRef.current = [...(billsRef.current || []), saved];
       setCsvSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
       setCsvEditingId(null);
       setCsvSavedCount((n) => n + 1);
       logSecurityEventClient("bill_created", { source: "csv" });
-    } catch {
-      setCsvError("Could not save that bill. Try again.");
+    } catch (saveError) {
+      setCsvError(friendlyBillSaveError(saveError, "We could not add this bill."));
     } finally {
       setCsvSavingId(null);
     }
@@ -1974,7 +1895,7 @@ function DashboardPageContent() {
   }
 
   async function handleBillPaidToggle(bill) {
-    if (!user || !db) {
+    if (!user) {
       return;
     }
 
@@ -1983,7 +1904,7 @@ function DashboardPageContent() {
       const previousLastPaidAt = bill.lastPaidAt || null;
 
       setEditError("");
-      setPageNotice(`${bill.name} reactivated.`);
+      setPageNotice("");
       setBills((current) => current.map((entry) => (
         entry.id === bill.id
           ? { ...entry, paidThroughDate: null, lastPaidAt: null }
@@ -2001,6 +1922,7 @@ function DashboardPageContent() {
           }),
           "Saving the paid status is taking too long. Check your connection and try again.",
         );
+        setPageNotice(`${bill.name} reactivated.`);
       } catch (saveError) {
         setBills((current) => current.map((entry) => (
           entry.id === bill.id
@@ -2028,7 +1950,7 @@ function DashboardPageContent() {
     const previousPaidThroughDate = bill.paidThroughDate || null;
 
     setEditError("");
-    setPageNotice(`${bill.name} marked as paid.`);
+    setPageNotice("");
     setBills((current) => current.map((entry) => (
       entry.id === bill.id
         ? { ...entry, paidThroughDate: cycleDate }
@@ -2046,6 +1968,7 @@ function DashboardPageContent() {
           }),
         "Saving the paid status is taking too long. Check your connection and try again.",
       );
+      setPageNotice(`${bill.name} marked as paid.`);
     } catch (saveError) {
       setBills((current) => current.map((entry) => (
         entry.id === bill.id
@@ -2184,7 +2107,7 @@ function DashboardPageContent() {
         category: draft.category || null,
         rawText: draft.sourceText || null,
       };
-      const outcome = await applyParsedActions(user.uid, parsedDraft, Boolean(displayIncome), billsRef.current || bills);
+      const outcome = await applyParsedActions(parsedDraft, Boolean(displayIncome), billsRef.current || bills);
 
       if (outcome.savedBills?.length) {
         setBills((current) => {
@@ -2296,7 +2219,7 @@ function DashboardPageContent() {
   async function handleLargeCostSave(event) {
     event.preventDefault();
 
-    if (!user || !db) {
+    if (!user) {
       return;
     }
 
@@ -2316,7 +2239,6 @@ function DashboardPageContent() {
     setLargeCostError("");
 
     try {
-      const costId = editingLargeCostId || doc(collection(db, "users", user.uid, "largeCosts")).id;
       const payload = {
         ...buildLargeCostDocument({
           name: largeCostForm.name.trim(),
@@ -2328,34 +2250,35 @@ function DashboardPageContent() {
           fundingStatus: largeCostForm.fundingStatus,
           currency: "GBP",
         }, todayIso),
-        updatedAt: serverTimestamp(),
-        ...(editingLargeCostId ? {} : { createdAt: serverTimestamp() }),
       };
 
       await runWithTimeout(
-        setDoc(doc(db, "users", user.uid, "largeCosts", costId), payload, { merge: true }),
+        postDashboardLargeCostAction("save_large_cost", {
+          costId: editingLargeCostId || null,
+          fields: payload,
+        }),
         "Saving that large cost is taking too long. Check your connection and try again.",
       );
       setPageNotice(editingLargeCostId ? "Large cost updated." : "Large cost added.");
       resetLargeCostForm();
     } catch (saveError) {
       safeError("[firestore-large-cost-save] failed", { code: saveError?.code });
-      setLargeCostError(saveError.message || "Could not save that large cost.");
+      setLargeCostError(friendlySettingsError(saveError, "We could not save that large cost."));
     } finally {
       setSavingLargeCost(false);
     }
   }
 
   async function handleLargeCostDelete(costId) {
-    if (!user || !db) return;
+    if (!user) return;
     if (!window.confirm("Remove this large cost?")) return;
     try {
-      await deleteDoc(doc(db, "users", user.uid, "largeCosts", costId));
+      await postDashboardLargeCostAction("delete_large_cost", { costId });
       if (editingLargeCostId === costId) {
         resetLargeCostForm();
       }
-    } catch {
-      setLargeCostError("Could not delete that large cost. Try again.");
+    } catch (saveError) {
+      setLargeCostError(friendlySettingsError(saveError, "We could not delete that large cost."));
     }
   }
 
@@ -2373,7 +2296,7 @@ function DashboardPageContent() {
   }
 
   async function saveFundingEditor(cost) {
-    if (!user || !db) return;
+    if (!user) return;
 
     const amount = Number(cost.amount) || 0;
     const fundingStatus = normaliseLargeCostFundingStatus(fundingEditorForm.fundingStatus);
@@ -2392,21 +2315,23 @@ function DashboardPageContent() {
     setLargeCostError("");
 
     try {
-      await setDoc(doc(db, "users", user.uid, "largeCosts", cost.id), {
-        fundingStatus,
-        amountAlreadySaved,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      await postDashboardLargeCostAction("save_large_cost", {
+        costId: cost.id,
+        fields: {
+          fundingStatus,
+          amountAlreadySaved,
+        },
+      });
       closeFundingEditor();
-    } catch {
-      setLargeCostError("Could not update how that cost is funded. Try again.");
+    } catch (saveError) {
+      setLargeCostError(friendlySettingsError(saveError, "We could not update how that cost is funded."));
     }
   }
 
   async function handleSavingsSave(event) {
     event.preventDefault();
 
-    if (!user || !db) {
+    if (!user) {
       return;
     }
 
@@ -2422,16 +2347,14 @@ function DashboardPageContent() {
 
     try {
       await runWithTimeout(
-        setDoc(doc(db, "users", user.uid, "settings", "savings"), {
+        postDashboardSettingsAction("save_savings", {
           totalSetAside,
-          updatedAt: serverTimestamp(),
-          ...(savings?.id ? {} : { createdAt: serverTimestamp() }),
-        }, { merge: true }),
+        }),
         "Saving your extra savings is taking too long. Check your connection and try again.",
       );
       setPageNotice("Savings not assigned to a big cost updated.");
     } catch (saveError) {
-      setSavingsError(saveError.message || "Could not save your extra savings.");
+      setSavingsError(friendlySettingsError(saveError, "We could not save your extra savings."));
     } finally {
       setSavingSavings(false);
     }
@@ -2500,23 +2423,7 @@ function DashboardPageContent() {
     setDisplayCurrency(currency);
     setBalanceError("");
     try {
-      const idToken = await auth.currentUser.getIdToken();
-      const response = await fetch("/api/dashboard/settings", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({
-          action: "save_preferences",
-          currency,
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || "Display currency could not be saved.");
-      }
+      await postDashboardSettingsAction("save_preferences", { currency });
     } catch (saveError) {
       safeError("[dashboard-settings-preferences-save] failed", { code: saveError?.code });
       setBalanceError(friendlySettingsError(saveError, "Display currency could not be saved."));
@@ -2866,7 +2773,7 @@ function DashboardPageContent() {
             ref={balanceSectionRef}
             className={`chat-panel balance-action-card ${setupStep !== 1 ? "" : "setup-current"} ${highlightBalanceForm ? "form-highlight" : ""}`}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">{isBalanceStepComplete ? "Done" : "Step 1 of 3"}</span> : null}
+            <span className="setup-step-badge">{isBalanceStepComplete ? "Done" : "Step 1 of 3"}</span>
             {onboardingHelper?.target === "balance" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -2939,7 +2846,7 @@ function DashboardPageContent() {
             ref={paydaySettingsSectionRef}
             className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || (!hasPayday && !editingIncome)) ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">{isPaydayStepComplete ? "Done" : "Step 2 of 3"}</span> : null}
+            <span className="setup-step-badge">{isPaydayStepComplete ? "Done" : "Step 2 of 3"}</span>
             {onboardingHelper?.target === "payday" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -3368,7 +3275,7 @@ function DashboardPageContent() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
-            {setupStep < 4 ? <span className="setup-step-badge">{isBillsStepComplete ? "Done" : "Step 3 of 3"}</span> : null}
+            <span className="setup-step-badge">{isBillsStepComplete ? "Done" : "Step 3 of 3"}</span>
             {onboardingHelper?.target === "bills" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -4410,7 +4317,7 @@ function CsvBillFinder({ userId, bills, displayCurrency, onBillSaved }) { // esl
   }
 
   async function handleAddBill(suggestion) {
-    if (!userId || !db) return;
+    if (!userId) return;
     setSavingId(suggestion.id);
     setCsvError("");
     try {
@@ -4421,19 +4328,22 @@ function CsvBillFinder({ userId, bills, displayCurrency, onBillSaved }) { // esl
         dueDay: suggestion.usualPaymentDay,
         currency: "GBP",
       }, todayIso);
-      const billRef = doc(collection(db, "users", userId, "bills"));
-      await setDoc(billRef, {
-        ...billDoc,
-        source: "csv_detected",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      const result = await postDashboardBillActionFromClient("create_bill", {
+        fields: {
+          ...billDoc,
+          source: "csv_detected",
+        },
       });
-      const saved = { ...billDoc, id: billRef.id, source: "csv_detected" };
+      const saved = {
+        ...billDoc,
+        id: result.billId,
+        source: "csv_detected",
+      };
       onBillSaved(saved);
       setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
       setSavedCount((n) => n + 1);
-    } catch {
-      setCsvError("Could not save that bill. Try again.");
+    } catch (saveError) {
+      setCsvError(friendlyBillSaveError(saveError, "We could not add this bill."));
     } finally {
       setSavingId(null);
     }
@@ -4451,7 +4361,7 @@ function CsvBillFinder({ userId, bills, displayCurrency, onBillSaved }) { // esl
   }
 
   async function handleEditSave(suggestion) {
-    if (!userId || !db) return;
+    if (!userId) return;
     const amount = parseFloat(editForm.amount);
     const dueDay = parseInt(editForm.dueDay, 10);
     if (!editForm.name.trim() || !Number.isFinite(amount) || amount <= 0) {
@@ -4469,20 +4379,23 @@ function CsvBillFinder({ userId, bills, displayCurrency, onBillSaved }) { // esl
         currency: "GBP",
         category: editForm.category || null,
       }, todayIso);
-      const billRef = doc(collection(db, "users", userId, "bills"));
-      await setDoc(billRef, {
-        ...billDoc,
-        source: "csv_detected",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      const result = await postDashboardBillActionFromClient("create_bill", {
+        fields: {
+          ...billDoc,
+          source: "csv_detected",
+        },
       });
-      const saved = { ...billDoc, id: billRef.id, source: "csv_detected" };
+      const saved = {
+        ...billDoc,
+        id: result.billId,
+        source: "csv_detected",
+      };
       onBillSaved(saved);
       setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
       setEditingId(null);
       setSavedCount((n) => n + 1);
-    } catch {
-      setCsvError("Could not save that bill. Try again.");
+    } catch (saveError) {
+      setCsvError(friendlyBillSaveError(saveError, "We could not add this bill."));
     } finally {
       setSavingId(null);
     }
@@ -5062,27 +4975,44 @@ function BillGroup({
   );
 }
 
-async function saveIncome(userId, parsed, hasExistingIncome) {
-  const income = buildIncomeDocument(parsed);
-  const payload = {
-    ...income,
-    updatedAt: serverTimestamp(),
-  };
+async function postDashboardRequest(route, action, payload = {}, options = {}) {
+  const { unauthenticatedMessage, fallbackError } = options;
+  const currentUser = auth?.currentUser;
+  const uid = currentUser?.uid || null;
 
-  if (!hasExistingIncome) {
-    payload.createdAt = serverTimestamp();
+  console.log("[dashboard-save] request", {
+    action,
+    uid,
+    route,
+    tokenAcquired: false,
+  });
+
+  if (!currentUser) {
+    throw new Error(unauthenticatedMessage || "Please sign in again before saving.");
   }
 
-  await setDoc(doc(db, "users", userId, "income", "main"), payload, { merge: true });
-}
+  let idToken;
 
-async function postDashboardBillActionFromClient(action, payload = {}) {
-  if (!auth?.currentUser) {
-    throw new Error("Please sign in again before saving that bill.");
+  try {
+    idToken = await currentUser.getIdToken();
+    console.log("[dashboard-save] token", {
+      action,
+      uid,
+      route,
+      tokenAcquired: Boolean(idToken),
+    });
+  } catch (error) {
+    console.error("[dashboard-save] token-error", {
+      action,
+      uid,
+      route,
+      tokenAcquired: false,
+      error: error?.message || String(error),
+    });
+    throw error;
   }
 
-  const idToken = await auth.currentUser.getIdToken();
-  const response = await fetch("/api/dashboard/bills", {
+  const response = await fetch(route, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -5095,11 +5025,62 @@ async function postDashboardBillActionFromClient(action, payload = {}) {
   });
   const responsePayload = await response.json().catch(() => ({}));
 
+  console.log("[dashboard-save] response", {
+    action,
+    uid,
+    route,
+    status: response.status,
+    response: responsePayload,
+  });
+
   if (!response.ok || !responsePayload?.ok) {
-    throw new Error(responsePayload?.error || "Could not save that bill.");
+    throw new Error(responsePayload?.error || fallbackError || "Could not save that change.");
   }
 
   return responsePayload;
+}
+
+async function postDashboardSettingsAction(action, payload = {}) {
+  return postDashboardRequest("/api/dashboard/settings", action, payload, {
+    unauthenticatedMessage: "Please sign in again before saving that setting.",
+    fallbackError: "Could not save that setting.",
+  });
+}
+
+async function postDashboardStateAction() {
+  return postDashboardRequest("/api/dashboard/state", "load_state", {}, {
+    unauthenticatedMessage: "Please sign in again before loading your dashboard.",
+    fallbackError: "Could not load your dashboard.",
+  });
+}
+
+async function postDashboardForecastAction(payload = {}) {
+  return postDashboardRequest("/api/dashboard/forecast", "save_forecast", payload, {
+    unauthenticatedMessage: "Please sign in again before saving your forecast settings.",
+    fallbackError: "Could not save your forecast settings.",
+  });
+}
+
+async function postDashboardLargeCostAction(action, payload = {}) {
+  return postDashboardRequest("/api/dashboard/large-costs", action, payload, {
+    unauthenticatedMessage: "Please sign in again before saving that large cost.",
+    fallbackError: "Could not save that large cost.",
+  });
+}
+
+async function saveIncome(parsed, hasExistingIncome) {
+  await postDashboardForecastAction({
+    amount: parsed.amount,
+    payDay: parsed.payDay,
+    hasExistingIncome,
+  });
+}
+
+async function postDashboardBillActionFromClient(action, payload = {}) {
+  return postDashboardRequest("/api/dashboard/bills", action, payload, {
+    unauthenticatedMessage: "Please sign in again before saving that bill.",
+    fallbackError: "Could not save that bill.",
+  });
 }
 
 function applyQuickAddContext(parsed, quickAddContext) {
@@ -5141,7 +5122,7 @@ function applyQuickAddContext(parsed, quickAddContext) {
   return attachHint(parsed);
 }
 
-async function applyParsedActions(userId, parsed, hasExistingIncome, existingBills = []) {
+async function applyParsedActions(parsed, hasExistingIncome, existingBills = []) {
   const outcome = { createdBills: 0, skippedBills: 0, savedIncome: false, savedBills: [] };
   const items = parsed.action === "batch" ? parsed.items || [] : [parsed];
   const billItems = dedupeBillItems(
@@ -5182,7 +5163,7 @@ async function applyParsedActions(userId, parsed, hasExistingIncome, existingBil
 
   if (incomeItems.length) {
     try {
-      await saveIncome(userId, incomeItems[incomeItems.length - 1], hasExistingIncome);
+      await saveIncome(incomeItems[incomeItems.length - 1], hasExistingIncome);
       outcome.savedIncome = true;
     } catch (saveError) {
       safeError("[applyParsedActions] income save failed", { code: saveError?.code });
