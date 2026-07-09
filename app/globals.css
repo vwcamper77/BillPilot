@@ -4143,6 +4143,13 @@ h1 {
   flex-wrap: wrap;
 }
 
+.billing-repair-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  justify-items: start;
+}
+
 .billing-success {
   margin: 0;
   color: var(--accent-dark);

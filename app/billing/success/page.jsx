@@ -2,6 +2,7 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import FoundingFeedbackForm from "./FoundingFeedbackForm";
+import RepairAccessButton from "./RepairAccessButton";
 import { grantFoundingAccessFromCheckoutSessionId } from "@/lib/billingAccess.server";
 import { formatBillingExpiry } from "@/lib/billingAccess";
 import { getFirebaseProjectId } from "@/lib/firebaseAdmin";
@@ -27,6 +28,7 @@ export default async function BillingSuccessPage({ searchParams }) {
         stripeSessionId: sessionId,
         uid: error?.context?.uid || null,
         email: error?.context?.email || null,
+        paymentStatus: error?.context?.paymentStatus || null,
         firebaseProjectId: error?.context?.firebaseProjectId || getFirebaseProjectId(),
         attemptedUserDocPath: error?.context?.attemptedUserDocPath || "",
         attemptedBillingDocPath: error?.context?.attemptedBillingDocPath || "",
@@ -60,6 +62,7 @@ export default async function BillingSuccessPage({ searchParams }) {
         <p className="billing-status-copy">Your feedback will directly shape what gets built next.</p>
         {accessMessage ? <p className="helper-text billing-success">{accessMessage}</p> : null}
         {accessError ? <p className="helper-text billing-error">{accessError}</p> : null}
+        {accessError && sessionId ? <RepairAccessButton sessionId={sessionId} /> : null}
       </section>
 
       <TrustShield className="page-trust-banner billing-trust-banner" compact />
