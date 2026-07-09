@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
+import AccessLockPanel from "@/components/AccessLockPanel";
 import {
   collection,
   deleteDoc,
@@ -35,6 +37,7 @@ import {
   isFirebaseClientConfigured,
   missingFirebaseClientEnv,
 } from "@/lib/firebase";
+import { hasActiveBillingAccess } from "@/lib/billingAccess";
 import {
   buildBillDocument,
   buildIncomeDocument,
@@ -85,7 +88,19 @@ const BILLS_PER_PAGE = 6;
 const BALANCE_HELPER_TEXT = "This is just the money currently available in your account, so ClearTill can show today’s cash position after bills.";
 const BALANCE_MISSING_FORECAST_COPY = "Add your current available money to see today’s exact cash forecast.";
 
-export default function DashboardPage() {
+function DashboardPageFallback() {
+  return (
+    <main className="home-shell">
+      <section className="home-panel">
+        <p>Loading dashboard...</p>
+      </section>
+    </main>
+  );
+}
+
+function DashboardPageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const recognitionRef = useRef(null);
   const transcriptRef = useRef("");
   const imageInputRef = useRef(null);
@@ -107,6 +122,7 @@ export default function DashboardPage() {
   const [savings, setSavings] = useState(null);
   const [income, setIncome] = useState(null);
   const [account, setAccount] = useState(null);
+  const [billing, setBilling] = useState(null);
   const [reminders, setReminders] = useState([]);
   const [message, setMessage] = useState("");
   const [balanceInput, setBalanceInput] = useState("");
@@ -120,12 +136,15 @@ export default function DashboardPage() {
   const [billReviewDrafts, setBillReviewDrafts] = useState([]);
   const [editingReviewId, setEditingReviewId] = useState("");
   const [billReviewForm, setBillReviewForm] = useState({ name: "", amount: "", dueDay: "", category: "", frequency: "monthly" });
+  const [savingReviewDraftId, setSavingReviewDraftId] = useState("");
   const [balanceError, setBalanceError] = useState("");
   const [editError, setEditError] = useState("");
   const [pageNotice, setPageNotice] = useState("");
   const [onboardingHelper, setOnboardingHelper] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [savingBalance, setSavingBalance] = useState(false);
+  const [accountLoaded, setAccountLoaded] = useState(false);
+  const [billingLoaded, setBillingLoaded] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [listening, setListening] = useState(false);
@@ -152,7 +171,6 @@ export default function DashboardPage() {
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
   const [displayCurrency, setDisplayCurrency] = useState("GBP");
-  const [setupDismissed, setSetupDismissed] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedBillIds, setSelectedBillIds] = useState(new Set());
   const [billListPage, setBillListPage] = useState(0);
@@ -182,6 +200,11 @@ export default function DashboardPage() {
   const [fundingEditorForm, setFundingEditorForm] = useState({ fundingStatus: "unassigned", savingsAmount: "" });
   const balanceSaveRequestRef = useRef(0);
   const onboardingHelperTimeoutRef = useRef(null);
+  const previousSetupStepRef = useRef(null);
+  const setupAdvanceIntentRef = useRef("");
+  const hasAutoFocused = useRef(false);
+  const requestedAuthMode = searchParams.get("auth") === "signup" ? "signup" : "signin";
+  const requestedNextPath = getSafeNextPath(searchParams.get("next"));
 
   useEffect(() => {
     if (!auth) {
@@ -209,6 +232,19 @@ export default function DashboardPage() {
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    setAuthMode(requestedAuthMode);
+    setAuthError("");
+  }, [requestedAuthMode]);
+
+  useEffect(() => {
+    if (!authReady || !user || user.isAnonymous || !requestedNextPath) {
+      return;
+    }
+
+    router.replace(requestedNextPath);
+  }, [authReady, requestedNextPath, router, user]);
 
   useEffect(() => {
     billsRef.current = bills;
@@ -306,10 +342,6 @@ export default function DashboardPage() {
     };
   }, []);
 
-  useEffect(() => {
-    const dismissed = localStorage.getItem("cleartill_setup_dismissed");
-    if (dismissed === "true") setSetupDismissed(true);
-  }, []);
 
   useEffect(() => {
     if (!user || !db) {
@@ -318,6 +350,10 @@ export default function DashboardPage() {
       setSavings(null);
       setIncome(null);
       setAccount(null);
+      setAccountLoaded(false);
+      setBilling(null);
+      setBillingLoaded(false);
+      hasAutoFocused.current = false;
       setReminders([]);
       return undefined;
     }
@@ -356,8 +392,14 @@ export default function DashboardPage() {
     const unsubscribeAccount = onSnapshot(balanceDocRef, (snapshot) => {
       const nextAccount = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setAccount(nextAccount);
+      setAccountLoaded(true);
       setOptimisticBalance(null);
       setBalanceInput(nextAccount?.currentBalance?.toString() || "");
+    });
+    const unsubscribeBilling = onSnapshot(doc(db, "users", user.uid, "settings", "billing"), (snapshot) => {
+      const nextBilling = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
+      setBilling(nextBilling);
+      setBillingLoaded(true);
     });
     const unsubscribeLargeCosts = onSnapshot(largeCostsQuery, (snapshot) => {
       setLargeCosts(snapshot.docs.map((costDoc) => ({ id: costDoc.id, ...costDoc.data() })));
@@ -381,6 +423,7 @@ export default function DashboardPage() {
       unsubscribeBills();
       unsubscribeIncome();
       unsubscribeAccount();
+      unsubscribeBilling();
       unsubscribeLargeCosts();
       unsubscribeSavings();
       unsubscribeReminders();
@@ -424,6 +467,46 @@ export default function DashboardPage() {
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
   const hasBills = bills.length > 0;
   const setupStep = !hasBalanceSnapshot ? 1 : !hasPayday ? 2 : !hasBills ? 3 : 4;
+
+  useEffect(() => {
+    const previousStep = previousSetupStepRef.current;
+
+    if (previousStep === null) {
+      previousSetupStepRef.current = setupStep;
+      return;
+    }
+
+    if (setupAdvanceIntentRef.current === "payday" && previousStep === 1 && setupStep === 2) {
+      setOnboardingHelper(null);
+      setPageNotice("Current available money saved. Next, add your payday.");
+      showOnboardingHelper("payday");
+      window.setTimeout(() => {
+        focusPaydayForm();
+      }, 220);
+      setupAdvanceIntentRef.current = "";
+    } else if (setupAdvanceIntentRef.current === "bills" && previousStep === 2 && setupStep === 3) {
+      setOnboardingHelper(null);
+      setPageNotice("Payday saved. Next, add your bills.");
+      showOnboardingHelper("bills");
+      window.setTimeout(() => {
+        focusAddBillComposer();
+      }, 220);
+      setupAdvanceIntentRef.current = "";
+    }
+
+    previousSetupStepRef.current = setupStep;
+  }, [setupStep]);
+
+  useEffect(() => {
+    if (!authReady || !user || !accountLoaded) return;
+    if (hasAutoFocused.current) return;
+    hasAutoFocused.current = true;
+    if (setupStep !== 1) return;
+    showOnboardingHelper("balance");
+    window.requestAnimationFrame(() => {
+      balanceInputRef.current?.focus();
+    });
+  }, [authReady, user, accountLoaded, setupStep]);
 
   const allBillsForList = useMemo(() => {
     const combined = dashboard.paydayDate
@@ -497,21 +580,21 @@ export default function DashboardPage() {
     return "ok";
   })();
   const spendingRoomValue = (() => {
-    if (!hasBalanceSnapshot) return BALANCE_MISSING_FORECAST_COPY;
+    if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
     if (!hasPayday) return "Set your payday";
     if (spendingRoomUntilPayday === null) return "—";
     if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
     return formatCurrency(spendingRoomUntilPayday, displayCurrency);
   })();
   const spendingRoomSummary = (() => {
-    if (!hasBalanceSnapshot) return BALANCE_MISSING_FORECAST_COPY;
+    if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
     if (!hasPayday) return "Set your payday";
     if (spendingRoomUntilPayday === null) return "Spending room unavailable";
     if (spendingRoomUntilPayday < 0) return `You're ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} short before payday`;
     return `You're clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
   })();
   const spendingRoomHelper = (() => {
-    if (!hasBalanceSnapshot) return BALANCE_MISSING_FORECAST_COPY;
+    if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
     if (!hasPayday) return "Set your payday so ClearTill can work to that date.";
     if (dailySpendingRoom === null) return "";
     if (spendingRoomUntilPayday < 0) {
@@ -570,7 +653,7 @@ export default function DashboardPage() {
   const importQueueFinished = importJobs.length > 0 && !isImporting && importJobs.some((job) => job.status !== "queued");
   const importButtonLabel = getImportButtonLabel(isImporting, currentImportStep, importJobs, currentImportJobId);
   const setupMessage = getSetupMessage(setupStep);
-  const showSetupCard = setupStep < 4 || !setupDismissed;
+  const showSetupCard = setupStep < 4;
   const firestoreDiagnostics = {
     uid: auth?.currentUser?.uid || user?.uid || "none",
     envProjectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
@@ -726,14 +809,7 @@ export default function DashboardPage() {
         const fallbackDraft = buildLooseBillReviewDraft(message, quickAddContext);
         if (fallbackDraft) {
           setBillReviewDrafts([fallbackDraft]);
-          setEditingReviewId(fallbackDraft.id);
-          setBillReviewForm({
-            name: fallbackDraft.name,
-            amount: fallbackDraft.amount ? String(fallbackDraft.amount) : "",
-            dueDay: fallbackDraft.dueDay ? String(fallbackDraft.dueDay) : "",
-            category: fallbackDraft.category || "",
-            frequency: fallbackDraft.frequency || "monthly",
-          });
+          setEditingReviewId("");
           setAssistantMessage("Review bill before adding. I found the bill name, but need the amount and due date.");
           return;
         }
@@ -1194,7 +1270,9 @@ export default function DashboardPage() {
 
     const saveRequestId = balanceSaveRequestRef.current + 1;
     balanceSaveRequestRef.current = saveRequestId;
-    const shouldAdvanceToPayday = setupStep === 1;
+    if (setupStep === 1) {
+      setupAdvanceIntentRef.current = "payday";
+    }
 
     setBalanceError("");
     setPageNotice("");
@@ -1222,15 +1300,6 @@ export default function DashboardPage() {
         }
 
         logSecurityEventClient("balance_updated");
-        if (shouldAdvanceToPayday) {
-          setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}. Next, add your payday.`);
-          showOnboardingHelper("payday");
-          window.setTimeout(() => {
-            focusPaydayForm();
-          }, 220);
-          return;
-        }
-
         setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
       })
       .catch((saveError) => {
@@ -1238,6 +1307,7 @@ export default function DashboardPage() {
           return;
         }
 
+        setupAdvanceIntentRef.current = "";
         safeError("[firestore-balance-save] failed", { code: saveError?.code });
         setOptimisticBalance(null);
         setPageNotice("");
@@ -1325,7 +1395,9 @@ export default function DashboardPage() {
     const payDayInput = incomeForm.payDay;
     const amount = Number(incomeAmountInput);
     const payDay = Number(payDayInput);
-    const shouldAdvanceToBills = setupStep === 2;
+    if (setupStep === 2) {
+      setupAdvanceIntentRef.current = "bills";
+    }
 
     if (!Number.isFinite(amount) || amount < 0) {
       setEditError("Enter your monthly income amount.");
@@ -1365,15 +1437,8 @@ export default function DashboardPage() {
         parsedIncome,
         Boolean(income),
       );
-
-      if (shouldAdvanceToBills) {
-        setPageNotice(`Payday set for the ${formatOrdinal(payDay)}. Next, add your bills.`);
-        showOnboardingHelper("bills");
-        window.setTimeout(() => {
-          focusAddBillComposer();
-        }, 220);
-      }
     } catch (saveError) {
+      setupAdvanceIntentRef.current = "";
       safeError("[firestore-payday-save] failed", { code: saveError?.code });
       setOptimisticIncome(null);
       setEditingIncome(true);
@@ -1827,7 +1892,7 @@ export default function DashboardPage() {
     setHighlightAddBillForm(true);
     setPendingSetupFocus("bills");
     window.requestAnimationFrame(() => {
-      messageInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      messageInputRef.current?.scrollIntoView({ behavior: getScrollBehavior(), block: "center" });
       messageInputRef.current?.focus();
       messageInputRef.current?.setSelectionRange?.(
         messageInputRef.current.value.length,
@@ -1936,7 +2001,7 @@ export default function DashboardPage() {
       return;
     }
 
-    setSubmitting(true);
+    setSavingReviewDraftId(draftId);
     setChatError("");
 
     try {
@@ -1985,7 +2050,7 @@ export default function DashboardPage() {
     } catch (saveError) {
       setChatError(saveError.message || "Could not save that bill yet.");
     } finally {
-      setSubmitting(false);
+      setSavingReviewDraftId("");
     }
   }
 
@@ -2010,10 +2075,7 @@ export default function DashboardPage() {
     }
   }
 
-  function handleSetupDismiss() {
-    localStorage.setItem("cleartill_setup_dismissed", "true");
-    setSetupDismissed(true);
-  }
+
 
   function resetLargeCostForm() {
     setLargeCostForm({
@@ -2205,7 +2267,7 @@ export default function DashboardPage() {
   }
 
   function focusBalanceSnapshotForm() {
-    balanceSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    balanceSectionRef.current?.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
     setHighlightBalanceForm(true);
     window.setTimeout(() => {
       balanceInputRef.current?.focus();
@@ -2218,7 +2280,7 @@ export default function DashboardPage() {
 
   function focusPaydayForm() {
     setEditingIncome(true);
-    paydaySettingsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    paydaySettingsSectionRef.current?.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
     setHighlightPaydayForm(true);
     setPendingSetupFocus("payday-settings");
     window.setTimeout(() => {
@@ -2228,7 +2290,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (pendingSetupFocus === "payday-settings" && editingIncome && forecastPaydayAmountInputRef.current) {
-      forecastPaydayAmountInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      forecastPaydayAmountInputRef.current.scrollIntoView({ behavior: getScrollBehavior(), block: "center" });
       forecastPaydayAmountInputRef.current.focus();
       forecastPaydayAmountInputRef.current.select?.();
       setPendingSetupFocus("");
@@ -2236,7 +2298,7 @@ export default function DashboardPage() {
     }
 
     if (pendingSetupFocus === "bills" && messageInputRef.current) {
-      messageInputRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      messageInputRef.current.scrollIntoView({ behavior: getScrollBehavior(), block: "center" });
       messageInputRef.current.focus();
       messageInputRef.current.setSelectionRange?.(
         messageInputRef.current.value.length,
@@ -2253,6 +2315,8 @@ export default function DashboardPage() {
     if (onboardingHelperTimeoutRef.current) {
       window.clearTimeout(onboardingHelperTimeoutRef.current);
     }
+
+    if (target === "balance") return;
 
     onboardingHelperTimeoutRef.current = window.setTimeout(() => {
       setOnboardingHelper((current) => (current?.target === target ? null : current));
@@ -2419,6 +2483,21 @@ export default function DashboardPage() {
     );
   }
 
+  if (!billingLoaded) {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>Checking your access…</h1>
+        </section>
+      </main>
+    );
+  }
+
+  if (!hasActiveBillingAccess(billing)) {
+    return <AccessLockPanel shellClassName="dashboard-shell" />;
+  }
+
   return (
     <main className="dashboard-shell">
       <header className="topbar">
@@ -2474,15 +2553,6 @@ export default function DashboardPage() {
             {setupStep === 1 ? <button className="primary-button" type="button" onClick={focusBalanceSnapshotForm}>Add current available money</button> : null}
             {setupStep === 2 ? <button className="primary-button" type="button" onClick={focusPaydayForm}>Add payday</button> : null}
             {setupStep === 3 ? <button className="primary-button" type="button" onClick={focusAddBillComposer}>Add bills</button> : null}
-            {setupStep === 4 ? (
-              <>
-                <button className="secondary-button" type="button" onClick={focusBalanceSnapshotForm}>Update snapshot</button>
-                <button className="primary-button" type="button" onClick={focusAddBillComposer}>Add another bill</button>
-                <button className="secondary-button small-button setup-dismiss" type="button" onClick={handleSetupDismiss}>
-                  Dismiss
-                </button>
-              </>
-            ) : null}
           </div>
         </section>
       ) : null}
@@ -2543,6 +2613,18 @@ export default function DashboardPage() {
             ref={balanceSectionRef}
             className={`chat-panel balance-action-card ${setupStep !== 1 ? "" : "setup-current"} ${highlightBalanceForm ? "form-highlight" : ""}`}
           >
+            {setupStep < 4 ? <span className="setup-step-badge">Step 1 of 3</span> : null}
+            {onboardingHelper?.target === "balance" ? (
+              <div className="onboarding-helper-card" role="status" aria-live="polite">
+                <div className="onboarding-helper-copy">
+                  <strong>{onboardingHelper.title}</strong>
+                  <span>{onboardingHelper.detail}</span>
+                </div>
+                <button className="onboarding-helper-dismiss" type="button" aria-label="Dismiss" onClick={() => setOnboardingHelper(null)}>
+                  ×
+                </button>
+              </div>
+            ) : null}
             <div className="section-head">
               <div>
                 <h2 style={{ margin: 0 }}>Current available money</h2>
@@ -2582,15 +2664,6 @@ export default function DashboardPage() {
                 <p>{balanceSnapshotLabel}</p>
                 <p>Still around {formatCurrency(dashboard.currentBalance, displayCurrency)}? Update it whenever that changes.</p>
               </div>
-            ) : (
-              <p className="helper-text balance-copy">
-                {BALANCE_MISSING_FORECAST_COPY}
-              </p>
-            )}
-            {!hasBalanceSnapshot ? (
-              <p className="helper-text balance-copy">
-                Add your current available money later for a more accurate forecast.
-              </p>
             ) : null}
             <div className="field-row" style={{ marginTop: "14px" }}>
               <label className="field-label" htmlFor="display-currency">Display currency</label>
@@ -2613,14 +2686,15 @@ export default function DashboardPage() {
             ref={paydaySettingsSectionRef}
             className={`runway-panel forecast-focus-card ${(!hasBalanceSnapshot || (!hasPayday && !editingIncome)) ? "is-disabled-soft" : ""} ${highlightPaydayForm ? "form-highlight" : ""}`}
           >
+            {setupStep < 4 ? <span className="setup-step-badge">Step 2 of 3</span> : null}
             {onboardingHelper?.target === "payday" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
                   <strong>{onboardingHelper.title}</strong>
                   <span>{onboardingHelper.detail}</span>
                 </div>
-                <button className="onboarding-helper-dismiss" type="button" onClick={() => setOnboardingHelper(null)}>
-                  Got it
+                <button className="onboarding-helper-dismiss" type="button" aria-label="Dismiss" onClick={() => setOnboardingHelper(null)}>
+                  ×
                 </button>
               </div>
             ) : null}
@@ -3041,14 +3115,15 @@ export default function DashboardPage() {
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
+            {setupStep < 4 ? <span className="setup-step-badge">Step 3 of 3</span> : null}
             {onboardingHelper?.target === "bills" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
                   <strong>{onboardingHelper.title}</strong>
                   <span>{onboardingHelper.detail}</span>
                 </div>
-                <button className="onboarding-helper-dismiss" type="button" onClick={() => setOnboardingHelper(null)}>
-                  Got it
+                <button className="onboarding-helper-dismiss" type="button" aria-label="Dismiss" onClick={() => setOnboardingHelper(null)}>
+                  ×
                 </button>
               </div>
             ) : null}
@@ -3092,6 +3167,7 @@ export default function DashboardPage() {
                       draft={draft}
                       displayCurrency={displayCurrency}
                       isEditing={editingReviewId === draft.id}
+                      isSaving={savingReviewDraftId === draft.id}
                       form={editingReviewId === draft.id ? billReviewForm : null}
                       onFormChange={setBillReviewForm}
                       onEdit={() => startBillReviewEdit(draft)}
@@ -3629,6 +3705,7 @@ function BillReviewCard({
   draft,
   displayCurrency,
   isEditing,
+  isSaving,
   form,
   onFormChange,
   onEdit,
@@ -3737,9 +3814,15 @@ function BillReviewCard({
             </p>
           ) : null}
           <div className="bill-review-actions">
-            <button className="primary-button small-button" type="button" onClick={onAdd}>Add bill</button>
-            <button className="secondary-button small-button" type="button" onClick={onEdit}>Edit</button>
-            <button className="secondary-button small-button" type="button" onClick={onCancel}>Cancel</button>
+            {draft.missingFields?.length ? (
+              <button className="primary-button small-button" type="button" onClick={onEdit}>Edit details</button>
+            ) : (
+              <button className="primary-button small-button" type="button" onClick={onAdd} disabled={isSaving}>
+                {isSaving ? "Adding..." : "Add bill"}
+              </button>
+            )}
+            <button className="secondary-button small-button" type="button" onClick={onEdit} disabled={isSaving}>Edit</button>
+            <button className="secondary-button small-button" type="button" onClick={onCancel} disabled={isSaving}>Cancel</button>
           </div>
         </>
       )}
@@ -5094,6 +5177,11 @@ function getSetupChipState(stepNumber, setupStep) {
   return "waiting";
 }
 
+function getScrollBehavior() {
+  if (typeof window === "undefined") return "smooth";
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
+}
+
 function getSetupMessage(setupStep) {
   if (setupStep === 1) {
     return {
@@ -5123,19 +5211,27 @@ function getSetupMessage(setupStep) {
 }
 
 function getOnboardingHelperContent(target) {
+  if (target === "balance") {
+    return {
+      target,
+      title: "Start with what's in your account right now.",
+      detail: "ClearTill uses this to work out what you're clear to spend.",
+    };
+  }
+
   if (target === "payday") {
     return {
       target,
-      title: "Next: add your payday",
-      detail: "Enter your expected pay and payday here so ClearTill can work out what lands before you get paid.",
+      title: "When do you next get paid, and roughly how much?",
+      detail: "This sets the finish line for your forecast.",
     };
   }
 
   if (target === "bills") {
     return {
       target,
-      title: "Next: add your bills",
-      detail: "Type one in, paste a screenshot, or use the utility shortcuts below to start building your forecast.",
+      title: "Now add your bills.",
+      detail: "Just type them like 'rent 900 on the 1st'. ClearTill does the rest.",
     };
   }
 
@@ -5503,4 +5599,26 @@ function toDateMaybe(value) {
   }
 
   return null;
+}
+
+function getSafeNextPath(value) {
+  const nextPath = String(value || "").trim();
+
+  if (!nextPath || !nextPath.startsWith("/") || nextPath.startsWith("//")) {
+    return "";
+  }
+
+  if (nextPath === "/dashboard") {
+    return "";
+  }
+
+  return nextPath;
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardPageFallback />}>
+      <DashboardPageContent />
+    </Suspense>
+  );
 }

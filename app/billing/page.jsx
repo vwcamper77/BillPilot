@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
+import BillingAccessGate from "./BillingAccessGate";
 
 export const metadata = {
   title: "Billing & payments | ClearTill",
@@ -24,23 +25,69 @@ export default function BillingPage() {
 
       <TrustShield className="page-trust-banner" compact />
 
-      <section className="legal-panel">
-        <p>
-          ClearTill payments and subscription management will appear here.
-        </p>
-        <p>Future Stripe integration will allow you to:</p>
-        <ul className="page-list">
-          <li>view payment history</li>
-          <li>manage your subscription</li>
-          <li>update payment method</li>
-          <li>cancel your plan</li>
-        </ul>
-        <p className="helper-text">
-          This is a placeholder for future billing controls.
-        </p>
+      <section className="billing-hero">
+        <div className="billing-panel billing-panel-highlight">
+          <p className="billing-kicker">FOUNDING MEMBER ACCESS</p>
+          <h2>Will your money reach payday?</h2>
+          <p className="billing-lead">
+            ClearTill shows your real money runway before payday &mdash; what bills are still to
+            land, what big costs are coming, and what is actually safe to spend.
+          </p>
+          <p className="billing-founder-message">
+            Become a founding member today and get 3 months&apos; early access for &pound;5.
+          </p>
+          <ul className="billing-feature-list">
+            <li>No bank login</li>
+            <li>No Open Banking</li>
+            <li>No judgement</li>
+          </ul>
+          <BillingAccessGate />
+          <p className="helper-text">
+            Secure checkout is hosted by Stripe. ClearTill does not store card details.
+          </p>
+        </div>
+
+        <aside className="billing-panel billing-summary-panel billing-offer-panel" aria-label="Offer summary">
+          <p className="billing-summary-label">Founding Member Access</p>
+          <div className="billing-price-row">
+            <strong>&pound;5</strong>
+            <span>one-off founding member payment</span>
+          </div>
+          <ul className="billing-offer-list">
+            <li>3 months early access</li>
+            <li>See if your money will reach payday</li>
+            <li>Bills still to land</li>
+            <li>Big costs coming up</li>
+            <li>Safe-to-spend daily figure</li>
+            <li>Help shape ClearTill</li>
+          </ul>
+          <p className="billing-renewal-note">
+            After 3 months, you can choose to continue for &pound;3.99/month or &pound;27/year.
+            No automatic renewal unless you choose it later.
+          </p>
+        </aside>
+      </section>
+
+      <section className="billing-panel billing-next-panel">
+        <p className="billing-summary-label">What happens next</p>
+        <div className="billing-steps">
+          <article>
+            <span>01</span>
+            <h3>Create or sign in</h3>
+            <p>Use your ClearTill login first so founding access is attached to your account.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Complete secure checkout</h3>
+            <p>Pay through Stripe to secure your &pound;5 founding access.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Get early access</h3>
+            <p>Your feedback directly influences the product while the offer is still early.</p>
+          </article>
+        </div>
       </section>
     </main>
   );
 }
-
-// TODO: Connect to Stripe Customer Portal when paid plans are enabled.

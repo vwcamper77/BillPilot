@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
-import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";
+import AdminFoundingAccessForm from "@/components/AdminFoundingAccessForm";
+import { auth, authPersistenceReady, db, isFirebaseClientConfigured } from "@/lib/firebase";
+import { formatBillingExpiry, hasActiveBillingAccess } from "@/lib/billingAccess";
 
 const ACCOUNT_DIALOGS = {
   reset_data: {
@@ -46,6 +49,8 @@ export default function AccountPage() {
   const [dialogAction, setDialogAction] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [feedback, setFeedback] = useState({ type: "", message: "" });
+  const [billing, setBilling] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     if (!auth) {
@@ -71,12 +76,57 @@ export default function AccountPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user || !db) {
+      setBilling(null);
+      return undefined;
+    }
+
+    return onSnapshot(doc(db, "users", user.uid, "settings", "billing"), (snapshot) => {
+      setBilling(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+    });
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    user.getIdToken().then((idToken) =>
+      fetch("/api/admin/founding-access", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      }),
+    ).then((response) => response.json())
+      .then((payload) => {
+        if (!cancelled) setIsAdmin(Boolean(payload?.isAdmin));
+      })
+      .catch(() => {
+        if (!cancelled) setIsAdmin(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   const dialogConfig = dialogAction ? ACCOUNT_DIALOGS[dialogAction] : null;
   const signedInLabel = useMemo(() => {
     if (!user) return "";
     if (user.isAnonymous) return "Guest session";
     return user.email || user.displayName || "Signed in";
   }, [user]);
+  const billingStatusLabel = hasActiveBillingAccess(billing)
+    ? `Active through ${formatBillingExpiry(billing)}`
+    : "No active paid access";
+  const amountPaidLabel = Number.isFinite(Number(billing?.amountPaid))
+    ? new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: String(billing?.currency || "gbp").toUpperCase(),
+      }).format(Number(billing.amountPaid) / 100)
+    : "No payment recorded";
 
   async function handleExportData() {
     if (!auth?.currentUser) {
@@ -271,7 +321,38 @@ export default function AccountPage() {
           <p className="helper-text">
             Manage your ClearTill data, account access, and privacy controls here.
           </p>
+          <p className="helper-text">{billingStatusLabel}</p>
           <p className="legal-company-note">ClearTill is a product from GMBF Ventures Ltd.</p>
+        </section>
+
+        <section className="account-panel">
+          <p className="account-section-label">Billing access</p>
+          <div className="account-action-list">
+            <div className="account-row">
+              <div>
+                <strong>Plan</strong>
+                <span>{billing?.plan || "No plan recorded"}</span>
+              </div>
+            </div>
+            <div className="account-row">
+              <div>
+                <strong>Paid access</strong>
+                <span>{billing?.paid ? "Yes" : "No"}</span>
+              </div>
+            </div>
+            <div className="account-row">
+              <div>
+                <strong>Access expires</strong>
+                <span>{billing?.accessExpiresAt ? formatBillingExpiry(billing) : "No expiry set"}</span>
+              </div>
+            </div>
+            <div className="account-row">
+              <div>
+                <strong>Amount paid</strong>
+                <span>{amountPaidLabel}</span>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section className="account-panel">
@@ -355,6 +436,16 @@ export default function AccountPage() {
             </Link>
           </div>
         </section>
+
+        {isAdmin ? (
+          <section className="account-panel">
+            <p className="account-section-label">Admin fallback</p>
+            <p className="helper-text">
+              Manual override for founding access by email.
+            </p>
+            <AdminFoundingAccessForm />
+          </section>
+        ) : null}
       </div>
 
       {dialogConfig ? (

@@ -13,3 +13,5 @@ yarn-error.log*
 
 .vercel
 .env*
+.tmp-dev-err.log
+.tmp-dev-out.log

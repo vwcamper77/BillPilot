@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
+import AccessLockPanel from "@/components/AccessLockPanel";
 import { collection, deleteDoc, doc, onSnapshot, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, authPersistenceReady, db, isFirebaseClientConfigured } from "@/lib/firebase";
+import { hasActiveBillingAccess } from "@/lib/billingAccess";
 import {
   buildLargeCostDocument,
   calculateDashboard,
@@ -73,6 +75,8 @@ export default function BigCostsPlanPage() {
   const [savings, setSavings] = useState(null);
   const [income, setIncome] = useState(null);
   const [account, setAccount] = useState(null);
+  const [billing, setBilling] = useState(null);
+  const [billingLoaded, setBillingLoaded] = useState(false);
   const [displayCurrency, setDisplayCurrency] = useState("GBP");
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingCostId, setEditingCostId] = useState(null);
@@ -121,6 +125,8 @@ export default function BigCostsPlanPage() {
       setLargeCosts([]);
       setIncome(null);
       setAccount(null);
+      setBilling(null);
+      setBillingLoaded(false);
       return undefined;
     }
 
@@ -137,6 +143,10 @@ export default function BigCostsPlanPage() {
     });
     const unsubscribeAccount = onSnapshot(doc(db, "users", user.uid, "settings", "balance"), (snapshot) => {
       setAccount(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+    });
+    const unsubscribeBilling = onSnapshot(doc(db, "users", user.uid, "settings", "billing"), (snapshot) => {
+      setBilling(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+      setBillingLoaded(true);
     });
     const unsubscribeSavings = onSnapshot(doc(db, "users", user.uid, "settings", "savings"), (snapshot) => {
       const nextSavings = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
@@ -155,6 +165,7 @@ export default function BigCostsPlanPage() {
       unsubscribeLargeCosts();
       unsubscribeIncome();
       unsubscribeAccount();
+      unsubscribeBilling();
       unsubscribeSavings();
       unsubscribePreferences();
     };
@@ -221,6 +232,21 @@ export default function BigCostsPlanPage() {
         </section>
       </main>
     );
+  }
+
+  if (!billingLoaded) {
+    return (
+      <main className="plan-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>Checking your access…</h1>
+        </section>
+      </main>
+    );
+  }
+
+  if (!hasActiveBillingAccess(billing)) {
+    return <AccessLockPanel shellClassName="plan-shell" />;
   }
 
   const gapLine = impact.unassignedBigCosts > 0
