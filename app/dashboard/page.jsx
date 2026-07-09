@@ -36,8 +36,12 @@ import {
   formatDisplayDate,
   formatDueLabel,
   formatOrdinal,
+  getFourWeekPayBuckets,
   getTodayIso,
   isValidDueDay,
+  sanitiseBillDisplayName,
+  splitBillDisplayName,
+  composeBillDisplayName,
   normaliseLargeCostFundingStatus,
   resolveBillTitle,
 } from "@/lib/billMath";
@@ -46,9 +50,11 @@ import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clien
 import { safeError, safeWarn } from "@/lib/security/safeLog";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
+import { getSupplierNames } from "@/lib/supplierCatalog";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
 const RECENT_SESSION_STORAGE_KEY = "cleartill_recent_checkout_session_id";
+const SUPPLIER_NAME_OPTIONS = getSupplierNames();
 
 function isValidIncomeAmount(value) {
   const amount = Number(value);
@@ -64,14 +70,14 @@ function getIncomeStatusText(income, currency = "GBP") {
   }
 
   if (hasValidAmount) {
-    return "Add paid date";
+    return "Add pay date";
   }
 
   if (hasValidPayday) {
-    return `Paid date: ${formatOrdinal(income.payDay)} of each month`;
+    return `Pay date: ${formatOrdinal(income.payDay)} of each month`;
   }
 
-  return "No paid date set yet.";
+  return "No pay date set yet.";
 }
 
 const BILLS_PER_PAGE = 6;
@@ -124,7 +130,7 @@ function DashboardPageContent() {
   const [message, setMessage] = useState("");
   const [balanceInput, setBalanceInput] = useState("");
   const [editingBillId, setEditingBillId] = useState("");
-  const [editingBillForm, setEditingBillForm] = useState({ name: "", amount: "", dueDay: "", category: "" });
+  const [editingBillForm, setEditingBillForm] = useState({ supplierName: "", billName: "", name: "", amount: "", dueDay: "", category: "" });
   const [editingIncome, setEditingIncome] = useState(false);
   const [incomeForm, setIncomeForm] = useState({ amount: "", payDay: "" });
   const [assistantMessage, setAssistantMessage] = useState("");
@@ -132,7 +138,7 @@ function DashboardPageContent() {
   const [chatError, setChatError] = useState("");
   const [billReviewDrafts, setBillReviewDrafts] = useState([]);
   const [editingReviewId, setEditingReviewId] = useState("");
-  const [billReviewForm, setBillReviewForm] = useState({ name: "", amount: "", dueDay: "", category: "", frequency: "monthly" });
+  const [billReviewForm, setBillReviewForm] = useState({ supplierName: "", billName: "", name: "", amount: "", dueDay: "", category: "", frequency: "monthly" });
   const [savingReviewDraftId, setSavingReviewDraftId] = useState("");
   const [balanceError, setBalanceError] = useState("");
   const [editError, setEditError] = useState("");
@@ -617,7 +623,7 @@ function DashboardPageContent() {
       setupAdvanceIntentRef.current = "";
     } else if (setupAdvanceIntentRef.current === "bills" && previousStep === 2 && setupStep === 3) {
       setOnboardingHelper(null);
-      setPageNotice("Paid date saved. Next, add your bills.");
+      setPageNotice("Pay date saved. Next, add your bills.");
       showOnboardingHelper("bills");
       window.setTimeout(() => {
         focusAddBillComposer();
@@ -719,17 +725,17 @@ function DashboardPageContent() {
   })();
   const spendingRoomValue = (() => {
     if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
-    if (!hasPayday) return "Set your paid date";
+    if (!hasPayday) return "Set your pay date";
     if (spendingRoomUntilPayday === null) return "—";
     if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before you're paid`;
     return formatCurrency(spendingRoomUntilPayday, displayCurrency);
   })();
   const spendingRoomSummary = (() => {
     if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
-    if (!hasPayday) return "Set your paid date";
+    if (!hasPayday) return "Set your pay date";
     if (spendingRoomUntilPayday === null) return "Spending room unavailable";
     if (spendingRoomUntilPayday < 0) return `You're ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} short before you're paid`;
-    return `You're clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
+    return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
   })();
   const spendingRoomHelper = (() => {
     if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
@@ -752,7 +758,7 @@ function DashboardPageContent() {
   const clearTillStatus = spendingRoomStatus;
   const paydayCountdownLabel = dashboard.paydayDate
     ? `${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"} until you're paid`
-    : "Paid date not set";
+    : "Pay date not set";
   const beforePaydayPreviewBills = dashboard.beforePayday.slice(0, 4);
 
   const largeCostsWithStatus = useMemo(
@@ -1472,8 +1478,11 @@ function DashboardPageContent() {
   }
 
   function startBillEdit(bill) {
+    const splitName = splitBillDisplayName(bill.name || "");
     setEditingBillId(bill.id);
     setEditingBillForm({
+      supplierName: bill.supplierName || splitName.supplierName || "",
+      billName: bill.billName || splitName.billName || bill.name || "",
       name: bill.name || "",
       amount: bill.amount?.toString() || "",
       dueDay: bill.dueDay?.toString() || "",
@@ -1484,7 +1493,7 @@ function DashboardPageContent() {
 
   function cancelBillEdit() {
     setEditingBillId("");
-    setEditingBillForm({ name: "", amount: "", dueDay: "", category: "" });
+    setEditingBillForm({ supplierName: "", billName: "", name: "", amount: "", dueDay: "", category: "" });
   }
 
   async function handleBillEditSave(event, billId) {
@@ -1497,7 +1506,13 @@ function DashboardPageContent() {
     const amount = Number(editingBillForm.amount);
     const dueDay = Number(editingBillForm.dueDay);
 
-    if (!editingBillForm.name.trim() || !Number.isFinite(amount) || !Number.isFinite(dueDay)) {
+    const displayName = sanitiseBillDisplayName(composeBillDisplayName({
+      supplierName: editingBillForm.supplierName,
+      billName: editingBillForm.billName,
+      fallbackName: editingBillForm.name,
+    }));
+
+    if (!displayName.trim() || !Number.isFinite(amount) || !Number.isFinite(dueDay)) {
       setEditError("Add a bill name, amount, and due day before saving.");
       return;
     }
@@ -1509,7 +1524,9 @@ function DashboardPageContent() {
     try {
       const existingBill = bills.find((bill) => bill.id === billId);
       const updatedBill = buildBillDocument({
-        name: editingBillForm.name.trim(),
+        name: sanitiseBillDisplayName(displayName.trim()),
+        supplierName: editingBillForm.supplierName || null,
+        billName: editingBillForm.billName || null,
         amount,
         dueDay,
         currency: "GBP",
@@ -1530,6 +1547,11 @@ function DashboardPageContent() {
         "Saving that bill is taking too long. Check your connection and try again.",
       );
 
+      setBills((current) => current.map((bill) => (
+        bill.id === billId
+          ? { ...bill, ...payload, id: billId }
+          : bill
+      )));
       logSecurityEventClient("bill_updated", { source: "edit" });
       cancelBillEdit();
       setPageNotice("Bill updated.");
@@ -1562,7 +1584,7 @@ function DashboardPageContent() {
     }
 
     if (!Number.isInteger(payDay) || payDay < 1 || payDay > 31) {
-      setEditError("Enter a paid date between 1 and 31.");
+      setEditError("Enter a pay date between 1 and 31.");
       return;
     }
 
@@ -2079,9 +2101,44 @@ function DashboardPageContent() {
     focusAddBillComposer();
   }
 
+  function startManualBillDraft() {
+    const draftId = `manual-${Date.now()}`;
+
+    setBillReviewDrafts([{
+      id: draftId,
+      name: "",
+      supplierName: "",
+      billName: "",
+      amount: null,
+      dueDay: null,
+      frequency: "monthly",
+      category: "household",
+      subCategory: null,
+      confidence: 1,
+      missingFields: ["name", "amount", "dueDay"],
+      sourceText: "",
+      importJobId: "",
+      importJobName: "",
+    }]);
+    setBillReviewForm({
+      supplierName: "",
+      billName: "",
+      name: "",
+      amount: "",
+      dueDay: "",
+      category: "household",
+      frequency: "monthly",
+    });
+    setEditingReviewId(draftId);
+    setAssistantMessage("Manual bill entry ready. Add the supplier, bill name, amount, and due day.");
+    setChatError("");
+  }
+
   function startBillReviewEdit(draft) {
     setEditingReviewId(draft.id);
     setBillReviewForm({
+      supplierName: draft.supplierName || "",
+      billName: draft.billName || "",
       name: draft.name || "",
       amount: draft.amount === null || draft.amount === undefined ? "" : String(draft.amount),
       dueDay: draft.dueDay === null || draft.dueDay === undefined ? "" : String(draft.dueDay),
@@ -2101,8 +2158,13 @@ function DashboardPageContent() {
   function saveBillReviewEdit(draftId) {
     const amount = Number(billReviewForm.amount);
     const dueDay = Number(billReviewForm.dueDay);
+    const displayName = sanitiseBillDisplayName(composeBillDisplayName({
+      supplierName: billReviewForm.supplierName,
+      billName: billReviewForm.billName,
+      fallbackName: billReviewForm.name,
+    })).trim();
 
-    if (!billReviewForm.name.trim()) {
+    if (!displayName.trim()) {
       setChatError("Add a bill name before continuing.");
       return;
     }
@@ -2112,12 +2174,15 @@ function DashboardPageContent() {
         return draft;
       }
 
-      const cleanedName = resolveBillTitle(billReviewForm.name.trim(), draft.sourceText || billReviewForm.name.trim());
+      const cleanedName = sanitiseBillDisplayName(displayName);
       const classified = classifyBill({ name: cleanedName });
+      const splitName = splitBillDisplayName(cleanedName);
 
       return {
         ...draft,
         name: cleanedName,
+        supplierName: splitName.supplierName || "",
+        billName: splitName.billName || cleanedName,
         amount: Number.isFinite(amount) && amount > 0 ? amount : null,
         dueDay: Number.isInteger(dueDay) && dueDay >= 1 && dueDay <= 31 ? dueDay : null,
         category: billReviewForm.category || classified.category || "other",
@@ -2169,6 +2234,8 @@ function DashboardPageContent() {
       const parsedDraft = {
         action: "create_bill",
         name: draft.name,
+        supplierName: draft.supplierName || null,
+        billName: draft.billName || null,
         amount: Number(draft.amount),
         dueDay: Number(draft.dueDay),
         frequency: draft.frequency || "monthly",
@@ -2423,6 +2490,7 @@ function DashboardPageContent() {
         }),
         "Saving your extra savings is taking too long. Check your connection and try again.",
       );
+      setSavings((current) => ({ ...current, totalSetAside }));
       setPageNotice("Savings not assigned to a big cost updated.");
     } catch (saveError) {
       setSavingsError(friendlySettingsError(saveError, "We could not save your extra savings."));
@@ -2441,6 +2509,10 @@ function DashboardPageContent() {
     window.setTimeout(() => {
       setHighlightBalanceForm(false);
     }, 1800);
+  }
+
+  function handleBalanceInputFocus(event) {
+    event.currentTarget.select();
   }
 
   function focusPaydayForm() {
@@ -2571,7 +2643,7 @@ function DashboardPageContent() {
       <main className="dashboard-shell">
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
-          <h1>Loading your paid-date forecast…</h1>
+          <h1>Loading your pay-date forecast…</h1>
         </section>
       </main>
     );
@@ -2736,7 +2808,7 @@ function DashboardPageContent() {
           <Link className="brand-link" href="/" aria-label="ClearTill home">
             <Logo className="eyebrow-logo" />
           </Link>
-          <h1 className="brand">Your paid-date heads-up for bills.</h1>
+          <h1 className="brand">Your actual cash runway before you get paid.</h1>
         </div>
         <div className="topbar-actions">
           <span className="user-id">
@@ -2776,7 +2848,7 @@ function DashboardPageContent() {
                 <span>{isBalanceStepComplete ? "✓" : "1"}</span> Money
               </button>
               <button className={`setup-chip ${getSetupChipState(2, setupStep)}`} type="button" onClick={focusPaydayForm}>
-                <span>{isPaydayStepComplete ? "✓" : "2"}</span> Paid date
+                <span>{isPaydayStepComplete ? "✓" : "2"}</span> Pay date
               </button>
               <button className={`setup-chip ${getSetupChipState(3, setupStep)}`} type="button" onClick={focusAddBillComposer}>
                 <span>{isBillsStepComplete ? "✓" : "3"}</span> Bills
@@ -2785,7 +2857,7 @@ function DashboardPageContent() {
           </div>
           <div className="setup-cta-row">
             {setupStep === 1 ? <button className="primary-button" type="button" onClick={focusBalanceSnapshotForm}>Add current available money</button> : null}
-            {setupStep === 2 ? <button className="primary-button" type="button" onClick={focusPaydayForm}>Add paid date</button> : null}
+            {setupStep === 2 ? <button className="primary-button" type="button" onClick={focusPaydayForm}>Add pay date</button> : null}
             {setupStep === 3 ? <button className="primary-button" type="button" onClick={focusAddBillComposer}>Add bills</button> : null}
           </div>
         </section>
@@ -2795,10 +2867,10 @@ function DashboardPageContent() {
         status={clearTillStatus}
         headline={(() => {
           if (!hasBalanceSnapshot) return "Add your current available money to get started";
-          if (spendingRoomUntilPayday === null) return "Set your paid date to get started";
-          if (clearTillStatus === "negative") return `You're short - ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before you're paid`;
-          if (clearTillStatus === "low") return `Almost clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
-          return `You're clear - ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
+          if (spendingRoomUntilPayday === null) return "Set your pay date to get started";
+          if (clearTillStatus === "negative") return `You're short: ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before you're paid`;
+          if (clearTillStatus === "low") return `Almost clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
+          return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
         })()}
         subLine={(() => {
           if (!(hasBalanceSnapshot && hasPayday)) return null;
@@ -2826,7 +2898,7 @@ function DashboardPageContent() {
           {" bills before you're paid"}
         </span>
         <span className="stat-chip">
-          {"Paid date "}
+          {"Pay date "}
           <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "not set"}</strong>
         </span>
         {hasBills ? (
@@ -2861,7 +2933,7 @@ function DashboardPageContent() {
             ) : null}
             <div className="section-head">
               <div>
-                <h2 style={{ margin: 0 }}>Current available money</h2>
+                <h2 style={{ margin: 0 }}>Current Balance</h2>
                 <p className="helper-text balance-copy">Update this when your cash position changes. ClearTill uses it to work out what is still clear to spend until you're paid.</p>
               </div>
             </div>
@@ -2871,7 +2943,7 @@ function DashboardPageContent() {
             <form className="chat-form" onSubmit={handleBalanceSave}>
               <div className="field-row">
                 <label className="field-label" htmlFor="account-balance">
-                  Current available money
+                  Current Balance
                 </label>
                 <div className="chat-input-row">
                   <input
@@ -2881,7 +2953,9 @@ function DashboardPageContent() {
                     value={balanceInput}
                     disabled={importLocked}
                     onChange={(event) => setBalanceInput(event.target.value)}
-                    placeholder="Current available money"
+                    onFocus={handleBalanceInputFocus}
+                    onClick={handleBalanceInputFocus}
+                    placeholder="Current Balance"
                   />
                   <button className="secondary-button" type="submit" disabled={importLocked}>
                     Update
@@ -2940,10 +3014,10 @@ function DashboardPageContent() {
             </div>
             <div className="forecast-header">
               <div>
-                <span className="forecast-label">Paid-date countdown</span>
+                <span className="forecast-label">Pay-date countdown</span>
                 <p className="forecast-countdown">{paydayCountdownLabel}</p>
                 <div className="forecast-meta-list">
-                  <span className="forecast-meta-chip">Paid date: <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "Not set"}</strong></span>
+                  <span className="forecast-meta-chip">Pay date: <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "Not set"}</strong></span>
                   <span className="forecast-meta-chip">Expected pay: <strong>{hasIncomeAmount ? formatCurrency(Number(displayIncome.amount), displayCurrency) : "Not set"}</strong></span>
                 </div>
                 <button
@@ -2952,7 +3026,7 @@ function DashboardPageContent() {
                   disabled={importLocked}
                   onClick={() => setEditingIncome((current) => !current)}
                 >
-                  {editingIncome ? "Close forecast settings" : "Edit forecast settings"}
+                  {editingIncome ? "Close Pay Day Settings" : "Edit Pay Day Settings"}
                 </button>
               </div>
               <div className={`forecast-total-block${spendingRoomUntilPayday !== null && spendingRoomUntilPayday < 0 ? " is-negative" : ""}`}>
@@ -3000,7 +3074,7 @@ function DashboardPageContent() {
               <h3>Explain this number</h3>
               <div className="forecast-breakdown-list">
                 <div className="forecast-breakdown-row">
-                  <span>Current available money</span>
+                  <span>Current Balance</span>
                   <strong>{hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "—"}</strong>
                 </div>
                 <div className="forecast-breakdown-row">
@@ -3219,7 +3293,7 @@ function DashboardPageContent() {
                   </div>
                 ) : null}
                 {displayIncome && hasIncomeAmount && !hasPayday ? (
-                  <p className="helper-text helper-tooltip">Add paid date</p>
+                  <p className="helper-text helper-tooltip">Add pay date</p>
                 ) : null}
                 {displayIncome && hasPayday && !hasIncomeAmount ? (
                   <p className="helper-text helper-tooltip">Add income amount if you want ClearTill to show monthly spending room.</p>
@@ -3350,6 +3424,11 @@ function DashboardPageContent() {
             onDrop={handleDrop}
           >
             <span className="setup-step-badge">{isBillsStepComplete ? "Done" : "Step 3 of 3"}</span>
+            <datalist id="supplier-name-options">
+              {SUPPLIER_NAME_OPTIONS.map((supplierName) => (
+                <option key={supplierName} value={supplierName} />
+              ))}
+            </datalist>
             {onboardingHelper?.target === "bills" ? (
               <div className="onboarding-helper-card" role="status" aria-live="polite">
                 <div className="onboarding-helper-copy">
@@ -3365,8 +3444,8 @@ function DashboardPageContent() {
             {!hasBalanceSnapshot || !hasPayday ? (
               <p className="helper-text helper-tooltip">
                 {!hasBalanceSnapshot
-                  ? "Bills can be added now, but the forecast works best after balance and your paid date are set."
-                  : "You can add bills now, but ClearTill needs your paid date to show what lands before you get paid."}
+                  ? "Bills can be added now, but the forecast works best after balance and your pay date are set."
+                  : "You can add bills now, but ClearTill needs your pay date to show what lands before you get paid."}
               </p>
             ) : null}
             <p className="helper-text helper-tooltip">Type it, say it, or drop in a banking-app screenshot. ClearTill will pull out the bill name, amount, and usual due day.</p>
@@ -3435,6 +3514,14 @@ function DashboardPageContent() {
               <div className="add-bills-actions">
                 <button className="primary-button" type="submit" disabled={submitting || importLocked}>
                   {submitting ? "Reviewing..." : importJobs.length ? "Review bills" : "Review bill"}
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={submitting || importLocked}
+                  onClick={startManualBillDraft}
+                >
+                  Add manually
                 </button>
                 <button
                   className={`secondary-button${listening ? " is-listening" : ""}`}
@@ -3796,35 +3883,53 @@ function BillCategoryPill({ bill }) {
   );
 }
 
+function niceAxisStep(value) {
+  if (!Number.isFinite(value) || value <= 0) return 10;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(value)));
+  const residual = value / magnitude;
+  const niceResidual = residual < 2 ? 1 : residual < 5 ? 2 : 5;
+  return niceResidual * magnitude;
+}
+
 function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoom, hasBalanceSnapshot, todayIso, displayCurrency }) {
   const { currentBalance, paydayDate, beforePayday } = dashboard;
 
   if (!paydayDate || !hasBalanceSnapshot) return null;
 
-  // Group bills + account-funded large costs into 4 weekly buckets
-  const weekTotals = [0, 0, 0, 0];
+  // 4 rolling, Monday-aligned week buckets from today, with the pay date placed in its own bucket
+  const weekBuckets = getFourWeekPayBuckets(todayIso, paydayDate, currentBalance, dailySpendingRoom || 0);
+  const payDateBucketIndex = weekBuckets.findIndex((bucket) => bucket.containsPayDate);
+  const bucketForDate = (isoDate) => {
+    const index = weekBuckets.findIndex((bucket) => isoDate <= bucket.weekEnd);
+    return index === -1 ? weekBuckets.length - 1 : index;
+  };
+
+  // Group bills + account-funded large costs into their matching week bucket
+  const billsThisWeek = [0, 0, 0, 0];
   for (const bill of beforePayday) {
     if (bill.nextDueDate && bill.amount > 0) {
-      const day = Math.max(0, diffDays(todayIso, bill.nextDueDate));
-      weekTotals[Math.min(3, Math.floor(day / 7))] += bill.amount;
+      billsThisWeek[bucketForDate(bill.nextDueDate)] += bill.amount;
     }
   }
   for (const cost of dueBeforePaydayLargeCosts) {
     const acctAmt = Number(cost.currentAccountAmount) || 0;
     if (acctAmt > 0 && cost.nextDueDate) {
-      const day = Math.max(0, diffDays(todayIso, cost.nextDueDate));
-      weekTotals[Math.min(3, Math.floor(day / 7))] += acctAmt;
+      billsThisWeek[bucketForDate(cost.nextDueDate)] += acctAmt;
     }
   }
 
-  const totalBills = weekTotals.reduce((a, b) => a + b, 0);
-  const lowestBal = currentBalance - totalBills;
-  const goesNegative = lowestBal < 0;
-  const maxWeek = Math.max(...weekTotals, 100);
+  // Net cash available by the end of each week, running down from today's balance
+  let runningBalance = currentBalance;
+  const cashByWeek = billsThisWeek.map((billTotal) => {
+    runningBalance -= billTotal;
+    return runningBalance;
+  });
+  const lowestBal = cashByWeek[cashByWeek.length - 1];
+  const goesNegative = cashByWeek.some((amount) => amount < 0);
 
   // SVG layout
-  const W = 400, H = 120;
-  const PL = 34, PR = 10, PT = 10, PB = 22;
+  const W = 400, H = 144;
+  const PL = 34, PR = 10, PT = 30, PB = 26;
   const chartW = W - PL - PR;
   const chartH = H - PT - PB;
   const baseY = PT + chartH;
@@ -3832,16 +3937,32 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
   const barGap = 10;
   const barW = (chartW - (numBars - 1) * barGap) / numBars;
 
-  const toBarH = (amt) => (amt / maxWeek) * chartH;
+  // Axis scales to the net cash range for the week, not a fixed reference amount
+  const maxCash = Math.max(currentBalance, ...cashByWeek, 1);
+  const toBarH = (amt) => (Math.max(0, amt) / maxCash) * chartH;
   const toBarX = (i) => PL + i * (barW + barGap);
+  const toBarCenterX = (i) => toBarX(i) + barW / 2;
+  const dayOffsetX = (isoDate, bucketIndex) => {
+    const offsetDays = Math.min(6, Math.max(0, diffDays(weekBuckets[bucketIndex].weekStart, isoDate)));
+    return toBarX(bucketIndex) + (offsetDays / 6) * barW;
+  };
+  const anchorForX = (x) => {
+    if (x - PL < 20) return "start";
+    if (PL + chartW - x < 20) return "end";
+    return "middle";
+  };
 
-  // £100 reference line
-  const ref100Y = baseY - toBarH(100);
+  const referenceValue = niceAxisStep(maxCash / 2);
+  const referenceY = baseY - toBarH(referenceValue);
   const sym = displayCurrency === "EUR" ? "€" : displayCurrency === "USD" ? "$" : "£";
+
+  const todayX = dayOffsetX(todayIso, 0);
+  const paydayX = payDateBucketIndex !== -1 ? dayOffsetX(paydayDate, payDateBucketIndex) : null;
+  const paydaySharesWeekWithToday = payDateBucketIndex === 0;
 
   return (
     <section className="spend-curve-card">
-      <h2 className="spend-curve-title">Bills per week until you're paid</h2>
+      <h2 className="spend-curve-title">Your next 4 weeks until pay day</h2>
       <div className="spend-curve-summary">
         <span className="curve-stat">
           <span className="curve-stat-label">Today</span>
@@ -3858,41 +3979,102 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
           </span>
         ) : null}
         <span className="curve-stat">
-          <span className="curve-stat-label">Paid date</span>
+          <span className="curve-stat-label">Pay date</span>
           <strong>{formatDisplayDate(paydayDate)}</strong>
         </span>
       </div>
       {goesNegative ? (
         <p className="spend-curve-warning">You may go below £0 before you're paid.</p>
       ) : null}
-      <svg viewBox={`0 0 ${W} ${H}`} className="spend-curve-svg" role="img" aria-label="Bills per week until you're paid">
-        {/* £100 reference line */}
-        {ref100Y > PT && ref100Y < baseY ? (
+      <svg viewBox={`0 0 ${W} ${H}`} className="spend-curve-svg" role="img" aria-label="Your next 4 weeks until pay day">
+        {/* Reference gridline, scaled to this week's net cash range */}
+        {referenceY > PT && referenceY < baseY ? (
           <>
-            <line x1={PL} y1={ref100Y} x2={PL + chartW} y2={ref100Y} stroke="var(--line)" strokeWidth="0.8" strokeDasharray="3 3" />
-            <text x={PL - 4} y={ref100Y + 3.5} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}100</text>
+            <line x1={PL} y1={referenceY} x2={PL + chartW} y2={referenceY} stroke="var(--line)" strokeWidth="0.8" strokeDasharray="3 3" />
+            <text x={PL - 4} y={referenceY + 3.5} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}{referenceValue}</text>
           </>
         ) : null}
-        {/* Bars */}
-        {weekTotals.map((total, i) => {
-          const bh = Math.max(toBarH(total), total > 0 ? 2 : 0);
+        {/* Bars: available cash by the end of each week */}
+        {cashByWeek.map((amount, i) => {
+          const bh = Math.max(toBarH(amount), 2);
+          const barTopY = baseY - bh;
+          const muted = weekBuckets[i].muted;
+          const negative = amount < 0;
+          const labelFitsInside = bh >= 16;
           return (
-            <rect
-              key={i}
-              x={toBarX(i).toFixed(1)}
-              y={(baseY - bh).toFixed(1)}
-              width={barW.toFixed(1)}
-              height={bh.toFixed(1)}
-              fill="var(--accent)"
-              opacity={total > 0 ? 0.72 : 0.12}
-              rx="3"
-            />
+            <g key={weekBuckets[i].weekStart}>
+              <rect
+                x={toBarX(i).toFixed(1)}
+                y={barTopY.toFixed(1)}
+                width={barW.toFixed(1)}
+                height={bh.toFixed(1)}
+                fill={negative ? "var(--warn)" : "var(--accent)"}
+                opacity={muted ? 0.18 : 0.78}
+                rx="3"
+              />
+              <text
+                x={toBarCenterX(i).toFixed(1)}
+                y={labelFitsInside ? (barTopY + 13).toFixed(1) : (barTopY - 5).toFixed(1)}
+                textAnchor="middle"
+                fontSize="9.5"
+                fontWeight="600"
+                fill={labelFitsInside ? "#ffffff" : "var(--ink)"}
+                opacity={muted ? 0.6 : 1}
+              >
+                {formatCurrency(amount, displayCurrency)}
+              </text>
+            </g>
           );
         })}
         {/* Baseline */}
         <line x1={PL} y1={baseY} x2={PL + chartW} y2={baseY} stroke="var(--line)" strokeWidth="1" />
-        {/* Payday label under last bar */}
-        <text x={(toBarX(3) + barW / 2).toFixed(1)} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--muted)">Paid date</text>
+        {/* Week commencing labels */}
+        {weekBuckets.map((bucket, i) => (
+          <text
+            key={bucket.weekStart}
+            x={toBarCenterX(i).toFixed(1)}
+            y={H - 6}
+            textAnchor="middle"
+            fontSize="8.5"
+            fill="var(--muted)"
+            opacity={bucket.muted ? 0.55 : 1}
+          >
+            {bucket.weekLabel}
+          </text>
+        ))}
+        {/* Today marker */}
+        <g>
+          <line x1={todayX.toFixed(1)} y1={PT} x2={todayX.toFixed(1)} y2={baseY} stroke="var(--ink)" strokeWidth="1" strokeDasharray="2 3" opacity="0.55" />
+          <circle cx={todayX.toFixed(1)} cy={PT} r="2.2" fill="var(--ink)" />
+          <text x={todayX.toFixed(1)} y={PT - 8} textAnchor={anchorForX(todayX)} fontSize="9" fontWeight="600" fill="var(--ink)">
+            Today
+          </text>
+        </g>
+        {/* Pay date marker */}
+        {paydayX !== null ? (
+          <g>
+            <line
+              x1={paydayX.toFixed(1)}
+              y1={PT}
+              x2={paydayX.toFixed(1)}
+              y2={baseY}
+              stroke="var(--accent-dark)"
+              strokeWidth="1"
+              strokeDasharray="2 3"
+            />
+            <circle cx={paydayX.toFixed(1)} cy={PT} r="2.2" fill="var(--accent-dark)" />
+            <text
+              x={paydayX.toFixed(1)}
+              y={paydaySharesWeekWithToday ? baseY - 6 : PT - 8}
+              textAnchor={anchorForX(paydayX)}
+              fontSize="9"
+              fontWeight="600"
+              fill="var(--accent-dark)"
+            >
+              {weekBuckets[payDateBucketIndex].payDateLabel}
+            </text>
+          </g>
+        ) : null}
       </svg>
     </section>
   );
@@ -3961,17 +4143,30 @@ function BillReviewCard({
     : "Missing";
   const frequencyLabel = draft.frequency === "monthly" ? "Monthly" : draft.frequency || "Monthly";
   const subCategoryLabel = draft.subCategory ? prettifySubCategory(draft.subCategory) : categoryMeta.label;
+  const hasMissingFields = Boolean(draft.missingFields?.length);
+  const showEditMode = isEditing || hasMissingFields;
 
   return (
     <div className="bill-review-card">
-      {isEditing ? (
+      {showEditMode ? (
         <div className="bill-review-edit-grid">
+          <div className="field-row">
+            <label className="field-label" htmlFor={`review-supplier-${draft.id}`}>Supplier name</label>
+            <input
+              id={`review-supplier-${draft.id}`}
+              list="supplier-name-options"
+              value={form?.supplierName || ""}
+              onChange={(event) => onFormChange((current) => ({ ...current, supplierName: event.target.value }))}
+              placeholder="Supplier name"
+            />
+          </div>
           <div className="field-row">
             <label className="field-label" htmlFor={`review-name-${draft.id}`}>Bill name</label>
             <input
               id={`review-name-${draft.id}`}
-              value={form?.name || ""}
-              onChange={(event) => onFormChange((current) => ({ ...current, name: event.target.value }))}
+              value={form?.billName || form?.name || ""}
+              onChange={(event) => onFormChange((current) => ({ ...current, billName: event.target.value, name: event.target.value }))}
+              placeholder="Bill name"
             />
           </div>
           <div className="field-row">
@@ -4010,8 +4205,16 @@ function BillReviewCard({
             </select>
           </div>
           <div className="bill-review-actions">
-            <button className="primary-button small-button" type="button" onClick={onSave}>Save changes</button>
-            <button className="secondary-button small-button" type="button" onClick={onCancelEdit}>Cancel</button>
+            <button className="primary-button small-button" type="button" onClick={onSave}>
+              {hasMissingFields ? "Save details" : "Save changes"}
+            </button>
+            <button
+              className="secondary-button small-button"
+              type="button"
+              onClick={hasMissingFields ? onCancel : onCancelEdit}
+            >
+              Cancel
+            </button>
           </div>
         </div>
       ) : (
@@ -4027,6 +4230,14 @@ function BillReviewCard({
             <span className="bill-review-category">{categoryMeta.icon} {subCategoryLabel}</span>
           </div>
           <div className="bill-review-grid">
+            <div className="bill-review-item">
+              <span>Supplier</span>
+              <strong>{draft.supplierName || "Not set"}</strong>
+            </div>
+            <div className="bill-review-item">
+              <span>Bill name</span>
+              <strong>{draft.billName || draft.name || "Not set"}</strong>
+            </div>
             <div className="bill-review-item">
               <span>Amount</span>
               <strong>{amountLabel}</strong>
@@ -4054,13 +4265,9 @@ function BillReviewCard({
             </p>
           ) : null}
           <div className="bill-review-actions">
-            {draft.missingFields?.length ? (
-              <button className="primary-button small-button" type="button" onClick={onEdit}>Edit details</button>
-            ) : (
-              <button className="primary-button small-button" type="button" onClick={onAdd} disabled={isSaving}>
-                {isSaving ? "Adding..." : "Add bill"}
-              </button>
-            )}
+            <button className="primary-button small-button" type="button" onClick={onAdd} disabled={isSaving}>
+              {isSaving ? "Adding..." : "Add bill"}
+            </button>
             <button className="secondary-button small-button" type="button" onClick={onEdit} disabled={isSaving}>Edit</button>
             <button className="secondary-button small-button" type="button" onClick={onCancel} disabled={isSaving}>Cancel</button>
           </div>
@@ -4324,7 +4531,7 @@ function ForecastLargeCostsSection({
         </>
       ) : (
         <p className="empty large-costs-empty">
-          Set your paid date first, then ClearTill will show which large costs land before it.
+          Set your pay date first, then ClearTill will show which large costs land before it.
         </p>
       )}
 
@@ -4850,9 +5057,18 @@ function RunwayItem({ event, showDivider }) {
 
 function HeroCard({ status, headline, subLine, onUpdateBalance, trustLine, trustNote }) {
   const colorClass = status ? `hero-card-${status}` : "";
+  const amountMatch = String(headline || "").match(/^(.*?)(£[0-9,]+(?:\.\d{1,2})?)(.*)$/);
   return (
     <div className={`hero-card ${colorClass}`.trim()}>
-      <p className="hero-value">{headline}</p>
+      <p className="hero-value">
+        {amountMatch ? (
+          <>
+            <span className="hero-value-prefix">{amountMatch[1]}</span>
+            <span className={`hero-value-amount ${status === "negative" ? "is-negative" : "is-positive"}`}>{amountMatch[2]}</span>
+            <span className="hero-value-suffix">{amountMatch[3]}</span>
+          </>
+        ) : headline}
+      </p>
       {subLine ? <p className="hero-sub">{subLine}</p> : null}
       <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>
         Update balance
@@ -4942,11 +5158,19 @@ function BillGroup({
             <li key={bill.id} className={isRecentlyAdded(bill) ? "bill-row-new" : undefined}>
               {editingBillId === bill.id ? (
                 <form className="edit-form bill-edit-form" onSubmit={(event) => onEditSave(event, bill.id)}>
+                  <label className="field-label" htmlFor={`bill-supplier-${bill.id}`}>Supplier name</label>
+                  <input
+                    id={`bill-supplier-${bill.id}`}
+                    list="supplier-name-options"
+                    value={editingBillForm.supplierName}
+                    onChange={(event) => onBillFormChange((current) => ({ ...current, supplierName: event.target.value }))}
+                    placeholder="Supplier name"
+                  />
                   <label className="field-label" htmlFor={`bill-name-${bill.id}`}>Bill name</label>
                   <input
                     id={`bill-name-${bill.id}`}
-                    value={editingBillForm.name}
-                    onChange={(event) => onBillFormChange((current) => ({ ...current, name: event.target.value }))}
+                    value={editingBillForm.billName || editingBillForm.name}
+                    onChange={(event) => onBillFormChange((current) => ({ ...current, billName: event.target.value, name: event.target.value }))}
                     placeholder="Bill name"
                   />
                   <label className="field-label" htmlFor={`bill-amount-${bill.id}`}>Amount</label>
@@ -5532,7 +5756,7 @@ function getSetupMessage(setupStep) {
   if (setupStep === 2) {
     return {
       title: "Step 2 of 3 — When do you get paid?",
-      detail: "Once your paid date is set, ClearTill can show what lands before you're paid.",
+      detail: "Once your pay date is set, ClearTill can show what lands before you're paid.",
     };
   }
 
@@ -5544,8 +5768,8 @@ function getSetupMessage(setupStep) {
   }
 
   return {
-    title: "Setup complete — ClearTill can now show your paid-date forecast.",
-    detail: "You can update your snapshot, paid date, or bills any time.",
+    title: "Setup complete — ClearTill can now show your pay-date forecast.",
+    detail: "You can update your snapshot, pay date, or bills any time.",
   };
 }
 
@@ -5595,13 +5819,16 @@ function buildBillReviewDraft(item, { sourceText = "", quickAddContext = null, i
     return null;
   }
 
-  const resolvedName = resolveBillTitle(item.name, sourceText);
+  const resolvedName = sanitiseBillDisplayName(resolveBillTitle(item.name, sourceText));
+  const splitName = splitBillDisplayName(resolvedName);
   const inferred = classifyBill({ name: resolvedName, description: sourceText });
-  const canonicalName = canonicalisePreviewBillName(resolvedName, inferred);
+  const canonicalName = sanitiseBillDisplayName(canonicalisePreviewBillName(resolvedName, inferred));
 
   return {
     id: `${importJobId || "draft"}-${draftIndex}-${canonicalName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "bill"}`,
     name: canonicalName,
+    supplierName: splitName.supplierName || "",
+    billName: splitName.billName || canonicalName,
     amount: Number.isFinite(Number(item.amount)) && Number(item.amount) > 0 ? Number(item.amount) : null,
     dueDay: isValidDueDay(item.dueDay) ? Number(item.dueDay) : null,
     frequency: item.frequency || "monthly",
@@ -5767,6 +5994,19 @@ function friendlyGoogleAuthError(error) {
   return "Google sign-in failed. Check Firebase Google sign-in and Authorized domains, then try again.";
 }
 
+function friendlyServerErrorMessage(message) {
+  if (!message) return "";
+  if (/failed to fetch|networkerror|network request failed/i.test(message)) {
+    return "Check your internet connection and try again.";
+  }
+  // Raw SDK/runtime errors aren't useful to show verbatim; anything else
+  // (server validation text, our own timeout messages) is safe to surface.
+  if (/^(firebaseerror|typeerror|referenceerror):/i.test(message)) {
+    return "";
+  }
+  return message;
+}
+
 function friendlySettingsError(error, fallbackMessage) {
   const code = String(error?.code || "");
   const message = String(error?.message || "");
@@ -5779,7 +6019,7 @@ function friendlySettingsError(error, fallbackMessage) {
     return "Please sign in again before updating that setting.";
   }
 
-  return fallbackMessage;
+  return friendlyServerErrorMessage(message) || fallbackMessage;
 }
 
 function friendlyBillSaveError(error, fallbackMessage) {
@@ -5794,7 +6034,7 @@ function friendlyBillSaveError(error, fallbackMessage) {
     return "Please sign in again before saving that bill.";
   }
 
-  return fallbackMessage;
+  return friendlyServerErrorMessage(message) || fallbackMessage;
 }
 
 function scoreImportedBillQuality(bill) {
@@ -5901,7 +6141,7 @@ function buildOutcomeMessage(parsed, outcome) {
   }
 
   if (outcome.savedIncome) {
-    parts.push("Paid date updated.");
+    parts.push("Pay date updated.");
   }
 
   if (parsed.responseMessage) {
@@ -5931,7 +6171,7 @@ function buildBatchOutcomeMessage(outcome, sourceCount) {
   }
 
   if (outcome.savedIncome) {
-    parts.push("Paid date updated.");
+    parts.push("Pay date updated.");
   }
 
   if (sourceCount > 1 && parts.length) {
