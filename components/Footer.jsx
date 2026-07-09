@@ -12,6 +12,7 @@ export default function Footer() {
         <p className="site-footer-company-detail">
           GMBF Ventures Ltd - Company No. 17286832 - Registered office: 124 City Road, London, EC1V 2NX, United Kingdom
         </p>
+        <p className="helper-text">ClearTill isn't financial advice. It's simple arithmetic on numbers you enter.</p>
         <span className="site-footer-meta">&copy; 2026 ClearTill</span>
       </div>
       <div className="site-footer-links">

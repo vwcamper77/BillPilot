@@ -72,7 +72,7 @@ export default function FoundingFeedbackForm() {
         className="billing-feedback-input"
         value={answer}
         onChange={(event) => setAnswer(event.target.value)}
-        placeholder="For example: I wanted a clearer view of what I can safely spend before payday."
+        placeholder="For example: I wanted a clearer view of what I'm clear to spend before I'm paid."
         rows={4}
       />
       <div className="billing-feedback-actions">

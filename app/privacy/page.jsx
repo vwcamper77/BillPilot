@@ -39,7 +39,7 @@ export default function PrivacyPage() {
         <p>Information we may store includes:</p>
         <ul className="page-list">
           <li>your email address</li>
-          <li>payday settings</li>
+          <li>paid-date settings</li>
           <li>current available money entered by you</li>
           <li>bills and scheduled payments</li>
           <li>savings and big cost entries</li>
@@ -49,7 +49,7 @@ export default function PrivacyPage() {
         <h2 className="account-heading" style={{ marginTop: "20px" }}>Why ClearTill uses it</h2>
         <p>
           We use this information only to provide the ClearTill service — to show
-          what is due before payday and what may be left afterwards. We do not
+          what is due before you're paid and what may be left afterwards. We do not
           sell your personal data.
         </p>
 

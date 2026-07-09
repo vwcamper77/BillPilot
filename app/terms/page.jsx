@@ -33,7 +33,7 @@ export default function TermsPage() {
         </p>
         <p>
           ClearTill is a personal cashflow planning tool provided by GMBF Ventures Ltd to help you understand your
-          upcoming bills, payday timing, savings and day-to-day spending room.
+          upcoming bills, when you get paid, savings and day-to-day spending room.
         </p>
         <p>
           GMBF Ventures Ltd does not provide financial advice, debt advice, tax advice or regulated banking services

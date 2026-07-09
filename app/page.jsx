@@ -7,9 +7,9 @@ export const revalidate = 30;
 
 const SAFE_POINTS = [
   "what is in your account now",
-  "what bills are due before payday",
+  "what bills are due before you're paid",
   "how many days you need to stretch it",
-  "what money is actually safe to spend",
+  "what money is actually clear to spend",
 ];
 
 const INPUT_OPTIONS = [
@@ -20,7 +20,7 @@ const INPUT_OPTIONS = [
 ];
 
 const REAL_LIFE_POINTS = [
-  "feel fine on payday but tight before the next one",
+  "feel fine when you're paid but tight before the next one",
   "forget which bills are still due",
   "have rent, utilities, council tax and subscriptions",
   "are separated parents or managing child costs",
@@ -56,11 +56,11 @@ export default async function HomePage() {
 
       <section className="landing-hero">
         <div className="landing-copy">
-          <p className="landing-kicker">Payday clarity without bank access</p>
-          <h1>Will your money last until payday?</h1>
+          <p className="landing-kicker">Clarity before you're paid without bank access</p>
+          <h1>Will your money last until you're paid?</h1>
           <p className="landing-lead">
-            ClearTill shows what&rsquo;s actually safe to spend after bills before your
-            next payday &mdash; without connecting your bank.
+            ClearTill shows what&rsquo;s actually clear to spend after bills before the
+            next time you&rsquo;re paid &mdash; without connecting your bank.
           </p>
           <div className="landing-pill-row" aria-label="No bank login required">
             <span className="trust-pill">No bank login</span>
@@ -82,17 +82,17 @@ export default async function HomePage() {
           </p>
         </div>
 
-        <aside className="landing-hero-card" aria-label="Sample ClearTill payday view">
+        <aside className="landing-hero-card" aria-label="Sample ClearTill paid-date view">
           <div className="landing-hero-card-top">
             <div>
-              <p className="landing-card-label">Payday view</p>
-              <h2>What is actually safe to spend?</h2>
+              <p className="landing-card-label">Paid-date view</p>
+              <h2>What is actually clear to spend?</h2>
             </div>
-            <span className="landing-card-chip">12 days to payday</span>
+            <span className="landing-card-chip">12 days until you're paid</span>
           </div>
 
           <div className="landing-amount-panel">
-            <span>Safe to spend before payday</span>
+            <span>Clear to spend before you're paid</span>
             <strong>{"\u00A3148"}</strong>
             <p>After bills due before 31 Jul, that leaves about {"\u00A312"} per day.</p>
           </div>
@@ -103,14 +103,14 @@ export default async function HomePage() {
               <strong>{"\u00A3521"}</strong>
             </article>
             <article>
-              <span>Due before payday</span>
+              <span>Due before you're paid</span>
               <strong>{"\u00A3373"}</strong>
             </article>
           </div>
 
           <div className="landing-bills-preview">
             <div className="landing-bills-preview-head">
-              <span>Bills still to land before payday</span>
+              <span>Bills still to land before you're paid</span>
             </div>
             <ul>
               {DUE_BILLS.map((bill) => (
@@ -146,7 +146,7 @@ export default async function HomePage() {
             <p>The problem is not always that you are bad with money.</p>
             <p>The problem is that your bank balance lies.</p>
             <p>It shows what is there today.</p>
-            <p>It does not clearly show what is already spoken for before payday.</p>
+            <p>It does not clearly show what is already spoken for before you're paid.</p>
           </div>
         </div>
       </section>
@@ -154,23 +154,24 @@ export default async function HomePage() {
       <section className="landing-section">
         <div className="landing-section-heading">
           <p className="eyebrow">ClearTill fixes that</p>
-          <h2>One simple question: can I safely spend this before payday?</h2>
+          <h2>One simple question: am I clear to spend this before you're paid?</h2>
           <p className="landing-section-copy">
-            You add your payday, current balance and regular bills. ClearTill then shows
-            bills due before payday, money left after those bills, daily spending room
-            until payday, upcoming large costs and a simple payday forecast.
+            You add when you get paid, your current balance and regular bills. ClearTill
+            then shows bills due before you're paid, money left after those bills, daily
+            spending room until you're paid, upcoming large costs and a simple paid-date
+            forecast.
           </p>
         </div>
         <div className="landing-feature-grid">
           <article className="landing-feature-card">
             <span>01</span>
             <h3>Add the basics</h3>
-            <p>Current balance, payday and regular bills without linking your bank.</p>
+            <p>Current balance, when you get paid, and regular bills without linking your bank.</p>
           </article>
           <article className="landing-feature-card">
             <span>02</span>
             <h3>See what is spoken for</h3>
-            <p>Spot the bills that land before payday instead of guessing from your balance.</p>
+            <p>Spot the bills that land before you're paid instead of guessing from your balance.</p>
           </article>
           <article className="landing-feature-card">
             <span>03</span>
@@ -197,7 +198,7 @@ export default async function HomePage() {
           ))}
         </div>
         <p className="landing-section-note">
-          ClearTill helps clean it up and turn it into a simple payday view.
+          ClearTill helps clean it up and turn it into a simple paid-date view.
         </p>
       </section>
 
@@ -233,8 +234,8 @@ export default async function HomePage() {
             <p className="landing-offer-price">{"\u00A35"}</p>
             <p className="landing-offer-caption">90 days early access</p>
             <p className="landing-offer-body">
-              See what bills are due before payday. Know what money is really safe to spend.
-              No bank login.
+              See what bills are due before you're paid. Know what money is really clear to
+              spend. No bank login.
             </p>
             <Link className="primary-link landing-offer-button" href="/billing">
               Try ClearTill for {"\u00A35"}
@@ -242,6 +243,7 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+      <p className="helper-text">ClearTill isn't financial advice. It's simple arithmetic on numbers you enter.</p>
     </main>
   );
 }

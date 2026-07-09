@@ -33,10 +33,10 @@ export default function BillingPage() {
       <section className="billing-hero">
         <div className="billing-panel billing-panel-highlight">
           <p className="billing-kicker">FOUNDING MEMBER ACCESS</p>
-          <h2>Will your money reach payday?</h2>
+          <h2>Will your money reach the next time you're paid?</h2>
           <p className="billing-lead">
-            ClearTill shows your real money runway before payday &mdash; what bills are still to
-            land, what big costs are coming, and what is actually safe to spend.
+            ClearTill shows your real money runway before you're paid &mdash; what bills are
+            still to land, what big costs are coming, and what is actually clear to spend.
           </p>
           <p className="billing-founder-message">
             Become a founding member today and get 90 days early access for &pound;5.
@@ -57,10 +57,10 @@ export default function BillingPage() {
           </div>
           <ul className="billing-offer-list">
             <li>90 days early access</li>
-            <li>See if your money will reach payday</li>
+            <li>See if your money will reach the next time you're paid</li>
             <li>Bills still to land</li>
             <li>Big costs coming up</li>
-            <li>Safe-to-spend daily figure</li>
+            <li>Clear-to-spend daily figure</li>
             <li>Help shape ClearTill</li>
           </ul>
           <p className="billing-renewal-note">

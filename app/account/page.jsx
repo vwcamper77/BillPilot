@@ -16,7 +16,7 @@ const ACCOUNT_DIALOGS = {
   reset_data: {
     title: "Reset ClearTill data?",
     body: [
-      "This will clear your bills, balance, payday settings, savings and big costs so you can start again.",
+      "This will clear your bills, balance, paid-date settings, savings and big costs so you can start again.",
       "Your login account will not be deleted.",
       "This permanently removes your ClearTill budgeting data. This cannot be undone.",
     ],
@@ -25,7 +25,7 @@ const ACCOUNT_DIALOGS = {
   delete_data: {
     title: "Delete all ClearTill data?",
     body: [
-      "This will permanently delete all ClearTill data linked to your account, including bills, balances, payday settings, savings, big costs and imported data.",
+      "This will permanently delete all ClearTill data linked to your account, including bills, balances, paid-date settings, savings, big costs and imported data.",
       "Your login account will remain active.",
       "This permanently removes your ClearTill budgeting data. This cannot be undone.",
     ],
@@ -405,7 +405,7 @@ export default function AccountPage() {
             <button className="account-row" type="button" onClick={() => openDialog("reset_data")} disabled={Boolean(busyAction)}>
               <div>
                 <strong>Reset ClearTill data</strong>
-                <span>Clear your balance, payday setup, bills, savings and big costs so you can start again.</span>
+                <span>Clear your balance, paid-date setup, bills, savings and big costs so you can start again.</span>
               </div>
               <span aria-hidden="true">→</span>
             </button>

@@ -70,7 +70,7 @@ export default async function BillingSuccessPage({ searchParams }) {
           You now have 90 days of early access. I&apos;m building ClearTill with real
           feedback from people who want a clearer answer to one question:
         </p>
-        <p className="billing-success-question">Will my money last until payday?</p>
+        <p className="billing-success-question">Will my money last until I'm paid?</p>
         <p className="billing-status-copy">Your feedback will directly shape what gets built next.</p>
         {accessMessage ? <p className="helper-text billing-success">{accessMessage}</p> : null}
         {accessError ? <p className="helper-text billing-error">{accessError}</p> : null}

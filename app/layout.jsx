@@ -12,7 +12,7 @@ const gtmContainerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID;
 
 export const metadata = {
   title: "ClearTill",
-  description: "Know you're clear till payday.",
+  description: "Know you're clear till you're paid.",
   manifest: "/site.webmanifest",
   icons: {
     icon: [
@@ -25,7 +25,7 @@ export const metadata = {
   },
   openGraph: {
     title: "ClearTill",
-    description: "Know you're clear till payday.",
+    description: "Know you're clear till you're paid.",
     siteName: "ClearTill",
   },
 };

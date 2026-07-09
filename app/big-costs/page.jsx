@@ -252,9 +252,9 @@ export default function BigCostsPlanPage() {
   const gapLine = impact.unassignedBigCosts > 0
     ? `You have ${formatCurrency(impact.unassignedBigCosts, displayCurrency)} of upcoming costs not assigned to a funding source. Your daily spending room may change.`
     : impact.dailyShortfall > 0
-      ? `Your current-account-funded big costs need about ${formatCurrency(impact.dailyShortfall, displayCurrency)}/day more than you've got - you're ${formatCurrency(impact.fundingNeededUntilPayday, displayCurrency)} short by payday.`
+      ? `Your current-account-funded big costs need about ${formatCurrency(impact.dailyShortfall, displayCurrency)}/day more than you've got - you're ${formatCurrency(impact.fundingNeededUntilPayday, displayCurrency)} short before you're paid.`
       : impact.bigCostsHittingCurrentAccount > 0
-        ? `Big costs hitting your current account still need about ${formatCurrency(impact.bigCostDailyNeed, displayCurrency)}/day before payday.`
+        ? `Big costs hitting your current account still need about ${formatCurrency(impact.bigCostDailyNeed, displayCurrency)}/day before you're paid.`
         : "No big costs are hitting your current account right now.";
 
   const savingsBreakdownCopy = impact.totalCostSpecificSaved > 0
@@ -735,11 +735,11 @@ export default function BigCostsPlanPage() {
                 <strong>{formatCurrency(impact.safeDailyBudget, displayCurrency)}/day</strong>
               </article>
               <article className="plan-card">
-                <span>Short by payday</span>
+                <span>Short before you're paid</span>
                 <strong>{formatCurrency(impact.fundingNeededUntilPayday, displayCurrency)}</strong>
               </article>
               <article className="plan-card">
-                <span>Days until payday</span>
+                <span>Days until you're paid</span>
                 <strong>{dashboard.daysTillPayday || 0} day{dashboard.daysTillPayday === 1 ? "" : "s"}</strong>
               </article>
             </div>
