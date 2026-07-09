@@ -754,6 +754,14 @@ function DashboardPageContent() {
     }
     return "Your savings now could cover this, but ClearTill does not count savings as daily spending money.";
   })();
+  const billsBeforePaydayChipValue = hasBalanceSnapshot && hasPayday
+    ? dashboard.totalBeforePayday > 0
+      ? `-${formatCurrency(dashboard.totalBeforePayday, displayCurrency)}`
+      : formatCurrency(0, displayCurrency)
+    : "—";
+  const bigCostsBeforePaydayChipValue = hasBalanceSnapshot && hasPayday
+    ? `-${formatCurrency(bigCostsDueBeforePayday, displayCurrency)}`
+    : "—";
   const clearTillStatus = spendingRoomStatus;
   const paydayCountdownLabel = dashboard.paydayDate
     ? `${dashboard.daysTillPayday} day${dashboard.daysTillPayday === 1 ? "" : "s"} till payday`
@@ -2911,9 +2919,15 @@ function DashboardPageContent() {
           {" in account"}
         </span>
         <span className="stat-chip">
-          <strong>{hasBalanceSnapshot && hasPayday ? formatCurrency(dashboard.totalBeforePayday, displayCurrency) : "—"}</strong>
+          <strong>{billsBeforePaydayChipValue}</strong>
           {" bills before payday"}
         </span>
+        {hasBalanceSnapshot && hasPayday && bigCostsDueBeforePayday > 0 ? (
+          <span className="stat-chip">
+            <strong>{bigCostsBeforePaydayChipValue}</strong>
+            {" big costs before payday"}
+          </span>
+        ) : null}
         <span className="stat-chip">
           {"Payday "}
           <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "not set"}</strong>
@@ -3944,6 +3958,15 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
   const lowestBal = cashByWeek[cashByWeek.length - 1];
   const goesNegative = cashByWeek.some((amount) => amount < 0);
 
+  // Waterfall segments: each bar spans from last week's balance to this week's, so its
+  // size reflects that week's actual cost rather than just where the running total lands
+  let previousBalance = currentBalance;
+  const weekSegments = cashByWeek.map((amount) => {
+    const segment = { from: previousBalance, to: amount };
+    previousBalance = amount;
+    return segment;
+  });
+
   // SVG layout
   const W = 400, H = 158;
   const PL = 34, PR = 10, PT = 30, PB = 40;
@@ -4014,14 +4037,26 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
             <text x={PL - 4} y={referenceY + 3.5} textAnchor="end" fontSize="9" fill="var(--muted)">{sym}{referenceValue}</text>
           </>
         ) : null}
-        {/* Bars: available cash by the end of each week, extending below the £0 line when it dips negative */}
+        {/* Bars: a waterfall from last week's balance to this week's, so bar size matches the cost, not just where the total lands */}
         {cashByWeek.map((amount, i) => {
-          const scaledH = (Math.abs(amount) / cashRange) * chartH;
-          const bh = Math.max(scaledH, 2);
-          const barTopY = amount >= 0 ? zeroY - bh : zeroY;
+          const { from } = weekSegments[i];
+          const yFrom = toY(from);
+          const yTo = toY(amount);
+          const endsAtBottomEdge = yTo >= yFrom;
+          let barTopY = Math.min(yFrom, yTo);
+          let barBottomY = Math.max(yFrom, yTo);
+          if (barBottomY - barTopY < 2) {
+            // No change this week — show a thin flat marker at the balance instead of an invisible bar
+            barTopY = yTo - 1;
+            barBottomY = yTo + 1;
+          }
+          const bh = barBottomY - barTopY;
           const muted = weekBuckets[i].muted;
           const negative = amount < 0;
           const labelFitsInside = bh >= 16;
+          const labelY = endsAtBottomEdge
+            ? (labelFitsInside ? barBottomY - 6 : barBottomY + 11)
+            : (labelFitsInside ? barTopY + 12 : barTopY - 6);
           return (
             <g key={weekBuckets[i].weekStart}>
               <rect
@@ -4035,7 +4070,7 @@ function SpendCurveCard({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoo
               />
               <text
                 x={toBarCenterX(i).toFixed(1)}
-                y={labelFitsInside ? (barTopY + 13).toFixed(1) : (barTopY - 5).toFixed(1)}
+                y={labelY.toFixed(1)}
                 textAnchor="middle"
                 fontSize="9.5"
                 fontWeight="600"
