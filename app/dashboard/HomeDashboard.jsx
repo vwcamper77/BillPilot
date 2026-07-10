@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import AccessLockPanel from "@/components/AccessLockPanel";
@@ -36,8 +36,10 @@ import {
 } from "@/lib/billMath";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
-import { postDashboardStateAction } from "./lib/dashboardApi";
-import { friendlyAuthError, friendlyGoogleAuthError } from "./lib/friendlyErrors";
+import { logSecurityEventClient } from "@/lib/security/clientSecurity";
+import { safeError } from "@/lib/security/safeLog";
+import { postDashboardSettingsAction, postDashboardStateAction, saveIncome as saveIncomeRequest } from "./lib/dashboardApi";
+import { friendlyAuthError, friendlyGoogleAuthError, friendlySettingsError } from "./lib/friendlyErrors";
 import CollapsibleSection from "./components/CollapsibleSection";
 import HeroCard from "./components/HeroCard";
 import QuickActions, { triggerQuickAction } from "./components/QuickActions";
@@ -149,6 +151,17 @@ function HomeDashboardContent() {
   const [billsBusy, setBillsBusy] = useState(false);
   const [balanceEditorOpen, setBalanceEditorOpen] = useState(false);
   const [focusPayday, setFocusPayday] = useState(false);
+
+  const [optimisticBalance, setOptimisticBalance] = useState(null);
+  const [optimisticIncome, setOptimisticIncome] = useState(null);
+  const [balanceInput, setBalanceInput] = useState("");
+  const [balanceError, setBalanceError] = useState("");
+  const [savingBalance, setSavingBalance] = useState(false);
+  const [incomeForm, setIncomeForm] = useState({ amount: "", payDay: "" });
+  const [editingIncome, setEditingIncome] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+  const balanceSaveRequestRef = useRef(0);
 
   const requestedAuthMode = searchParams.get("auth") === "signup" ? "signup" : "signin";
   const requestedNextPath = getSafeNextPath(searchParams.get("next"));
@@ -316,6 +329,10 @@ function HomeDashboardContent() {
       setSavings(null);
       setIncome(null);
       setAccount(null);
+      setBalanceInput("");
+      setIncomeForm({ amount: "", payDay: "" });
+      setOptimisticBalance(null);
+      setOptimisticIncome(null);
       setAccountLoaded(false);
       setReminders([]);
       return undefined;
@@ -329,11 +346,21 @@ function HomeDashboardContent() {
           return;
         }
 
+        const nextIncome = payload?.income || null;
+        const nextAccount = payload?.balance || null;
+
         setBills(Array.isArray(payload?.bills) ? payload.bills : []);
         setLargeCosts(Array.isArray(payload?.largeCosts) ? payload.largeCosts : []);
         setSavings(payload?.savings || null);
-        setIncome(payload?.income || null);
-        setAccount(payload?.balance || null);
+        setIncome(nextIncome);
+        setOptimisticIncome(null);
+        setIncomeForm({
+          amount: nextIncome?.amount === null || nextIncome?.amount === undefined ? "" : String(nextIncome.amount),
+          payDay: nextIncome?.payDay === null || nextIncome?.payDay === undefined ? "" : String(nextIncome.payDay),
+        });
+        setAccount(nextAccount);
+        setOptimisticBalance(null);
+        setBalanceInput(nextAccount?.currentBalance?.toString() || "");
         setReminders(Array.isArray(payload?.reminders) ? payload.reminders : []);
 
         if (payload?.preferences?.currency) {
@@ -362,23 +389,34 @@ function HomeDashboardContent() {
     };
   }, [user]);
 
+  const displayIncome = useMemo(() => (
+    optimisticIncome === null
+      ? income
+      : { ...(income || {}), ...optimisticIncome, type: "income", active: true, currency: "GBP" }
+  ), [income, optimisticIncome]);
+  const displayAccount = useMemo(() => (
+    optimisticBalance === null
+      ? account
+      : { ...(account || {}), currentBalance: optimisticBalance, currency: "GBP" }
+  ), [account, optimisticBalance]);
+
   const incomeForDashboard = useMemo(() => {
-    if (!income) return null;
-    if (!isValidDueDay(income.payDay)) return { ...income, payDay: null };
-    return income;
-  }, [income]);
+    if (!displayIncome) return null;
+    if (!isValidDueDay(displayIncome.payDay)) return { ...displayIncome, payDay: null };
+    return displayIncome;
+  }, [displayIncome]);
 
   const dashboard = useMemo(
-    () => calculateDashboard(bills, incomeForDashboard, account, undefined, displayCurrency),
-    [bills, account, displayCurrency, incomeForDashboard],
+    () => calculateDashboard(bills, incomeForDashboard, displayAccount, undefined, displayCurrency),
+    [bills, displayAccount, displayCurrency, incomeForDashboard],
   );
 
   const todayIso = getTodayIso();
   const generalProtectedSavings = Math.max(0, Number(savings?.totalSetAside) || 0);
-  const balanceValue = account?.currentBalance;
+  const balanceValue = displayAccount?.currentBalance;
   const hasBalanceSnapshot = balanceValue !== undefined && balanceValue !== null && balanceValue !== "" && Number.isFinite(Number(balanceValue));
-  const hasPayday = isValidDueDay(income?.payDay);
-  const hasIncomeAmount = isValidIncomeAmount(income?.amount);
+  const hasPayday = isValidDueDay(displayIncome?.payDay);
+  const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
   const hasBills = bills.length > 0;
   const setupStep = !hasBalanceSnapshot ? 1 : !hasPayday ? 2 : !hasBills ? 3 : 4;
 
@@ -467,14 +505,14 @@ function HomeDashboardContent() {
     [dashboard.paydayDate, largeCostsWithStatus],
   );
   const balanceSnapshotLabel = useMemo(
-    () => formatBalanceSnapshotLabel(account?.snapshotEnteredAt || account?.updatedAt),
-    [account?.snapshotEnteredAt, account?.updatedAt],
+    () => formatBalanceSnapshotLabel(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt),
+    [displayAccount?.snapshotEnteredAt, displayAccount?.updatedAt],
   );
   const daysSinceBalanceSnapshot = useMemo(() => {
-    const snapshotDate = toDateMaybe(account?.snapshotEnteredAt || account?.updatedAt);
+    const snapshotDate = toDateMaybe(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt);
     if (!snapshotDate || !hasBalanceSnapshot) return null;
     return diffDays(getTodayIso(snapshotDate), todayIso);
-  }, [account?.snapshotEnteredAt, account?.updatedAt, hasBalanceSnapshot, todayIso]);
+  }, [displayAccount?.snapshotEnteredAt, displayAccount?.updatedAt, hasBalanceSnapshot, todayIso]);
   const setupCompletedDaysAgo = useMemo(() => {
     if (typeof window === "undefined") return null;
     const storedAt = window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY);
@@ -624,12 +662,153 @@ function HomeDashboardContent() {
     }
   }
 
-  function handleBalanceChange(patch) {
-    setAccount((current) => ({ ...(current || {}), ...patch }));
+  async function handleSkipBalance() {
+    setBalanceError("");
+    setPageNotice("You can add your current available money later for a more accurate forecast.");
+    setOptimisticBalance(null);
+    setBalanceInput("");
+
+    try {
+      await postDashboardSettingsAction("save_balance", {
+        currentBalance: null,
+        currency: "GBP",
+        snapshotEntered: false,
+      });
+    } catch (saveError) {
+      safeError("[dashboard-settings-balance-skip] failed", { code: saveError?.code });
+    }
   }
 
-  function handleIncomeChange(nextIncome) {
-    setIncome(nextIncome);
+  async function handleBalanceSave(event) {
+    event.preventDefault();
+
+    const trimmedBalanceInput = balanceInput.trim();
+
+    if (!trimmedBalanceInput) {
+      setBalanceError("");
+      setPageNotice("You can add your current available money later for a more accurate forecast.");
+      setOptimisticBalance(null);
+      setBalanceInput("");
+
+      try {
+        await postDashboardSettingsAction("save_balance", {
+          currentBalance: null,
+          currency: "GBP",
+          snapshotEntered: false,
+        });
+      } catch (saveError) {
+        safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
+      }
+      return;
+    }
+
+    const parsedBalance = Number(trimmedBalanceInput);
+
+    if (!Number.isFinite(parsedBalance)) {
+      setBalanceError("Add your current available money as a number.");
+      return;
+    }
+
+    const saveRequestId = balanceSaveRequestRef.current + 1;
+    balanceSaveRequestRef.current = saveRequestId;
+
+    setBalanceError("");
+    setPageNotice("");
+    setOptimisticBalance(parsedBalance);
+    setBalanceInput(parsedBalance.toString());
+    setSavingBalance(true);
+
+    try {
+      await postDashboardSettingsAction("save_balance", {
+        currentBalance: parsedBalance,
+        currency: "GBP",
+        snapshotEntered: true,
+      });
+
+      if (balanceSaveRequestRef.current !== saveRequestId) {
+        return;
+      }
+
+      logSecurityEventClient("balance_updated");
+    } catch (saveError) {
+      if (balanceSaveRequestRef.current !== saveRequestId) {
+        return;
+      }
+
+      safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
+      setOptimisticBalance(null);
+      setPageNotice("");
+      setBalanceError(friendlySettingsError(saveError, "Current available money could not be saved."));
+    } finally {
+      if (balanceSaveRequestRef.current === saveRequestId) {
+        setSavingBalance(false);
+      }
+    }
+  }
+
+  async function handleCurrencySave(currency) {
+    setDisplayCurrency(currency);
+    setBalanceError("");
+    try {
+      await postDashboardSettingsAction("save_preferences", { currency });
+    } catch (saveError) {
+      safeError("[dashboard-settings-preferences-save] failed", { code: saveError?.code });
+      setBalanceError(friendlySettingsError(saveError, "Display currency could not be saved."));
+    }
+  }
+
+  async function handleIncomeSave(event) {
+    event.preventDefault();
+
+    const incomeAmountInput = incomeForm.amount;
+    const payDayInput = incomeForm.payDay;
+    const amount = Number(incomeAmountInput);
+    const payDay = Number(payDayInput);
+
+    if (!Number.isFinite(amount) || amount < 0) {
+      setEditError("Enter your monthly income amount.");
+      return;
+    }
+
+    if (!Number.isInteger(payDay) || payDay < 1 || payDay > 31) {
+      setEditError("Enter a payday between 1 and 31.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError("");
+    setPageNotice("");
+    setOptimisticIncome({
+      name: income?.name || "Payday",
+      amount,
+      payDay,
+    });
+    setIncomeForm({
+      amount: amount.toString(),
+      payDay: payDay.toString(),
+    });
+    const parsedIncome = {
+      name: "Payday",
+      amount,
+      payDay,
+      currency: "GBP",
+    };
+
+    setEditingIncome(false);
+
+    try {
+      await saveIncomeRequest(parsedIncome, Boolean(income));
+      trackEvent("payday_added");
+      setPageNotice("Forecast settings saved.");
+    } catch (saveError) {
+      safeError("[firestore-payday-save] failed", { code: saveError?.code });
+      setOptimisticIncome(null);
+      setEditingIncome(true);
+      setPageNotice("");
+      setEditError(friendlySettingsError(saveError, "We could not save your forecast settings."));
+    } finally {
+      setSavingEdit(false);
+    }
   }
 
   function handleAddMissingUtility(check) {
@@ -820,23 +999,33 @@ function HomeDashboardContent() {
     return (
       <SetupWizard
         setupStep={setupStep}
-        account={account}
-        onBalanceChange={handleBalanceChange}
         hasBalanceSnapshot={hasBalanceSnapshot}
         currentBalance={dashboard.currentBalance}
         balanceSnapshotLabel={balanceSnapshotLabel}
-        income={income}
-        onIncomeChange={handleIncomeChange}
+        balanceInput={balanceInput}
+        onBalanceInputChange={setBalanceInput}
+        balanceError={balanceError}
+        savingBalance={savingBalance}
+        onSubmitBalance={handleBalanceSave}
+        onSkipBalance={handleSkipBalance}
+        income={displayIncome}
         hasPayday={hasPayday}
         hasIncomeAmount={hasIncomeAmount}
         hasBills={hasBills}
         totalMonthlyBills={totalMonthlyBills}
         monthlySpendingRoomValue={monthlySpendingRoomValue}
+        editingIncome={editingIncome}
+        onSetEditingIncome={setEditingIncome}
+        incomeForm={incomeForm}
+        onIncomeFormChange={setIncomeForm}
+        savingEdit={savingEdit}
+        editError={editError}
+        onSubmitIncome={handleIncomeSave}
         displayCurrency={displayCurrency}
-        onCurrencyChange={setDisplayCurrency}
+        onCurrencySelect={handleCurrencySave}
         bills={bills}
         onBillsChange={setBills}
-        hasIncome={Boolean(income)}
+        hasIncome={Boolean(displayIncome)}
       />
     );
   }
@@ -901,20 +1090,30 @@ function HomeDashboardContent() {
         focusPayday={focusPayday}
         onConsumeFocusPayday={() => setFocusPayday(false)}
         onRequestClose={() => setBalanceEditorOpen(false)}
-        account={account}
-        onBalanceChange={handleBalanceChange}
         hasBalanceSnapshot={hasBalanceSnapshot}
         currentBalance={dashboard.currentBalance}
         balanceSnapshotLabel={balanceSnapshotLabel}
-        income={income}
-        onIncomeChange={handleIncomeChange}
+        balanceInput={balanceInput}
+        onBalanceInputChange={setBalanceInput}
+        balanceError={balanceError}
+        savingBalance={savingBalance}
+        onSubmitBalance={handleBalanceSave}
+        onSkipBalance={handleSkipBalance}
+        income={displayIncome}
         hasPayday={hasPayday}
         hasIncomeAmount={hasIncomeAmount}
         hasBills={hasBills}
         totalMonthlyBills={totalMonthlyBills}
         monthlySpendingRoomValue={monthlySpendingRoomValue}
+        editingIncome={editingIncome}
+        onSetEditingIncome={setEditingIncome}
+        incomeForm={incomeForm}
+        onIncomeFormChange={setIncomeForm}
+        savingEdit={savingEdit}
+        editError={editError}
+        onSubmitIncome={handleIncomeSave}
         displayCurrency={displayCurrency}
-        onCurrencyChange={setDisplayCurrency}
+        onCurrencySelect={handleCurrencySave}
       />
 
       <QuickActions />
@@ -933,7 +1132,7 @@ function HomeDashboardContent() {
           hasBalanceSnapshot={hasBalanceSnapshot}
           todayIso={todayIso}
           displayCurrency={displayCurrency}
-          incomeAmount={hasIncomeAmount ? Number(income.amount) : 0}
+          incomeAmount={hasIncomeAmount ? Number(displayIncome.amount) : 0}
         />
       </CollapsibleSection>
 
@@ -951,7 +1150,7 @@ function HomeDashboardContent() {
         <AddBills
           bills={bills}
           onBillsChange={setBills}
-          hasIncome={Boolean(income)}
+          hasIncome={Boolean(displayIncome)}
           hasBalanceSnapshot={hasBalanceSnapshot}
           hasPayday={hasPayday}
           displayCurrency={displayCurrency}

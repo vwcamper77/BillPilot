@@ -28,20 +28,30 @@ const STEP_META = {
 
 export default function SetupWizard({
   setupStep,
-  account,
-  onBalanceChange,
   hasBalanceSnapshot,
   currentBalance,
   balanceSnapshotLabel,
+  balanceInput,
+  onBalanceInputChange,
+  balanceError,
+  savingBalance,
+  onSubmitBalance,
+  onSkipBalance,
   income,
-  onIncomeChange,
   hasPayday,
   hasIncomeAmount,
   hasBills,
   totalMonthlyBills,
   monthlySpendingRoomValue,
+  editingIncome,
+  onSetEditingIncome,
+  incomeForm,
+  onIncomeFormChange,
+  savingEdit,
+  editError,
+  onSubmitIncome,
   displayCurrency,
-  onCurrencyChange,
+  onCurrencySelect,
   bills,
   onBillsChange,
   hasIncome,
@@ -65,20 +75,30 @@ export default function SetupWizard({
           <BalanceEditor
             open
             focusPayday={setupStep === 2}
-            account={account}
-            onBalanceChange={onBalanceChange}
             hasBalanceSnapshot={hasBalanceSnapshot}
             currentBalance={currentBalance}
             balanceSnapshotLabel={balanceSnapshotLabel}
+            balanceInput={balanceInput}
+            onBalanceInputChange={onBalanceInputChange}
+            balanceError={balanceError}
+            savingBalance={savingBalance}
+            onSubmitBalance={onSubmitBalance}
+            onSkipBalance={onSkipBalance}
             income={income}
-            onIncomeChange={onIncomeChange}
             hasPayday={hasPayday}
             hasIncomeAmount={hasIncomeAmount}
             hasBills={hasBills}
             totalMonthlyBills={totalMonthlyBills}
             monthlySpendingRoomValue={monthlySpendingRoomValue}
+            editingIncome={editingIncome}
+            onSetEditingIncome={onSetEditingIncome}
+            incomeForm={incomeForm}
+            onIncomeFormChange={onIncomeFormChange}
+            savingEdit={savingEdit}
+            editError={editError}
+            onSubmitIncome={onSubmitIncome}
             displayCurrency={displayCurrency}
-            onCurrencyChange={onCurrencyChange}
+            onCurrencySelect={onCurrencySelect}
           />
         ) : (
           <AddBills

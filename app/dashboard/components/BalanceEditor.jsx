@@ -1,21 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { formatCurrency, formatOrdinal, isValidDueDay } from "@/lib/billMath";
-import { logSecurityEventClient } from "@/lib/security/clientSecurity";
-import { safeError } from "@/lib/security/safeLog";
-import { trackEvent } from "@/lib/analytics/track";
-import { postDashboardSettingsAction, saveIncome as saveIncomeRequest } from "../lib/dashboardApi";
-import { friendlySettingsError } from "../lib/friendlyErrors";
 import { getScrollBehavior } from "../lib/billHelpers";
 
 const BALANCE_HELPER_TEXT = "This is just the money currently available in your account, so ClearTill can show today’s cash position after bills.";
 const BALANCE_MISSING_FORECAST_COPY = "Add your current available money to see today’s exact cash forecast.";
-
-function isValidIncomeAmount(value) {
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount >= 0;
-}
 
 function getIncomeStatusText(income, hasIncomeAmount, hasPayday, currency = "GBP") {
   if (hasIncomeAmount && hasPayday) {
@@ -36,67 +26,43 @@ export default function BalanceEditor({
   onConsumeFocusPayday,
   onRequestClose,
 
-  account,
-  onBalanceChange,
   hasBalanceSnapshot,
   currentBalance,
   balanceSnapshotLabel,
+  balanceInput,
+  onBalanceInputChange,
+  balanceError,
+  savingBalance,
+  onSubmitBalance,
+  onSkipBalance,
 
   income,
-  onIncomeChange,
   hasPayday,
   hasIncomeAmount,
   hasBills,
   totalMonthlyBills,
   monthlySpendingRoomValue,
+  editingIncome,
+  onSetEditingIncome,
+  incomeForm,
+  onIncomeFormChange,
+  savingEdit,
+  editError,
+  onSubmitIncome,
 
   displayCurrency,
-  onCurrencyChange,
-
-  onBalanceSaved,
-  onIncomeSaved,
+  onCurrencySelect,
 }) {
-  const [balanceInput, setBalanceInput] = useState(
-    account?.currentBalance === undefined || account?.currentBalance === null
-      ? ""
-      : String(account.currentBalance),
-  );
-  const [balanceError, setBalanceError] = useState("");
-  const [savingBalance, setSavingBalance] = useState(false);
-
-  const [editingIncome, setEditingIncome] = useState(false);
-  const [incomeForm, setIncomeForm] = useState({
-    amount: income?.amount === null || income?.amount === undefined ? "" : String(income.amount),
-    payDay: income?.payDay === null || income?.payDay === undefined ? "" : String(income.payDay),
-  });
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [editError, setEditError] = useState("");
-
   const balanceInputRef = useRef(null);
   const paydayAmountInputRef = useRef(null);
   const wrapperRef = useRef(null);
-
-  useEffect(() => {
-    setBalanceInput(
-      account?.currentBalance === undefined || account?.currentBalance === null
-        ? ""
-        : String(account.currentBalance),
-    );
-  }, [account?.currentBalance]);
-
-  useEffect(() => {
-    setIncomeForm({
-      amount: income?.amount === null || income?.amount === undefined ? "" : String(income.amount),
-      payDay: income?.payDay === null || income?.payDay === undefined ? "" : String(income.payDay),
-    });
-  }, [income?.amount, income?.payDay]);
 
   useEffect(() => {
     if (!open) return;
 
     window.requestAnimationFrame(() => {
       if (focusPayday) {
-        setEditingIncome(true);
+        onSetEditingIncome?.(true);
         wrapperRef.current?.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
         window.setTimeout(() => {
           paydayAmountInputRef.current?.focus();
@@ -118,115 +84,6 @@ export default function BalanceEditor({
     event.currentTarget.select();
   }
 
-  async function handleSkipBalance() {
-    setBalanceError("");
-    const previousBalance = account?.currentBalance ?? null;
-    onBalanceChange?.({ currentBalance: null });
-    setBalanceInput("");
-
-    try {
-      await postDashboardSettingsAction("save_balance", {
-        currentBalance: null,
-        currency: "GBP",
-        snapshotEntered: false,
-      });
-    } catch (saveError) {
-      safeError("[dashboard-settings-balance-skip] failed", { code: saveError?.code });
-      onBalanceChange?.({ currentBalance: previousBalance });
-    }
-  }
-
-  async function handleBalanceSave(event) {
-    event.preventDefault();
-
-    const trimmedBalanceInput = balanceInput.trim();
-
-    if (!trimmedBalanceInput) {
-      await handleSkipBalance();
-      return;
-    }
-
-    const parsedBalance = Number(trimmedBalanceInput);
-
-    if (!Number.isFinite(parsedBalance)) {
-      setBalanceError("Add your current available money as a number.");
-      return;
-    }
-
-    const previousBalance = account?.currentBalance ?? null;
-
-    setBalanceError("");
-    setBalanceInput(parsedBalance.toString());
-    setSavingBalance(true);
-    onBalanceChange?.({ currentBalance: parsedBalance });
-
-    try {
-      await postDashboardSettingsAction("save_balance", {
-        currentBalance: parsedBalance,
-        currency: "GBP",
-        snapshotEntered: true,
-      });
-      logSecurityEventClient("balance_updated");
-      onBalanceSaved?.();
-    } catch (saveError) {
-      safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
-      onBalanceChange?.({ currentBalance: previousBalance });
-      setBalanceError(friendlySettingsError(saveError, "Current available money could not be saved."));
-    } finally {
-      setSavingBalance(false);
-    }
-  }
-
-  async function handleCurrencySave(currency) {
-    onCurrencyChange?.(currency);
-    setBalanceError("");
-    try {
-      await postDashboardSettingsAction("save_preferences", { currency });
-    } catch (saveError) {
-      safeError("[dashboard-settings-preferences-save] failed", { code: saveError?.code });
-      setBalanceError(friendlySettingsError(saveError, "Display currency could not be saved."));
-    }
-  }
-
-  async function handleIncomeSave(event) {
-    event.preventDefault();
-
-    const amount = Number(incomeForm.amount);
-    const payDay = Number(incomeForm.payDay);
-
-    if (!Number.isFinite(amount) || amount < 0) {
-      setEditError("Enter your monthly income amount.");
-      return;
-    }
-
-    if (!Number.isInteger(payDay) || payDay < 1 || payDay > 31) {
-      setEditError("Enter a payday between 1 and 31.");
-      return;
-    }
-
-    const previousIncome = income;
-    const nextIncome = { name: income?.name || "Payday", amount, payDay, currency: "GBP" };
-
-    setSavingEdit(true);
-    setEditError("");
-    setIncomeForm({ amount: amount.toString(), payDay: payDay.toString() });
-    onIncomeChange?.(nextIncome);
-    setEditingIncome(false);
-
-    try {
-      await saveIncomeRequest(nextIncome, Boolean(income));
-      trackEvent("payday_added");
-      onIncomeSaved?.();
-    } catch (saveError) {
-      safeError("[firestore-payday-save] failed", { code: saveError?.code });
-      onIncomeChange?.(previousIncome);
-      setEditingIncome(true);
-      setEditError(friendlySettingsError(saveError, "We could not save your forecast settings."));
-    } finally {
-      setSavingEdit(false);
-    }
-  }
-
   return (
     <div ref={wrapperRef} className={`balance-editor${open ? "" : " is-collapsed"}`} inert={!open}>
       <div className="balance-editor-inner">
@@ -245,7 +102,7 @@ export default function BalanceEditor({
           <p className="balance-action-value">
             {hasBalanceSnapshot ? formatCurrency(currentBalance, displayCurrency) : BALANCE_MISSING_FORECAST_COPY}
           </p>
-          <form className="chat-form" onSubmit={handleBalanceSave}>
+          <form className="chat-form" onSubmit={onSubmitBalance}>
             <div className="field-row">
               <label className="field-label" htmlFor="account-balance">
                 Current Balance
@@ -256,7 +113,7 @@ export default function BalanceEditor({
                   id="account-balance"
                   inputMode="decimal"
                   value={balanceInput}
-                  onChange={(event) => setBalanceInput(event.target.value)}
+                  onChange={(event) => onBalanceInputChange(event.target.value)}
                   onFocus={handleBalanceInputFocus}
                   onClick={handleBalanceInputFocus}
                   placeholder="Current Balance"
@@ -268,7 +125,7 @@ export default function BalanceEditor({
             </div>
           </form>
           <p className="helper-text balance-copy" style={{ marginTop: "8px" }}>{BALANCE_HELPER_TEXT}</p>
-          <button className="secondary-button small-button" type="button" onClick={handleSkipBalance} style={{ marginTop: "8px" }}>
+          <button className="secondary-button small-button" type="button" onClick={onSkipBalance} style={{ marginTop: "8px" }}>
             Skip for now
           </button>
           {hasBalanceSnapshot ? (
@@ -283,7 +140,7 @@ export default function BalanceEditor({
               id="display-currency"
               className="currency-select"
               value={displayCurrency}
-              onChange={(e) => handleCurrencySave(e.target.value)}
+              onChange={(e) => onCurrencySelect(e.target.value)}
             >
               <option value="GBP">GBP £</option>
               <option value="EUR">EUR €</option>
@@ -299,20 +156,20 @@ export default function BalanceEditor({
             <button
               className="secondary-button small-button"
               type="button"
-              onClick={() => setEditingIncome((current) => !current)}
+              onClick={() => onSetEditingIncome(!editingIncome)}
             >
               {editingIncome ? "Cancel" : income ? "Edit" : "Set"}
             </button>
           </div>
           {editingIncome ? (
-            <form className="edit-form" onSubmit={handleIncomeSave}>
+            <form className="edit-form" onSubmit={onSubmitIncome}>
               <label className="field-label" htmlFor="payday-amount">Amount</label>
               <input
                 ref={paydayAmountInputRef}
                 id="payday-amount"
                 inputMode="decimal"
                 value={incomeForm.amount}
-                onChange={(event) => setIncomeForm((current) => ({ ...current, amount: event.target.value }))}
+                onChange={(event) => onIncomeFormChange((current) => ({ ...current, amount: event.target.value }))}
                 placeholder="Monthly income"
               />
               <label className="field-label" htmlFor="payday-day">When do you get paid?</label>
@@ -320,7 +177,7 @@ export default function BalanceEditor({
                 id="payday-day"
                 inputMode="numeric"
                 value={incomeForm.payDay}
-                onChange={(event) => setIncomeForm((current) => ({ ...current, payDay: event.target.value }))}
+                onChange={(event) => onIncomeFormChange((current) => ({ ...current, payDay: event.target.value }))}
                 placeholder="Day of month"
               />
               <div className="edit-actions">
