@@ -20,7 +20,8 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
   const payDateBucketIndex = waterfall.findIndex((point) => point.containsPayDate);
 
   const closingBalances = waterfall.map((point) => point.closingBalance);
-  const lowestBal = leftBeforePayday;
+  const prePaydayBalances = waterfall.filter((point) => !point.isAfterPayCycle).map((point) => point.closingBalance);
+  const lowestBal = Math.min(leftBeforePayday, ...prePaydayBalances);
   const goesNegative = lowestBal < 0;
 
   // SVG layout
@@ -61,14 +62,14 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
 
   return (
     <section className="spend-curve-card">
-      <h2 className="spend-curve-title">Your next 4 weeks until pay day</h2>
+      <h2 className="spend-curve-title">Your next 4 weeks</h2>
       <div className="spend-curve-summary">
         <span className="curve-stat">
           <span className="curve-stat-label">Today</span>
           <strong>{formatCurrency(currentBalance, displayCurrency)}</strong>
         </span>
         <span className="curve-stat">
-          <span className="curve-stat-label">After bills</span>
+          <span className="curve-stat-label">After bills and plans</span>
           <strong className={goesNegative ? "curve-negative" : ""}>{formatCurrency(lowestBal, displayCurrency)}</strong>
         </span>
         {dailySpendingRoom !== null ? (

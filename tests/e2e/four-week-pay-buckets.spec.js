@@ -174,4 +174,10 @@ test.describe("buildFourWeekCashflowWaterfall", () => {
     expect(payDatePoint.incomeReceived).toBe(0);
     expect(payDatePoint.closingBalance).toBe(payDatePoint.openingBalance);
   });
+
+  test("allocations beyond the four-week window are not duplicated into week four", () => {
+    const largeCosts = [{ nextDueDate: "2026-09-01", currentAccountAmount: 600 }];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-20", 1000, [], largeCosts, 2000);
+    expect(points.map((point) => point.weeklyOutflow)).toEqual([0, 0, 0, 0]);
+  });
 });

@@ -1062,6 +1062,170 @@ h1 {
   margin-top: 18px;
 }
 
+.large-cost-dashboard-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.large-cost-dashboard-summary > span {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.large-cost-dashboard-summary small {
+  color: var(--muted);
+}
+
+.large-cost-dashboard-summary strong {
+  color: var(--ink);
+  text-transform: capitalize;
+}
+
+.split-funding-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.split-funding-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.funding-use-remaining,
+.affordability-action {
+  width: fit-content;
+  border: 0;
+  background: none;
+  color: var(--accent-dark);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.split-funding-totals {
+  display: grid;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.split-funding-totals span,
+.affordability-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.large-cost-confirmation {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  border-radius: 12px;
+  background: rgba(232, 243, 239, 0.58);
+}
+
+.affordability-plan {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.affordability-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.affordability-plan h4,
+.affordability-copy,
+.affordability-ai-copy {
+  margin: 0;
+}
+
+.affordability-state {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(232, 243, 239, 0.9);
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.affordability-state-unaffordable_by_due_date {
+  background: rgba(249, 236, 231, 0.94);
+  color: #7a4638;
+}
+
+.affordability-copy {
+  color: #4f514d;
+  line-height: 1.5;
+}
+
+.affordability-ai-copy {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.affordability-breakdown {
+  display: grid;
+  gap: 6px;
+}
+
+.affordability-row {
+  color: #655e56;
+  font-size: 0.88rem;
+}
+
+.affordability-total {
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.affordability-shortfall {
+  color: #7a4638;
+}
+
+.affordability-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+@media (max-width: 640px) {
+  .split-funding-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .affordability-plan-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .forecast-compact-list {
   list-style: none;
   margin: 10px 0 0;

@@ -59,7 +59,10 @@ async function setBills(bills) {
   await clearUserBills(uid);
   const db = getFirestore(getApps()[0]);
   const batch = db.batch();
-  for (const bill of bills) {
+  // The product setup flow requires at least one active bill before rendering
+  // the dashboard. A £0 fixture keeps "no outflow" chart scenarios exact.
+  const dashboardBills = bills.length ? bills : [{ name: "No-op fixture", amount: 0, dueDay: 1 }];
+  for (const bill of dashboardBills) {
     const ref = db.collection("users").doc(uid).collection("bills").doc();
     batch.set(ref, {
       type: "bill",

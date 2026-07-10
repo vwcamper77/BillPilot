@@ -34,6 +34,7 @@ import {
   getTodayIso,
   isValidDueDay,
 } from "@/lib/billMath";
+import { calculateLargeCostAffordabilityPlans } from "@/lib/largeCostPlanner";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
 import { logSecurityEventClient } from "@/lib/security/clientSecurity";
@@ -439,13 +440,27 @@ function HomeDashboardContent() {
     () => calculateLargeCostImpact(largeCosts, generalProtectedSavings, dashboard.dailyLimitTillPayday || 0, dashboard.daysTillPayday || 0, todayIso),
     [dashboard.dailyLimitTillPayday, dashboard.daysTillPayday, largeCosts, generalProtectedSavings, todayIso],
   );
-  const bigCostsDueBeforePayday = useMemo(() => {
-    if (!dashboard.paydayDate) return 0;
-    return largeCostImpact.costs.reduce((total, cost) => {
-      if (!cost.nextDueDate || cost.nextDueDate >= dashboard.paydayDate) return total;
-      return total + (Number(cost.currentAccountAmount) || 0);
-    }, 0);
-  }, [dashboard.paydayDate, largeCostImpact.costs]);
+  const largeCostPlans = useMemo(() => calculateLargeCostAffordabilityPlans({
+    todayIso,
+    paydayDate: dashboard.paydayDate,
+    currentBalance: hasBalanceSnapshot ? dashboard.currentBalance : 0,
+    incomeAmount: hasIncomeAmount ? Number(displayIncome.amount) : 0,
+    bills: [...dashboard.beforePayday, ...dashboard.afterPayday],
+    largeCosts: largeCostImpact.costs,
+    savingsAvailable: largeCostImpact.totalProtectedSavings,
+  }), [
+    dashboard.afterPayday,
+    dashboard.beforePayday,
+    dashboard.currentBalance,
+    dashboard.paydayDate,
+    displayIncome?.amount,
+    hasBalanceSnapshot,
+    hasIncomeAmount,
+    largeCostImpact.costs,
+    largeCostImpact.totalProtectedSavings,
+    todayIso,
+  ]);
+  const bigCostsDueBeforePayday = largeCostPlans.summary.currentPeriodProtected;
   const unassignedCostsBeforePayday = useMemo(() => {
     if (!dashboard.paydayDate) return 0;
     return largeCostImpact.costs.reduce((total, cost) => {
@@ -482,7 +497,9 @@ function HomeDashboardContent() {
   })();
 
   const largeCostsWithStatus = useMemo(
-    () => [...largeCostImpact.costs]
+    () => {
+      const plansById = new Map(largeCostPlans.plans.map((plan) => [plan.costId, plan]));
+      return [...largeCostImpact.costs]
       .sort((a, b) => {
         if (a.status === "due_now" && b.status !== "due_now") return -1;
         if (a.status !== "due_now" && b.status === "due_now") return 1;
@@ -491,18 +508,16 @@ function HomeDashboardContent() {
       })
       .map((cost) => ({
         ...cost,
+        affordabilityPlan: plansById.get(cost.id) || null,
         fundingMeta: {
           unassigned: { label: "Unassigned", note: "Choose how this will be paid." },
-          current_account: { label: "Current account", note: "Hits current account. Reduces daily spending room." },
+          current_account: { label: "Current balance", note: "Uses this pay cycle or a future pay period. Only the planned amount reduces daily spending room." },
           savings: { label: "Savings", note: "Covered by savings. Not counted as daily spending money." },
           split: { label: "Split", note: "Partly covered by savings. Only the remaining amount affects daily spending room." },
         }[cost.fundingStatus] || { label: "Unassigned", note: "Choose how this will be paid." },
-      })),
-    [largeCostImpact],
-  );
-  const dueBeforePaydayLargeCosts = useMemo(
-    () => largeCostsWithStatus.filter((cost) => cost.nextDueDate && dashboard.paydayDate && cost.nextDueDate < dashboard.paydayDate),
-    [dashboard.paydayDate, largeCostsWithStatus],
+      }));
+    },
+    [largeCostImpact.costs, largeCostPlans.plans],
   );
   const balanceSnapshotLabel = useMemo(
     () => formatBalanceSnapshotLabel(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt),
@@ -539,9 +554,9 @@ function HomeDashboardContent() {
   const billsSummaryValue = !hasBills
     ? "No bills yet"
     : `${formatCurrency(totalMonthlyBills, displayCurrency)}/mo${nextDueBill ? ` · next ${formatDisplayDate(nextDueBill.nextDueDate)}` : ""}`;
-  const largeCostsSummaryValue = dueBeforePaydayLargeCosts.length
-    ? `${dueBeforePaydayLargeCosts.length} before payday`
-    : "None before payday";
+  const largeCostsSummaryValue = largeCostPlans.plans.length
+    ? `${largeCostPlans.plans.length} planned${largeCostPlans.summary.closestDueDate ? ` · next ${formatDisplayDate(largeCostPlans.summary.closestDueDate)}` : ""}`
+    : "None planned";
   const trackerChecks = useMemo(() => buildTrackerChecks(bills), [bills]);
   const utilitiesSummaryValue = `${trackerChecks.filter((c) => c.found).length} of ${trackerChecks.length}`;
 
@@ -1127,7 +1142,7 @@ function HomeDashboardContent() {
       <CollapsibleSection title="Next 4 weeks" defaultCollapsed={false} storageKey="chart">
         <FourWeekChart
           dashboard={dashboard}
-          dueBeforePaydayLargeCosts={dueBeforePaydayLargeCosts}
+          dueBeforePaydayLargeCosts={largeCostPlans.chartAllocations}
           dailySpendingRoom={dailySpendingRoom}
           hasBalanceSnapshot={hasBalanceSnapshot}
           todayIso={todayIso}
@@ -1165,8 +1180,16 @@ function HomeDashboardContent() {
           hasPayday={hasPayday}
           todayIso={todayIso}
           costsWithStatus={largeCostsWithStatus}
-          dueBeforePaydayCosts={dueBeforePaydayLargeCosts}
+          plannedCosts={largeCostsWithStatus}
           unassignedAmount={unassignedCostsBeforePayday}
+          planSummary={largeCostPlans.summary}
+          planningContext={{
+            currentBalance: hasBalanceSnapshot ? dashboard.currentBalance : 0,
+            incomeAmount: hasIncomeAmount ? Number(displayIncome.amount) : 0,
+            paydayDate: dashboard.paydayDate,
+            savingsAvailable: generalProtectedSavings,
+          }}
+          onSavingsChange={setSavings}
           onNotice={setPageNotice}
         />
       </CollapsibleSection>

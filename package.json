@@ -6,6 +6,7 @@
     "dev": "node scripts/dev-server.mjs",
     "build": "next build",
     "start": "next start",
+    "test:unit": "playwright test --config=playwright.unit.config.js",
     "test:e2e": "playwright test"
   },
   "dependencies": {

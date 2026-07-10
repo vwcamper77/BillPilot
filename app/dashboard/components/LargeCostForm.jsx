@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { buildLargeCostDocument, formatCurrency, formatDisplayDate, normaliseLargeCostFundingStatus } from "@/lib/billMath";
+import { getLargeCostFundingSourceLimits, resolveLargeCostContributions, roundCurrency } from "@/lib/largeCostPlanner";
 import { safeError } from "@/lib/security/safeLog";
 import { postDashboardLargeCostAction, runWithTimeout } from "../lib/dashboardApi";
 import { friendlySettingsError } from "../lib/friendlyErrors";
+import AffordabilityPlan from "./AffordabilityPlan";
 
 const LARGE_COST_CATEGORY_META = {
   holiday: { icon: "✈️", label: "Holiday" },
@@ -31,9 +33,9 @@ const LARGE_COST_FUNDING_META = {
     note: "Choose how this will be paid.",
   },
   current_account: {
-    label: "Current account",
-    shortLabel: "Current account",
-    note: "Hits current account. Reduces daily spending room.",
+    label: "Current balance",
+    shortLabel: "Current balance",
+    note: "Uses this pay cycle or a future pay period. Only the planned amount reduces daily spending room.",
   },
   savings: {
     label: "Savings",
@@ -50,12 +52,94 @@ const LARGE_COST_FUNDING_META = {
 const EMPTY_FORM = {
   name: "",
   amount: "",
-  amountAlreadySaved: "",
+  currentBalanceContribution: "0",
+  savingsContribution: "0",
   dueDate: "",
   frequency: "one_off",
   category: "other",
-  fundingStatus: "unassigned",
+  fundingStatus: "current_account",
 };
+
+function fundingFieldsForForm(form, amount) {
+  const fundingStatus = normaliseLargeCostFundingStatus(form.fundingStatus);
+  if (fundingStatus === "savings") {
+    return { fundingStatus, currentBalanceContribution: 0, savingsContribution: amount };
+  }
+  if (fundingStatus === "split") {
+    return {
+      fundingStatus,
+      currentBalanceContribution: roundCurrency(form.currentBalanceContribution),
+      savingsContribution: roundCurrency(form.savingsContribution),
+    };
+  }
+  return { fundingStatus: "current_account", currentBalanceContribution: amount, savingsContribution: 0 };
+}
+
+function validateFunding(fields, amount, limits) {
+  if (fields.currentBalanceContribution < 0 || fields.savingsContribution < 0) return false;
+  if (fields.savingsContribution > limits.savings) return false;
+  if (fields.fundingStatus === "split" && fields.currentBalanceContribution > limits.currentBalance) return false;
+  return roundCurrency(fields.currentBalanceContribution + fields.savingsContribution) === roundCurrency(amount);
+}
+
+function SplitFundingFields({ idPrefix, amount, values, onChange, limits, displayCurrency }) {
+  const currentAmount = Number(values.currentBalanceContribution) || 0;
+  const savingsAmount = Number(values.savingsContribution) || 0;
+  const allocated = roundCurrency(currentAmount + savingsAmount);
+  const remaining = roundCurrency(amount - allocated);
+
+  function useRemaining(field, available) {
+    const currentValue = field === "currentBalanceContribution" ? currentAmount : savingsAmount;
+    if (remaining <= 0 || roundCurrency(currentValue + remaining) > roundCurrency(available)) return;
+    onChange(field, String(roundCurrency(currentValue + remaining)));
+  }
+
+  return (
+    <div className="split-funding-fields" data-testid="split-funding-fields">
+      <div className="split-funding-inputs">
+        <div className="field-row">
+          <label className="field-label" htmlFor={`${idPrefix}-current`}>From current balance</label>
+          <input
+            id={`${idPrefix}-current`}
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            max={limits.currentBalance}
+            value={values.currentBalanceContribution}
+            onChange={(event) => onChange("currentBalanceContribution", event.target.value)}
+          />
+          <button className="funding-use-remaining" type="button" onClick={() => useRemaining("currentBalanceContribution", limits.currentBalance)}>
+            Use remaining
+          </button>
+          <span className="helper-text">Available through due date: {formatCurrency(limits.currentBalance, displayCurrency)}</span>
+        </div>
+        <div className="field-row">
+          <label className="field-label" htmlFor={`${idPrefix}-savings`}>From savings</label>
+          <input
+            id={`${idPrefix}-savings`}
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.01"
+            max={limits.savings}
+            value={values.savingsContribution}
+            onChange={(event) => onChange("savingsContribution", event.target.value)}
+          />
+          <button className="funding-use-remaining" type="button" onClick={() => useRemaining("savingsContribution", limits.savings)}>
+            Use remaining
+          </button>
+          <span className="helper-text">Available savings: {formatCurrency(limits.savings, displayCurrency)}</span>
+        </div>
+      </div>
+      <div className="split-funding-totals" aria-live="polite">
+        <span>Total cost <strong>{formatCurrency(amount, displayCurrency)}</strong></span>
+        <span>Amount allocated <strong>{formatCurrency(allocated, displayCurrency)}</strong></span>
+        <span>Remaining to allocate <strong>{formatCurrency(remaining, displayCurrency)}</strong></span>
+      </div>
+    </div>
+  );
+}
 
 export default function LargeCostForm({
   onLargeCostsChange,
@@ -63,8 +147,11 @@ export default function LargeCostForm({
   hasPayday,
   todayIso,
   costsWithStatus,
-  dueBeforePaydayCosts,
+  plannedCosts,
   unassignedAmount,
+  planSummary,
+  planningContext,
+  onSavingsChange,
   onNotice,
 }) {
   const [showForm, setShowForm] = useState(false);
@@ -73,8 +160,29 @@ export default function LargeCostForm({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [fundingEditorCostId, setFundingEditorCostId] = useState("");
-  const [fundingEditorForm, setFundingEditorForm] = useState({ fundingStatus: "unassigned", savingsAmount: "" });
+  const [fundingEditorForm, setFundingEditorForm] = useState({
+    fundingStatus: "current_account",
+    currentBalanceContribution: "0",
+    savingsContribution: "0",
+  });
+  const [confirmationCostId, setConfirmationCostId] = useState("");
   const wrapperRef = useRef(null);
+
+  const formAmount = Math.max(0, Number(form.amount) || 0);
+  const editingOriginalSavings = editingId
+    ? resolveLargeCostContributions(plannedCosts.find((cost) => cost.id === editingId) || {}).savingsContribution
+    : 0;
+  const formLimits = useMemo(() => getLargeCostFundingSourceLimits({
+    todayIso,
+    paydayDate: planningContext?.paydayDate,
+    dueDate: form.dueDate || todayIso,
+    currentBalance: planningContext?.currentBalance,
+    incomeAmount: planningContext?.incomeAmount,
+    savingsAvailable: (planningContext?.savingsAvailable || 0) + editingOriginalSavings,
+  }), [editingOriginalSavings, form.dueDate, planningContext, todayIso]);
+  const formFundingFields = fundingFieldsForForm(form, formAmount);
+  const formAllocationValid = validateFunding(formFundingFields, formAmount, formLimits);
+  const confirmationCost = costsWithStatus.find((cost) => cost.id === confirmationCostId);
 
   useEffect(() => {
     function handleFocusRequest(event) {
@@ -105,12 +213,14 @@ export default function LargeCostForm({
   }
 
   function startEdit(cost) {
+    const contributions = resolveLargeCostContributions(cost);
     setError("");
     setEditingId(cost.id);
     setForm({
       name: cost.name || "",
       amount: cost.amount?.toString() || "",
-      amountAlreadySaved: cost.amountAlreadySaved?.toString() || "",
+      currentBalanceContribution: String(contributions.currentBalanceContribution),
+      savingsContribution: String(contributions.savingsContribution),
       dueDate: cost.dueDate || todayIso,
       frequency: cost.frequency || "one_off",
       category: cost.category || "other",
@@ -123,14 +233,13 @@ export default function LargeCostForm({
     event.preventDefault();
 
     const amount = Number(form.amount);
-    const amountAlreadySaved = Number(form.amountAlreadySaved || 0);
 
     if (!form.name.trim() || !Number.isFinite(amount) || amount <= 0 || !form.dueDate) {
       setError("Add a name, amount, and due date before saving.");
       return;
     }
-    if (!Number.isFinite(amountAlreadySaved) || amountAlreadySaved < 0) {
-      setError("Amount already saved must be zero or more.");
+    if (!formAllocationValid) {
+      setError("Allocate the full cost without exceeding the available current balance or savings.");
       return;
     }
 
@@ -142,7 +251,9 @@ export default function LargeCostForm({
         ...buildLargeCostDocument({
           name: form.name.trim(),
           amount,
-          amountAlreadySaved,
+          amountAlreadySaved: formFundingFields.savingsContribution,
+          currentBalanceContribution: formFundingFields.currentBalanceContribution,
+          savingsContribution: formFundingFields.savingsContribution,
           dueDate: form.dueDate,
           frequency: form.frequency,
           category: form.category,
@@ -159,6 +270,9 @@ export default function LargeCostForm({
         "Saving that large cost is taking too long. Check your connection and try again.",
       );
       const resolvedCostId = editingId || result?.costId || null;
+      if (Number.isFinite(Number(result?.savingsTotalSetAside))) {
+        onSavingsChange?.((current) => ({ ...(current || {}), totalSetAside: Number(result.savingsTotalSetAside) }));
+      }
       onLargeCostsChange?.((current) => {
         const savedCost = { ...payload, id: resolvedCostId || `${Date.now()}` };
         const existingIndex = current.findIndex((cost) => cost.id === savedCost.id);
@@ -169,6 +283,7 @@ export default function LargeCostForm({
 
         return [...current, savedCost];
       });
+      if (!editingId && resolvedCostId) setConfirmationCostId(resolvedCostId);
       onNotice?.(editingId ? "Large cost updated." : "Large cost added.");
       resetForm();
     } catch (saveError) {
@@ -182,7 +297,10 @@ export default function LargeCostForm({
   async function handleDelete(costId) {
     if (!window.confirm("Remove this large cost?")) return;
     try {
-      await postDashboardLargeCostAction("delete_large_cost", { costId });
+      const result = await postDashboardLargeCostAction("delete_large_cost", { costId });
+      if (Number.isFinite(Number(result?.savingsTotalSetAside))) {
+        onSavingsChange?.((current) => ({ ...(current || {}), totalSetAside: Number(result.savingsTotalSetAside) }));
+      }
       onLargeCostsChange?.((current) => current.filter((cost) => cost.id !== costId));
       if (editingId === costId) {
         resetForm();
@@ -194,42 +312,60 @@ export default function LargeCostForm({
   }
 
   function openFundingEditor(cost) {
+    const contributions = resolveLargeCostContributions(cost);
     setFundingEditorCostId(cost.id);
     setFundingEditorForm({
       fundingStatus: normaliseLargeCostFundingStatus(cost.fundingStatus),
-      savingsAmount: String(cost.amountAlreadySaved ?? ""),
+      currentBalanceContribution: String(contributions.currentBalanceContribution),
+      savingsContribution: String(contributions.savingsContribution),
     });
   }
 
   function closeFundingEditor() {
     setFundingEditorCostId("");
-    setFundingEditorForm({ fundingStatus: "unassigned", savingsAmount: "" });
+    setFundingEditorForm({ fundingStatus: "current_account", currentBalanceContribution: "0", savingsContribution: "0" });
   }
 
   async function saveFundingEditor(cost) {
     const amount = Number(cost.amount) || 0;
     const fundingStatus = normaliseLargeCostFundingStatus(fundingEditorForm.fundingStatus);
-    let amountAlreadySaved = 0;
-
-    if (fundingStatus === "savings") {
-      amountAlreadySaved = amount;
-    } else if (fundingStatus === "split") {
-      amountAlreadySaved = Number(fundingEditorForm.savingsAmount || 0);
-      if (!Number.isFinite(amountAlreadySaved) || amountAlreadySaved < 0 || amountAlreadySaved > amount) {
-        setError("Savings amount must be between 0 and the total cost.");
-        return;
-      }
+    const fields = fundingFieldsForForm({ ...fundingEditorForm, fundingStatus }, amount);
+    const limits = getLargeCostFundingSourceLimits({
+      todayIso,
+      paydayDate: planningContext?.paydayDate,
+      dueDate: cost.nextDueDate || cost.dueDate || todayIso,
+      currentBalance: planningContext?.currentBalance,
+      incomeAmount: planningContext?.incomeAmount,
+      savingsAvailable: (planningContext?.savingsAvailable || 0) + resolveLargeCostContributions(cost).savingsContribution,
+    });
+    if (!validateFunding(fields, amount, limits)) {
+      setError("Allocate the full cost without exceeding the available current balance or savings.");
+      return;
     }
 
     setError("");
 
     try {
-      await postDashboardLargeCostAction("save_large_cost", {
+      const result = await postDashboardLargeCostAction("save_large_cost", {
         costId: cost.id,
-        fields: { fundingStatus, amountAlreadySaved },
+        fields: {
+          fundingStatus,
+          amountAlreadySaved: fields.savingsContribution,
+          currentBalanceContribution: fields.currentBalanceContribution,
+          savingsContribution: fields.savingsContribution,
+        },
       });
+      if (Number.isFinite(Number(result?.savingsTotalSetAside))) {
+        onSavingsChange?.((current) => ({ ...(current || {}), totalSetAside: Number(result.savingsTotalSetAside) }));
+      }
       onLargeCostsChange?.((current) => current.map((entry) => (
-        entry.id === cost.id ? { ...entry, fundingStatus, amountAlreadySaved } : entry
+        entry.id === cost.id ? {
+          ...entry,
+          fundingStatus,
+          amountAlreadySaved: fields.savingsContribution,
+          currentBalanceContribution: fields.currentBalanceContribution,
+          savingsContribution: fields.savingsContribution,
+        } : entry
       )));
       closeFundingEditor();
       onNotice?.("Large cost funding updated.");
@@ -242,13 +378,23 @@ export default function LargeCostForm({
     <section ref={wrapperRef} className="forecast-large-costs">
       <div className="section-head">
         <div>
-          <h3 style={{ margin: 0 }}>Large costs before payday</h3>
-          <p className="helper-text">Only costs hitting the current account change daily spending room.</p>
+          <h3 style={{ margin: 0 }}>Large Costs and affordability</h3>
+          <p className="helper-text">Plan what to protect now and what can wait for a future pay period.</p>
         </div>
         <button className="secondary-button small-button" type="button" onClick={showForm ? resetForm : startCreate}>
           {showForm ? "Cancel" : "Add large cost"}
         </button>
       </div>
+
+      {costsWithStatus.length ? (
+        <div className="large-cost-dashboard-summary" data-testid="large-cost-dashboard-summary">
+          <span><small>Protected this period</small><strong>{formatCurrency(planSummary?.currentPeriodProtected || 0, displayCurrency)}</strong></span>
+          <span><small>Planned from future pay</small><strong>{formatCurrency(planSummary?.futurePeriodsPlanned || 0, displayCurrency)}</strong></span>
+          <span><small>Savings being used</small><strong>{formatCurrency(planSummary?.savingsBeingUsed || 0, displayCurrency)}</strong></span>
+          <span><small>Closest due date</small><strong>{planSummary?.closestDueDate ? formatDisplayDate(planSummary.closestDueDate) : "Not set"}</strong></span>
+          <span><small>Overall state</small><strong>{String(planSummary?.affordabilityState || "Not calculated").replaceAll("_", " ")}</strong></span>
+        </div>
+      ) : null}
 
       {showForm ? (
         <form className="edit-form large-cost-form forecast-inline-form" onSubmit={handleSave}>
@@ -266,14 +412,6 @@ export default function LargeCostForm({
             value={form.amount}
             onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
             placeholder="5000"
-          />
-          <label className="field-label" htmlFor="large-cost-saved">Amount already saved</label>
-          <input
-            id="large-cost-saved"
-            inputMode="decimal"
-            value={form.amountAlreadySaved}
-            onChange={(event) => setForm((current) => ({ ...current, amountAlreadySaved: event.target.value }))}
-            placeholder="0"
           />
           <label className="field-label" htmlFor="large-cost-due-date">Due date</label>
           <input
@@ -307,7 +445,7 @@ export default function LargeCostForm({
           <div className="field-row">
             <label className="field-label">Funding source</label>
             <div className="funding-toggle-row">
-              {Object.entries(LARGE_COST_FUNDING_META).map(([value, meta]) => (
+              {Object.entries(LARGE_COST_FUNDING_META).filter(([value]) => value !== "unassigned").map(([value, meta]) => (
                 <button
                   key={value}
                   className={`funding-toggle${form.fundingStatus === value ? " is-active" : ""}`}
@@ -319,14 +457,31 @@ export default function LargeCostForm({
               ))}
             </div>
             <p className="helper-text">{(LARGE_COST_FUNDING_META[form.fundingStatus] || LARGE_COST_FUNDING_META.unassigned).note}</p>
+            {form.fundingStatus === "split" ? (
+              <SplitFundingFields
+                idPrefix="large-cost-split"
+                amount={formAmount}
+                values={form}
+                onChange={(field, value) => setForm((current) => ({ ...current, [field]: value }))}
+                limits={formLimits}
+                displayCurrency={displayCurrency}
+              />
+            ) : null}
           </div>
           <div className="edit-actions">
-            <button className="primary-button small-button" type="submit" disabled={saving}>
-              {saving ? "Saving..." : editingId ? "Save changes" : "Save"}
+            <button className="primary-button small-button" type="submit" disabled={saving || !formAllocationValid}>
+              {saving ? "Saving..." : editingId ? "Save changes" : "Add cost"}
             </button>
           </div>
           {error ? <p className="error">{error}</p> : null}
         </form>
+      ) : null}
+
+      {confirmationCost?.affordabilityPlan ? (
+        <div className="large-cost-confirmation" aria-live="polite">
+          <strong>{confirmationCost.name} was added.</strong>
+          <AffordabilityPlan plan={confirmationCost.affordabilityPlan} displayCurrency={displayCurrency} enableAi />
+        </div>
       ) : null}
 
       {hasPayday ? (
@@ -336,9 +491,9 @@ export default function LargeCostForm({
               You have {formatCurrency(unassignedAmount, displayCurrency)} of upcoming costs not assigned to a funding source. Your daily spending room may change.
             </p>
           ) : null}
-          {dueBeforePaydayCosts.length ? (
+          {plannedCosts.length ? (
           <ul className="forecast-compact-list">
-            {dueBeforePaydayCosts.map((cost) => {
+            {plannedCosts.map((cost) => {
               const isEditingFunding = fundingEditorCostId === cost.id;
               const fundingLabel = cost.fundingMeta?.label || "Unassigned";
               const primaryLabel = cost.fundingStatus === "unassigned" ? "Choose funding" : "Change funding";
@@ -357,9 +512,19 @@ export default function LargeCostForm({
                   <span className="forecast-compact-note">{cost.fundingMeta.note}</span>
                   {cost.fundingStatus === "split" ? (
                     <span className="forecast-compact-meta">
-                      {formatCurrency(cost.currentAccountAmount || 0, displayCurrency)} hits current account
+                      {formatCurrency(cost.currentBalanceContribution || cost.currentAccountAmount || 0, displayCurrency)} from current balance · {formatCurrency(cost.savingsContribution || 0, displayCurrency)} from savings
                     </span>
                   ) : null}
+                  <AffordabilityPlan
+                    plan={cost.affordabilityPlan}
+                    displayCurrency={displayCurrency}
+                    onAction={(action) => {
+                      if (action === "Use more savings") openFundingEditor(cost);
+                      else if (action === "Review bills") window.dispatchEvent(new CustomEvent("ct:focus-quick-action", { detail: { target: "bills" } }));
+                      else if (action === "Review other Large Costs") wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      else startEdit(cost);
+                    }}
+                  />
                   <div className="forecast-cost-actions">
                     <button className="secondary-button small-button forecast-funding-button" type="button" onClick={() => openFundingEditor(cost)}>
                       {primaryLabel}
@@ -378,10 +543,9 @@ export default function LargeCostForm({
                       <h4>How will you pay for {cost.name}?</h4>
                       <div className="funding-toggle-row">
                         {[
-                          ["current_account", "Current account"],
+                          ["current_account", "Current balance"],
                           ["savings", "Savings"],
                           ["split", "Split"],
-                          ["unassigned", "Not sure yet"],
                         ].map(([value, label]) => (
                           <button
                             key={`${cost.id}-${value}-editor`}
@@ -394,19 +558,21 @@ export default function LargeCostForm({
                         ))}
                       </div>
                       {fundingEditorForm.fundingStatus === "split" ? (
-                        <div className="field-row" style={{ marginTop: "12px" }}>
-                          <label className="field-label" htmlFor={`funding-savings-${cost.id}`}>Amount from savings</label>
-                          <input
-                            id={`funding-savings-${cost.id}`}
-                            inputMode="decimal"
-                            value={fundingEditorForm.savingsAmount}
-                            onChange={(event) => setFundingEditorForm((current) => ({ ...current, savingsAmount: event.target.value }))}
-                            placeholder="0"
-                          />
-                          <p className="helper-text">
-                            Amount from current account: {formatCurrency(Math.max(0, (Number(cost.amount) || 0) - (Number(fundingEditorForm.savingsAmount || 0) || 0)), displayCurrency)}
-                          </p>
-                        </div>
+                        <SplitFundingFields
+                          idPrefix={`funding-split-${cost.id}`}
+                          amount={Number(cost.amount) || 0}
+                          values={fundingEditorForm}
+                          onChange={(field, value) => setFundingEditorForm((current) => ({ ...current, [field]: value }))}
+                          limits={getLargeCostFundingSourceLimits({
+                            todayIso,
+                            paydayDate: planningContext?.paydayDate,
+                            dueDate: cost.nextDueDate || cost.dueDate || todayIso,
+                            currentBalance: planningContext?.currentBalance,
+                            incomeAmount: planningContext?.incomeAmount,
+                            savingsAvailable: (planningContext?.savingsAvailable || 0) + resolveLargeCostContributions(cost).savingsContribution,
+                          })}
+                          displayCurrency={displayCurrency}
+                        />
                       ) : null}
                       <div className="edit-actions">
                         <button className="primary-button small-button" type="button" onClick={() => saveFundingEditor(cost)}>
@@ -423,7 +589,7 @@ export default function LargeCostForm({
             )})}
           </ul>
           ) : (
-            <p className="empty large-costs-empty">None due before payday.</p>
+            <p className="empty large-costs-empty">No Large Costs planned yet.</p>
           )}
         </>
       ) : (
