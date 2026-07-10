@@ -4645,3 +4645,177 @@ h1 {
     white-space: normal;
   }
 }
+
+/* --- Home restructure (feat/home-restructure) --- */
+
+/* Collapsible section */
+.collapsible-section {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.collapsible-section-header {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+}
+.collapsible-section-title {
+  font-weight: 700;
+}
+.collapsible-section-summary {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92rem;
+}
+.collapsible-section-chevron {
+  transition: transform 180ms ease;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.collapsible-section-chevron.is-open {
+  transform: rotate(180deg);
+}
+.collapsible-section-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 180ms ease;
+}
+.collapsible-section-body.is-collapsed {
+  grid-template-rows: 0fr;
+}
+.collapsible-section-inner {
+  overflow: hidden;
+}
+.collapsible-section-inner > *:first-child {
+  margin-top: 0;
+}
+.collapsible-section-inner > *:last-child {
+  padding-bottom: 16px;
+}
+
+/* Balance editor — zero-height inline expansion under the hero */
+.balance-editor {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 180ms ease;
+  margin-bottom: 12px;
+}
+.balance-editor.is-collapsed {
+  grid-template-rows: 0fr;
+  margin-bottom: 0;
+}
+.balance-editor-inner {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Hero card additions */
+.hero-daily {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+.hero-context {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.hero-disclosure {
+  margin-top: 10px;
+}
+.hero-disclosure-toggle {
+  min-height: 34px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-dark);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hero-disclosure-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Quick actions row */
+.quick-actions-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.quick-action-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.quick-action-button:hover {
+  border-color: var(--accent);
+  background: var(--soft);
+}
+
+/* Attention strip — renders only when non-empty */
+.attention-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.attention-strip-item {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+/* Setup wizard — full-screen sequenced steps */
+.setup-wizard-shell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 40px;
+}
+.setup-wizard {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.setup-wizard-progress {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.setup-wizard h1 {
+  margin: 4px 0 0;
+  font-size: 1.5rem;
+}
