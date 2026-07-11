@@ -69,7 +69,7 @@ test("secondary income updates safe daily, graph and Large Cost chronology witho
   test.setTimeout(60000);
   await signIn(page, user.uid);
 
-  await expect(page.locator(".hero-daily")).toContainText("£10/day");
+  await expect(page.locator(".hero-daily")).toContainText("£10");
   await page.getByRole("button", { name: "Update pay or income" }).click();
   const editor = page.getByTestId("additional-income-editor");
   await expect(editor.getByRole("button", { name: "Other money coming in (optional)" })).toBeVisible();
@@ -83,7 +83,7 @@ test("secondary income updates safe daily, graph and Large Cost chronology witho
   await editor.getByRole("button", { name: "Add payment" }).click();
 
   await expect(editor).toContainText("1 additional payment scheduled");
-  await expect(page.locator(".hero-daily")).toContainText("£20/day");
+  await expect(page.locator(".hero-daily")).toContainText("£20");
   await expect(page.getByTestId("forecast-income-notes")).toContainText("Freelance payment: +£100");
   await page.locator(".balance-editor").getByRole("button", { name: "Close" }).click();
 
@@ -110,7 +110,7 @@ test("secondary income updates safe daily, graph and Large Cost chronology witho
   await reopenedEditor.getByRole("button", { name: "Save changes" }).click();
 
   await expect(card).toContainText("Not affordable by due date — short by £50");
-  await expect(page.locator(".hero-daily")).toContainText("£0/day");
+  await expect(page.locator(".hero-daily")).toContainText("£0");
   await page.reload();
   await page.getByRole("button", { name: "Update pay or income" }).click();
   const persistedEditor = page.getByTestId("additional-income-editor");

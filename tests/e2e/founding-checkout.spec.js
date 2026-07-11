@@ -45,7 +45,7 @@ function fixtureSession(sessionId, overrides = {}) {
     created: Math.floor(Date.now() / 1000),
     customer: `cus_${sessionId}`,
     customer_details: { email: `${sessionId}@cleartill.test` },
-    metadata: {},
+    metadata: { planKey: "founding_member" },
     discounts: [],
     ...overrides,
   };
@@ -82,7 +82,7 @@ test.describe("Phase A — fulfilment", () => {
 
       const entitlement = await getEntitlement(sessionId);
       expect(entitlement).toBeTruthy();
-      expect(entitlement.status).toBe("pending");
+      expect(entitlement.status).toBe("pending_claim");
       expect(entitlement.isQaPurchase).toBe(false);
 
       const customer = await getCustomer(`pending_${sessionId}`);
@@ -214,7 +214,7 @@ test.describe("Phase B — claim", () => {
         claimPendingEntitlement({ sessionId, uid: otherUid, verifiedEmail: otherEmail }),
       ).rejects.toBeInstanceOf(EmailMismatchError);
 
-      expect((await getEntitlement(sessionId)).status).toBe("pending");
+      expect((await getEntitlement(sessionId)).status).toBe("pending_claim");
     } finally {
       await cleanupSession(sessionId);
     }
@@ -284,6 +284,11 @@ test.describe("Phase B — claim", () => {
 });
 
 test.describe("Browser journey", () => {
+  test("account billing API rejects an unauthenticated request", async ({ request }) => {
+    const response = await request.get("/api/account");
+    expect(response.status()).toBe(401);
+  });
+
   test.skip(
     process.env.CHECKOUT_AUTH_REQUIRED !== "false",
     "Requires CHECKOUT_AUTH_REQUIRED=false in .env.local to exercise the new checkout UI.",
@@ -324,7 +329,7 @@ test.describe("Browser journey", () => {
       await page.waitForURL(/\/dashboard/, { timeout: 15000 });
 
       const entitlement = await getEntitlement(sessionId);
-      expect(entitlement.status).toBe("claimed");
+      expect(entitlement.status).toBe("active");
     } finally {
       await cleanupSession(sessionId);
     }

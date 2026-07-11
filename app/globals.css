@@ -1661,6 +1661,66 @@ h1 {
   margin-top: 14px;
 }
 
+.large-cost-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  background: rgba(20, 31, 28, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.large-cost-modal-panel {
+  width: min(100%, 620px);
+  max-height: min(90vh, 760px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid rgba(221, 213, 200, 0.96);
+  border-radius: 16px;
+  background: var(--paper, #fffdf8);
+  box-shadow: 0 24px 70px rgba(20, 31, 28, 0.22);
+}
+
+.large-cost-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.large-cost-modal-head h3,
+.large-cost-modal-head p {
+  margin: 0;
+}
+
+.large-cost-modal-head p {
+  margin-top: 4px;
+}
+
+.large-cost-modal-panel .large-cost-form {
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 640px) {
+  .large-cost-modal-backdrop {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .large-cost-modal-panel {
+    max-height: 92dvh;
+    padding: 16px;
+    border-radius: 16px 16px 10px 10px;
+  }
+}
+
 .large-cost-list {
   display: grid;
   gap: 10px;

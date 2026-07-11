@@ -47,6 +47,12 @@ export async function POST(request) {
       }
     }
 
+    if (decodedToken.email_verified !== true) {
+      const error = new Error("Verify your email before claiming access.");
+      error.code = "auth/email-not-verified";
+      throw error;
+    }
+
     const result = await claimPendingEntitlement({
       sessionId,
       uid: decodedToken.uid,
@@ -93,7 +99,7 @@ export async function POST(request) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });
     }
 
-    if (error?.code === "auth/missing-id-token" || error?.code === "auth/invalid-id-token" || error?.code === "auth/anonymous-not-allowed") {
+    if (error?.code === "auth/missing-id-token" || error?.code === "auth/invalid-id-token" || error?.code === "auth/anonymous-not-allowed" || error?.code === "auth/email-not-verified") {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 

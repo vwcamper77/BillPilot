@@ -44,8 +44,12 @@ export async function POST(request) {
           ],
       metadata: {
         userId: decodedToken.uid,
+        firebase_uid: decodedToken.uid,
         userEmail: decodedToken.email || "",
         plan: FOUNDING_PLAN,
+        planKey: "founding_member",
+        accessDurationDays: "90",
+        offer: "founding_member_2026",
         gaClientId: sanitizeClientId(body?.gaClientId),
       },
     });

@@ -137,6 +137,7 @@ test("split editor, persistence, due-date maths, hero and forecast update withou
   await expect(card).toContainText("Before");
   await expect(card).toContainText("£101");
   await expect(card).toContainText("£299");
+  await expect(section.getByTestId("affordability-plan")).toHaveCount(1);
   await expect(section.getByTestId("large-cost-dashboard-summary")).toContainText("1 planned cost · £600 due next · £0 funding shortfall");
   await card.screenshot({ path: "output/playwright/large-cost-card.png" });
 
@@ -155,8 +156,9 @@ test("split editor, persistence, due-date maths, hero and forecast update withou
   // Edit closes the funding disclosure, reveals the form and moves focus to it.
   await reloadedCard.getByRole("button", { name: "Edit cost or date" }).click();
   await expect(reloadedCard.getByTestId("funding-editor")).toHaveCount(0);
-  await expect(reloadedSection.locator(".large-cost-form")).toBeVisible();
-  await expect(reloadedSection.locator("#large-cost-name")).toBeFocused();
+  await expect(page.getByRole("dialog", { name: "Edit Car insurance" })).toBeVisible();
+  await expect(reloadedSection.locator("#large-cost-amount")).toBeFocused();
+  await page.getByRole("dialog", { name: "Edit Car insurance" }).screenshot({ path: "output/playwright/large-cost-edit-modal.png" });
 
   // Moving the due date into another pay cycle recalculates immediately.
   await reloadedSection.locator("#large-cost-due-date").fill(laterDueDateIso);
@@ -171,17 +173,18 @@ test("split editor, persistence, due-date maths, hero and forecast update withou
   await reloadedSection.locator("#large-cost-due-date").fill(dueDateIso);
   await reloadedSection.getByRole("button", { name: "Save changes" }).click();
   await expect(reloadedCard).toContainText("Affordable by due date");
-  await expect(page.locator(".hero-daily")).toContainText("£3.90/day");
-  await expect(page.getByTestId("weekly-outflow").filter({ hasText: "-£101" })).toHaveCount(1);
-  await expect(page.getByTestId("weekly-outflow").filter({ hasText: "-£299" })).toHaveCount(1);
+  await expect(page.locator(".hero-daily")).toContainText("£3.90");
+  const weeklyLargeCostAllocations = page.locator('[data-testid^="weekly-large-costs-"]');
+  await expect(weeklyLargeCostAllocations.filter({ hasText: "£101" })).toHaveCount(1);
+  await expect(weeklyLargeCostAllocations.filter({ hasText: "£299" })).toHaveCount(1);
 
   await reloadedCard.getByRole("button", { name: "Change funding" }).click();
   await reloadedCard.getByTestId("funding-editor").getByRole("button", { name: "Savings", exact: true }).click();
   await reloadedCard.getByTestId("funding-editor").getByRole("button", { name: "Save" }).click();
   await expect(reloadedCard.getByTestId("funding-editor")).toHaveCount(0);
   await expect(reloadedCard).toContainText("Affordable now");
-  await expect(page.locator(".hero-daily")).toContainText("£14/day");
-  await expect(page.getByTestId("weekly-outflow").filter({ hasText: /-£(101|299)/ })).toHaveCount(0);
+  await expect(page.locator(".hero-daily")).toContainText("£14");
+  await expect(page.locator('[data-testid^="weekly-large-costs-"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Savings £0/ })).toBeVisible();
 });
 
@@ -210,4 +213,10 @@ test("an insufficient plan displays the precise shortfall", async ({ page }) => 
   await expect(card).toContainText("Not affordable by due date — short by £300");
   await expect(card).toContainText("This is not affordable");
   await expect(card).toContainText("Still to fund£300");
+  await card.getByRole("button", { name: "Reduce the cost" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit Boiler" })).toBeVisible();
+  await expect(page.locator("#large-cost-amount")).toBeFocused();
+  await page.getByRole("dialog", { name: "Edit Boiler" }).getByRole("button", { name: "Close" }).click();
+  await card.getByRole("button", { name: "Change the due date" }).click();
+  await expect(page.locator("#large-cost-due-date")).toBeFocused();
 });

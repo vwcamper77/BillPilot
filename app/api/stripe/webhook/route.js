@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { grantFoundingAccessFromCheckoutSession } from "@/lib/billingAccess.server";
-import { createPendingEntitlementFromCheckoutSession, getExpandedCheckoutSession } from "@/lib/entitlements.server";
-import { getAdminDb, getFirebaseProjectId } from "@/lib/firebaseAdmin";
+import { claimPendingEntitlement, createPendingEntitlementFromCheckoutSession, getExpandedCheckoutSession } from "@/lib/entitlements.server";
+import { getAdminAuth, getAdminDb, getFirebaseProjectId } from "@/lib/firebaseAdmin";
 import { getStripeServerClient } from "@/lib/stripe";
 import { recordAnalyticsEvent } from "@/lib/customerProfile.server";
 
@@ -10,99 +9,77 @@ export const runtime = "nodejs";
 export async function POST(request) {
   const signature = request.headers.get("stripe-signature");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
   if (!signature || !webhookSecret) {
-    return NextResponse.json(
-      { error: "Stripe webhook secret is not configured." },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Stripe webhook secret is not configured." }, { status: 400 });
   }
 
   let payload = "";
-
   try {
     payload = await request.text();
     const event = getStripeServerClient().webhooks.constructEvent(payload, signature, webhookSecret);
 
     if (event.type === "checkout.session.completed") {
       const rawSession = event.data.object;
+      const session = await getExpandedCheckoutSession(rawSession.id);
+      const created = await createPendingEntitlementFromCheckoutSession(session, { webhookEventId: event.id });
+      const trustedUid = String(session.metadata?.firebase_uid || session.metadata?.userId || session.client_reference_id || "").trim();
 
-      if (rawSession.metadata?.userId) {
-        // Legacy flow: session was created by an authenticated checkout, so
-        // it already carries a Firebase uid. Untouched code path.
-        const record = await grantFoundingAccessFromCheckoutSession(rawSession, {
-          stripeEventId: event.id,
-        });
-
-        // Retries replay the same event id — only fire the funnel event once.
-        if (record?.isNewStripeEvent) {
-          await recordAnalyticsEvent({
-            eventName: "checkout_completed",
-            uid: record.uid || null,
-            anonymousSessionId: record.customerAttribution?.anonymousSessionId || null,
-            utm_source: record.customerAttribution?.utm_source || null,
-            utm_medium: record.customerAttribution?.utm_medium || null,
-            utm_campaign: record.customerAttribution?.utm_campaign || null,
-          }).catch((analyticsError) => {
-            console.error("[stripe-webhook] failed to record checkout_completed analytics event", analyticsError);
-          });
+      if (trustedUid) {
+        const firebaseUser = await getAdminAuth().getUser(trustedUid);
+        const checkoutEmail = String(session.customer_details?.email || session.customer_email || "").trim().toLowerCase();
+        const firebaseEmail = String(firebaseUser.email || "").trim().toLowerCase();
+        if (!firebaseUser.emailVerified || !firebaseEmail || firebaseEmail !== checkoutEmail) {
+          throw new Error("Signed-in checkout identity could not be verified against the Stripe checkout email.");
         }
-      } else {
-        // New flow: no Firebase uid yet — re-retrieve with discounts expanded
-        // (see getExpandedCheckoutSession) and fulfil against a pending
-        // entitlement instead of a user record.
-        const expandedSession = await getExpandedCheckoutSession(rawSession.id);
-        await createPendingEntitlementFromCheckoutSession(expandedSession);
+        await claimPendingEntitlement({ sessionId: session.id, uid: trustedUid, verifiedEmail: firebaseEmail });
+      }
+
+      if (created?.isNewSession) {
+        await recordAnalyticsEvent({ eventName: "checkout_completed", uid: trustedUid || null }).catch((error) => {
+          console.error("[stripe-webhook] failed to record checkout_completed analytics event", error);
+        });
       }
     }
 
-    // Inert until a mode:"subscription" Checkout Session exists — no
-    // subscription product is created by this app today. Kept as a
-    // future-proofed hook so subscriptionStatus/MRR can populate later
-    // without another webhook migration.
-    if (event.type === "customer.subscription.created" || event.type === "customer.subscription.deleted") {
+    if (["customer.subscription.created", "customer.subscription.deleted"].includes(event.type)) {
       await handleSubscriptionEvent(event);
+    }
+
+    if (["charge.refunded", "payment_intent.payment_failed"].includes(event.type)) {
+      await handlePaymentStateEvent(event);
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("[stripe-webhook] checkout handling failed", {
-      firebaseProjectId: getFirebaseProjectId(),
-    }, error);
-
-    return NextResponse.json(
-      { error: error?.message || "Stripe webhook handling failed." },
-      { status: payload ? 500 : 400 },
-    );
+    console.error("[stripe-webhook] handling failed", { firebaseProjectId: getFirebaseProjectId() }, error);
+    return NextResponse.json({ error: error?.message || "Stripe webhook handling failed." }, { status: payload ? 500 : 400 });
   }
+}
+
+async function handlePaymentStateEvent(event) {
+  const object = event.data.object;
+  const paymentIntentId = String(object?.payment_intent || object?.id || "").trim();
+  if (!paymentIntentId) return;
+  const matches = await getAdminDb().collection("pendingEntitlements").where("stripePaymentIntentId", "==", paymentIntentId).limit(10).get();
+  const status = event.type === "charge.refunded" ? "refunded" : "revoked";
+  const batch = getAdminDb().batch();
+  for (const doc of matches.docs) batch.set(doc.ref, { status, webhookEventId: event.id, updatedAt: new Date() }, { merge: true });
+  await batch.commit();
 }
 
 async function handleSubscriptionEvent(event) {
   const subscription = event.data.object;
   const stripeCustomerId = String(subscription?.customer || "").trim();
-
-  if (!stripeCustomerId) {
-    return;
-  }
-
-  const db = getAdminDb();
-  const matches = await db.collection("customers").where("stripeCustomerId", "==", stripeCustomerId).limit(1).get();
-
-  if (matches.empty) {
-    return;
-  }
-
+  if (!stripeCustomerId) return;
+  const matches = await getAdminDb().collection("customers").where("stripeCustomerId", "==", stripeCustomerId).limit(1).get();
+  if (matches.empty) return;
   const customerDoc = matches.docs[0];
   const subscriptionStatus = event.type === "customer.subscription.created"
     ? (subscription.status === "trialing" ? "trialing" : "active")
     : "canceled";
-
   await customerDoc.ref.set({ subscriptionStatus }, { merge: true });
-
   await recordAnalyticsEvent({
     eventName: event.type === "customer.subscription.created" ? "subscription_created" : "subscription_cancelled",
     uid: customerDoc.id,
-  }).catch((analyticsError) => {
-    console.error("[stripe-webhook] failed to record subscription analytics event", analyticsError);
-  });
+  }).catch((error) => console.error("[stripe-webhook] subscription analytics failed", error));
 }

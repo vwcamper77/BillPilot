@@ -186,7 +186,7 @@ export default function LargeCostForm({
     currentBalanceContribution: "0",
     savingsContribution: "0",
   });
-  const [confirmationCostId, setConfirmationCostId] = useState("");
+  const [editFocusTarget, setEditFocusTarget] = useState("name");
   const wrapperRef = useRef(null);
   const formRef = useRef(null);
 
@@ -206,7 +206,6 @@ export default function LargeCostForm({
   }), [editingOriginalSavings, form.dueDate, planningContext, todayIso]);
   const formFundingFields = fundingFieldsForForm(form, formAmount);
   const formAllocationValid = validateFunding(formFundingFields, formAmount, formLimits);
-  const confirmationCost = costsWithStatus.find((cost) => cost.id === confirmationCostId);
 
   useEffect(() => {
     function handleFocusRequest(event) {
@@ -224,12 +223,21 @@ export default function LargeCostForm({
 
   useEffect(() => {
     if (!showForm || !editingId) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const frame = window.requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      formRef.current?.querySelector("input")?.focus({ preventScroll: true });
+      formRef.current?.querySelector(`#large-cost-${editFocusTarget}`)?.focus({ preventScroll: true });
     });
-    return () => window.cancelAnimationFrame(frame);
-  }, [editingId, showForm]);
+    function handleEscape(event) {
+      if (event.key === "Escape") resetForm();
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [editFocusTarget, editingId, showForm]);
 
   function resetForm() {
     setForm(EMPTY_FORM);
@@ -242,15 +250,17 @@ export default function LargeCostForm({
     closeFundingEditor();
     setError("");
     setEditingId("");
+    setEditFocusTarget("name");
     setForm({ ...EMPTY_FORM, dueDate: todayIso });
     setShowForm(true);
   }
 
-  function startEdit(cost) {
+  function startEdit(cost, focusTarget = "amount") {
     const contributions = resolveLargeCostContributions(cost);
     closeFundingEditor();
     setError("");
     setEditingId(cost.id);
+    setEditFocusTarget(focusTarget);
     setForm({
       name: cost.name || "",
       amount: cost.amount?.toString() || "",
@@ -318,7 +328,6 @@ export default function LargeCostForm({
 
         return [...current, savedCost];
       });
-      if (!editingId && resolvedCostId) setConfirmationCostId(resolvedCostId);
       onNotice?.(editingId ? "Large cost updated." : "Large cost added.");
       resetForm();
     } catch (saveError) {
@@ -450,6 +459,23 @@ export default function LargeCostForm({
       ) : null}
 
       {showForm ? (
+        <div
+          className={editingId ? "large-cost-modal-backdrop" : undefined}
+          role={editingId ? "dialog" : undefined}
+          aria-modal={editingId ? "true" : undefined}
+          aria-labelledby={editingId ? "large-cost-edit-title" : undefined}
+          onMouseDown={editingId ? (event) => { if (event.target === event.currentTarget) resetForm(); } : undefined}
+        >
+          <div className={editingId ? "large-cost-modal-panel" : undefined}>
+            {editingId ? (
+              <div className="large-cost-modal-head">
+                <div>
+                  <h3 id="large-cost-edit-title">Edit {form.name}</h3>
+                  <p className="helper-text">Update the cost or due date, then save to recalculate the plan.</p>
+                </div>
+                <button className="secondary-button small-button" type="button" onClick={resetForm}>Close</button>
+              </div>
+            ) : null}
         <form ref={formRef} className="edit-form large-cost-form forecast-inline-form" onSubmit={handleSave}>
           <label className="field-label" htmlFor="large-cost-name">Name</label>
           <input
@@ -473,6 +499,8 @@ export default function LargeCostForm({
             value={form.dueDate}
             onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
           />
+          {!editingId ? (
+            <>
           <label className="field-label" htmlFor="large-cost-frequency">Frequency</label>
           <select
             id="large-cost-frequency"
@@ -521,19 +549,17 @@ export default function LargeCostForm({
               />
             ) : null}
           </div>
+            </>
+          ) : null}
           <div className="edit-actions">
             <button className="primary-button small-button" type="submit" disabled={saving || !formAllocationValid}>
               {saving ? "Saving..." : editingId ? "Save changes" : "Add cost"}
             </button>
+            {editingId ? <button className="secondary-button small-button" type="button" onClick={resetForm}>Cancel</button> : null}
           </div>
           {error ? <p className="error">{error}</p> : null}
         </form>
-      ) : null}
-
-      {confirmationCost?.affordabilityPlan ? (
-        <div className="large-cost-confirmation" aria-live="polite">
-          <strong>{confirmationCost.name} was added.</strong>
-          <AffordabilityPlan plan={confirmationCost.affordabilityPlan} displayCurrency={displayCurrency} enableAi />
+          </div>
         </div>
       ) : null}
 
@@ -566,9 +592,8 @@ export default function LargeCostForm({
                     displayCurrency={displayCurrency}
                     onAction={(action) => {
                       if (action === "Use more savings") openFundingEditor(cost);
-                      else if (action === "Review bills") window.dispatchEvent(new CustomEvent("ct:focus-quick-action", { detail: { target: "bills" } }));
-                      else if (action === "Review other Large Costs") wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                      else startEdit(cost);
+                      else if (action === "Reduce the cost") startEdit(cost, "amount");
+                      else if (action === "Change the due date") startEdit(cost, "due-date");
                     }}
                   />
                   <div className="forecast-cost-actions">
@@ -576,7 +601,7 @@ export default function LargeCostForm({
                       {primaryLabel}
                     </button>
                     <div className="forecast-secondary-actions">
-                      <button className="bill-action-button bill-action-edit" type="button" onClick={() => startEdit(cost)}>
+                      <button className="bill-action-button bill-action-edit" type="button" onClick={() => startEdit(cost, "amount")}>
                         Edit cost or date
                       </button>
                       <button className="bill-action-button bill-action-remove" type="button" onClick={() => handleDelete(cost.id)}>

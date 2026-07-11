@@ -53,6 +53,9 @@ export async function POST(request) {
           ],
       metadata: {
         plan: FOUNDING_PLAN,
+        planKey: "founding_member",
+        accessDurationDays: "90",
+        offer: "founding_member_2026",
         flow: "public",
         gaClientId: sanitizeClientId(body?.gaClientId),
       },

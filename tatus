@@ -1,0 +1,1095 @@
+warning: in the working copy of '.env.example', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/account/page.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/api/access/claim/route.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/api/access/route.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/api/account/route.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/api/stripe/checkout/route.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/api/stripe/public-checkout/route.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/api/stripe/webhook/route.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/dashboard/components/LargeCostForm.jsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'app/globals.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'firestore.rules', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/billingAccess.server.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/email/accessLinkTemplate.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/entitlements.server.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'lib/largeCostPlanner.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/e2e/additional-income-dashboard.spec.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/e2e/founding-checkout.spec.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'tests/e2e/large-costs-dashboard.spec.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/.env.example b/.env.example[m
+[1mindex fdea707..0996fb3 100644[m
+[1m--- a/.env.example[m
+[1m+++ b/.env.example[m
+[36m@@ -42,6 +42,7 @@[m [mCHECKOUT_AUTH_REQUIRED=[m
+ # Absolute origin used to build the Firebase email-link action URL from[m
+ # contexts with no incoming request (the Stripe webhook). No trailing slash.[m
+ NEXT_PUBLIC_APP_URL=[m
+[32m+[m[32mACCESS_CLAIM_TOKEN_TTL_HOURS=24[m
+ # Test-only: gates app/api/test-only/access-link. Leave unset in production —[m
+ # the route 404s unconditionally when this is unset, regardless of NODE_ENV.[m
+ E2E_TEST_SECRET=[m
+[1mdiff --git a/app/account/page.jsx b/app/account/page.jsx[m
+[1mindex f7bc368..55c8456 100644[m
+[1m--- a/app/account/page.jsx[m
+[1m+++ b/app/account/page.jsx[m
+[36m@@ -3,13 +3,11 @@[m
+ import Link from "next/link";[m
+ import { useRouter } from "next/navigation";[m
+ import { onAuthStateChanged, signOut } from "firebase/auth";[m
+[31m-import { doc, onSnapshot } from "firebase/firestore";[m
+ import { useEffect, useMemo, useState } from "react";[m
+ import Logo from "@/components/Logo";[m
+ import TrustShield from "@/components/TrustShield";[m
+ import AdminFoundingAccessForm from "@/components/AdminFoundingAccessForm";[m
+[31m-import { auth, authPersistenceReady, db, isFirebaseClientConfigured } from "@/lib/firebase";[m
+[31m-import { formatBillingExpiry, hasActiveBillingAccess } from "@/lib/billingAccess";[m
+[32m+[m[32mimport { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";[m
+ import { trackEvent } from "@/lib/analytics/track";[m
+ [m
+ const ACCOUNT_DIALOGS = {[m
+[36m@@ -79,14 +77,23 @@[m [mexport default function AccountPage() {[m
+   }, []);[m
+ [m
+   useEffect(() => {[m
+[31m-    if (!user || !db) {[m
+[32m+[m[32m    if (!user) {[m
+       setBilling(null);[m
+       return undefined;[m
+     }[m
+ [m
+[31m-    return onSnapshot(doc(db, "users", user.uid, "settings", "billing"), (snapshot) => {[m
+[31m-      setBilling(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);[m
+[32m+[m[32m    let cancelled = false;[m
+[32m+[m[32m    user.getIdToken().then((idToken) => fetch("/api/account", {[m
+[32m+[m[32m      headers: { Authorization: `Bearer ${idToken}` },[m
+[32m+[m[32m    })).then(async (response) => {[m
+[32m+[m[32m      const payload = await response.json().catch(() => ({}));[m
+[32m+[m[32m      if (!response.ok) throw new Error(payload?.error || "Could not load billing access.");[m
+[32m+[m[32m      if (!cancelled) setBilling(payload.billing || null);[m
+[32m+[m[32m    }).catch((error) => {[m
+[32m+[m[32m      if (!cancelled) setFeedback({ type: "error", message: error.message });[m
+     });[m
+[32m+[m
+[32m+[m[32m    return () => { cancelled = true; };[m
+   }, [user]);[m
+ [m
+   useEffect(() => {[m
+[36m@@ -145,14 +152,14 @@[m [mexport default function AccountPage() {[m
+     if (user.isAnonymous) return "Guest session";[m
+     return user.email || user.displayName || "Signed in";[m
+   }, [user]);[m
+[31m-  const billingStatusLabel = hasActiveBillingAccess(billing)[m
+[31m-    ? `Active through ${formatBillingExpiry(billing)}`[m
+[31m-    : "No active paid access";[m
+[31m-  const amountPaidLabel = Number.isFinite(Number(billing?.amountPaid))[m
+[32m+[m[32m  const billingStatusLabel = billing?.status === "active"[m
+[32m+[m[32m    ? `Access active through ${formatDate(billing.accessExpiresAt)}`[m
+[32m+[m[32m    : billing?.status === "none" ? "No access recorded" : `Access ${billing?.status || "unavailable"}`;[m
+[32m+[m[32m  const amountPaidLabel = Number.isFinite(Number(billing?.amountPaidMinor))[m
+     ? new Intl.NumberFormat("en-GB", {[m
+         style: "currency",[m
+         currency: String(billing?.currency || "gbp").toUpperCase(),[m
+[31m-      }).format(Number(billing.amountPaid) / 100)[m
+[32m+[m[32m      }).format(Number(billing.amountPaidMinor) / 100)[m
+     : "No payment recorded";[m
+ [m
+   async function handleExportData() {[m
+[36m@@ -358,19 +365,19 @@[m [mexport default function AccountPage() {[m
+             <div className="account-row">[m
+               <div>[m
+                 <strong>Plan</strong>[m
+[31m-                <span>{billing?.plan || "No plan recorded"}</span>[m
+[32m+[m[32m                <span>{billing?.planName || "No plan recorded"}</span>[m
+               </div>[m
+             </div>[m
+             <div className="account-row">[m
+               <div>[m
+[31m-                <strong>Paid access</strong>[m
+[31m-                <span>{billing?.paid ? "Yes" : "No"}</span>[m
+[32m+[m[32m                <strong>Access</strong>[m
+[32m+[m[32m                <span>{friendlyStatus(billing?.status)}</span>[m
+               </div>[m
+             </div>[m
+             <div className="account-row">[m
+               <div>[m
+[31m-                <strong>Access expires</strong>[m
+[31m-                <span>{billing?.accessExpiresAt ? formatBillingExpiry(billing) : "No expiry set"}</span>[m
+[32m+[m[32m                <strong>Access type</strong>[m
+[32m+[m[32m                <span>{["promotional", "free"].includes(billing?.accessType) ? "Promotional access" : billing?.accessType === "paid" ? "Paid purchase" : "Not recorded"}</span>[m
+               </div>[m
+             </div>[m
+             <div className="account-row">[m
+[36m@@ -379,6 +386,23 @@[m [mexport default function AccountPage() {[m
+                 <span>{amountPaidLabel}</span>[m
+               </div>[m
+             </div>[m
+[32m+[m[32m            <div className="account-row">[m
+[32m+[m[32m              <div>[m
+[32m+[m[32m                <strong>Access started</strong>[m
+[32m+[m[32m                <span>{formatDate(billing?.accessStartsAt)}</span>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m            <div className="account-row">[m
+[32m+[m[32m              <div>[m
+[32m+[m[32m                <strong>Access expires</strong>[m
+[32m+[m[32m                <span>{formatDate(billing?.accessExpiresAt)}</span>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m            {billing?.promotionLabel ? ([m
+[32m+[m[32m              <div className="account-row"><div><strong>Promotion</strong><span>{billing.promotionLabel}</span></div></div>[m
+[32m+[m[32m            ) : null}[m
+[32m+[m[32m            <div className="account-row"><div><strong>Billing email</strong><span>{billing?.billingEmail || "Not recorded"}</span></div></div>[m
+[32m+[m[32m            <div className="account-row"><div><strong>Account email</strong><span>{billing?.accountEmail || user.email || "Not recorded"}</span></div></div>[m
+           </div>[m
+         </section>[m
+ [m
+[36m@@ -535,3 +559,14 @@[m [mexport default function AccountPage() {[m
+     </main>[m
+   );[m
+ }[m
+[32m+[m
+[32m+[m[32mfunction formatDate(value) {[m
+[32m+[m[32m  if (!value) return "Not recorded";[m
+[32m+[m[32m  const date = new Date(value);[m
+[32m+[m[32m  if (Number.isNaN(date.getTime())) return "Not recorded";[m
+[32m+[m[32m  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(date);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunction friendlyStatus(status) {[m
+[32m+[m[32m  return ({ active: "Active", expired: "Expired", refunded: "Refunded", revoked: "Revoked", pending_claim: "Awaiting account confirmation", none: "No access recorded" })[status] || "Not recorded";[m
+[32m+[m[32m}[m
+[1mdiff --git a/app/api/access/claim/route.js b/app/api/access/claim/route.js[m
+[1mindex bfdf832..047cbdb 100644[m
+[1m--- a/app/api/access/claim/route.js[m
+[1m+++ b/app/api/access/claim/route.js[m
+[36m@@ -47,6 +47,12 @@[m [mexport async function POST(request) {[m
+       }[m
+     }[m
+ [m
+[32m+[m[32m    if (decodedToken.email_verified !== true) {[m
+[32m+[m[32m      const error = new Error("Verify your email before claiming access.");[m
+[32m+[m[32m      error.code = "auth/email-not-verified";[m
+[32m+[m[32m      throw error;[m
+[32m+[m[32m    }[m
+[32m+[m
+     const result = await claimPendingEntitlement({[m
+       sessionId,[m
+       uid: decodedToken.uid,[m
+[36m@@ -93,7 +99,7 @@[m [mexport async function POST(request) {[m
+       return NextResponse.json({ error: error.message, code: error.code }, { status: 403 });[m
+     }[m
+ [m
+[31m-    if (error?.code === "auth/missing-id-token" || error?.code === "auth/invalid-id-token" || error?.code === "auth/anonymous-not-allowed") {[m
+[32m+[m[32m    if (error?.code === "auth/missing-id-token" || error?.code === "auth/invalid-id-token" || error?.code === "auth/anonymous-not-allowed" || error?.code === "auth/email-not-verified") {[m
+       return NextResponse.json({ error: error.message }, { status: 401 });[m
+     }[m
+ [m
+[1mdiff --git a/app/api/access/route.js b/app/api/access/route.js[m
+[1mindex aa2431a..a8a1711 100644[m
+[1m--- a/app/api/access/route.js[m
+[1m+++ b/app/api/access/route.js[m
+[36m@@ -1,6 +1,6 @@[m
+ import { NextResponse } from "next/server";[m
+[31m-import { getAccessExpiryDate } from "@/lib/billingAccess";[m
+[31m-import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";[m
+[32m+[m[32mimport { getAdminAuth } from "@/lib/firebaseAdmin";[m
+[32m+[m[32mimport { hasActiveEntitlement } from "@/lib/entitlementResolver.server";[m
+ [m
+ export const runtime = "nodejs";[m
+ [m
+[36m@@ -10,52 +10,14 @@[m [mexport async function GET(request) {[m
+   try {[m
+     const decodedToken = await verifyIdTokenFromRequest(request);[m
+     const uid = String(decodedToken.uid || "").trim();[m
+[31m-    const userDocPath = `users/${uid}`;[m
+[31m-[m
+[31m-    console.info("[access-check] uid verified", { uid });[m
+[31m-    console.info("[access-check] reading user access doc", { path: userDocPath });[m
+[31m-[m
+[31m-    const snapshot = await getAdminDb().collection("users").doc(uid).get();[m
+[31m-[m
+[31m-    if (!snapshot.exists) {[m
+[31m-      console.info("[access-check] user access doc not found", {[m
+[31m-        path: userDocPath,[m
+[31m-        accessActive: false,[m
+[31m-      });[m
+[31m-[m
+[31m-      return NextResponse.json({[m
+[31m-        ok: true,[m
+[31m-        state: "access_missing",[m
+[31m-        accessActive: false,[m
+[31m-      });[m
+[31m-    }[m
+[31m-[m
+[31m-    const accessRecord = snapshot.data() || {};[m
+[31m-    const rawAccessUntil = accessRecord.accessUntil ?? null;[m
+[31m-    const parsedAccessUntil = getAccessExpiryDate(accessRecord);[m
+[31m-    const accessActive = Boolean(parsedAccessUntil && parsedAccessUntil.getTime() > Date.now());[m
+[31m-    const state = accessActive[m
+[31m-      ? "access_active"[m
+[31m-      : parsedAccessUntil[m
+[31m-        ? "access_expired"[m
+[31m-        : "access_missing";[m
+[31m-[m
+[31m-    console.info("[access-check] user access doc found", {[m
+[31m-      path: userDocPath,[m
+[31m-      accessStatus: accessRecord.accessStatus || null,[m
+[31m-      accessUntilRaw: rawAccessUntil,[m
+[31m-      accessUntilParsed: parsedAccessUntil ? parsedAccessUntil.toISOString() : null,[m
+[31m-      accessActive,[m
+[31m-      state,[m
+[31m-    });[m
+[32m+[m[32m    const { accessActive, state, entitlement } = await hasActiveEntitlement(uid);[m
+ [m
+     return NextResponse.json({[m
+       ok: true,[m
+       state,[m
+       accessActive,[m
+[31m-      accessStatus: accessRecord.accessStatus || null,[m
+[31m-      accessUntil: parsedAccessUntil ? parsedAccessUntil.toISOString() : null,[m
+[31m-      stripeCheckoutSessionId: accessRecord.stripeCheckoutSessionId || null,[m
+[32m+[m[32m      accessStatus: entitlement.status,[m
+[32m+[m[32m      accessUntil: entitlement.accessExpiresAt,[m
+     });[m
+   } catch (error) {[m
+     if (error?.code === "auth/missing-id-token" || error?.code === "auth/invalid-id-token") {[m
+[1mdiff --git a/app/api/account/route.js b/app/api/account/route.js[m
+[1mindex 15692df..9648d47 100644[m
+[1m--- a/app/api/account/route.js[m
+[1m+++ b/app/api/account/route.js[m
+[36m@@ -2,9 +2,26 @@[m [mimport { NextResponse } from "next/server";[m
+ import { deleteUserAccount, deleteUserData, exportUserData, resetUserData } from "@/lib/accountData";[m
+ import { getAdminAuth } from "@/lib/firebaseAdmin";[m
+ import { logSecurityEvent, SECURITY_ACTIONS } from "@/lib/security/auditLog";[m
+[32m+[m[32mimport { resolveEntitlementForUid } from "@/lib/entitlementResolver.server";[m
+ [m
+ export const runtime = "nodejs";[m
+ [m
+[32m+[m[32mexport async function GET(request) {[m
+[32m+[m[32m  try {[m
+[32m+[m[32m    const decodedToken = await verifyAccountRequest(request);[m
+[32m+[m[32m    const resolved = await resolveEntitlementForUid(decodedToken.uid, {[m
+[32m+[m[32m      accountEmail: decodedToken.email || null,[m
+[32m+[m[32m    });[m
+[32m+[m[32m    return NextResponse.json({ ok: true, billing: resolved.response });[m
+[32m+[m[32m  } catch (error) {[m
+[32m+[m[32m    if (error?.code?.startsWith("auth/")) {[m
+[32m+[m[32m      return NextResponse.json({ ok: false, error: "Please sign in again." }, { status: 401 });[m
+[32m+[m[32m    }[m
+[32m+[m[32m    console.error("[account] billing read failed", error);[m
+[32m+[m[32m    return NextResponse.json({ ok: false, error: "Could not load billing access." }, { status: 500 });[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m
+ export async function POST(request) {[m
+   try {[m
+     const decodedToken = await verifyAccountRequest(request);[m
+[1mdiff --git a/app/api/stripe/checkout/route.js b/app/api/stripe/checkout/route.js[m
+[1mindex dffa0f4..6fc0e3d 100644[m
+[1m--- a/app/api/stripe/checkout/route.js[m
+[1m+++ b/app/api/stripe/checkout/route.js[m
+[36m@@ -44,8 +44,12 @@[m [mexport async function POST(request) {[m
+           ],[m
+       metadata: {[m
+         userId: decodedToken.uid,[m
+[32m+[m[32m        firebase_uid: decodedToken.uid,[m
+         userEmail: decodedToken.email || "",[m
+         plan: FOUNDING_PLAN,[m
+[32m+[m[32m        planKey: "founding_member",[m
+[32m+[m[32m        accessDurationDays: "90",[m
+[32m+[m[32m        offer: "founding_member_2026",[m
+         gaClientId: sanitizeClientId(body?.gaClientId),[m
+       },[m
+     });[m
+[1mdiff --git a/app/api/stripe/public-checkout/route.js b/app/api/stripe/public-checkout/route.js[m
+[1mindex d60c78a..f984a63 100644[m
+[1m--- a/app/api/stripe/public-checkout/route.js[m
+[1m+++ b/app/api/stripe/public-checkout/route.js[m
+[36m@@ -53,6 +53,9 @@[m [mexport async function POST(request) {[m
+           ],[m
+       metadata: {[m
+         plan: FOUNDING_PLAN,[m
+[32m+[m[32m        planKey: "founding_member",[m
+[32m+[m[32m        accessDurationDays: "90",[m
+[32m+[m[32m        offer: "founding_member_2026",[m
+         flow: "public",[m
+         gaClientId: sanitizeClientId(body?.gaClientId),[m
+       },[m
+[1mdiff --git a/app/api/stripe/webhook/route.js b/app/api/stripe/webhook/route.js[m
+[1mindex 8f7f4ee..4ec7427 100644[m
+[1m--- a/app/api/stripe/webhook/route.js[m
+[1m+++ b/app/api/stripe/webhook/route.js[m
+[36m@@ -1,7 +1,6 @@[m
+ import { NextResponse } from "next/server";[m
+[31m-import { grantFoundingAccessFromCheckoutSession } from "@/lib/billingAccess.server";[m
+[31m-import { createPendingEntitlementFromCheckoutSession, getExpandedCheckoutSession } from "@/lib/entitlements.server";[m
+[31m-import { getAdminDb, getFirebaseProjectId } from "@/lib/firebaseAdmin";[m
+[32m+[m[32mimport { claimPendingEntitlement, createPendingEntitlementFromCheckoutSession, getExpandedCheckoutSession } from "@/lib/entitlements.server";[m
+[32m+[m[32mimport { getAdminAuth, getAdminDb, getFirebaseProjectId } from "@/lib/firebaseAdmin";[m
+ import { getStripeServerClient } from "@/lib/stripe";[m
+ import { recordAnalyticsEvent } from "@/lib/customerProfile.server";[m
+ [m
+[36m@@ -10,99 +9,77 @@[m [mexport const runtime = "nodejs";[m
+ export async function POST(request) {[m
+   const signature = request.headers.get("stripe-signature");[m
+   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;[m
+[31m-[m
+   if (!signature || !webhookSecret) {[m
+[31m-    return NextResponse.json([m
+[31m-      { error: "Stripe webhook secret is not configured." },[m
+[31m-      { status: 400 },[m
+[31m-    );[m
+[32m+[m[32m    return NextResponse.json({ error: "Stripe webhook secret is not configured." }, { status: 400 });[m
+   }[m
+ [m
+   let payload = "";[m
+[31m-[m
+   try {[m
+     payload = await request.text();[m
+     const event = getStripeServerClient().webhooks.constructEvent(payload, signature, webhookSecret);[m
+ [m
+     if (event.type === "checkout.session.completed") {[m
+       const rawSession = event.data.object;[m
+[32m+[m[32m      const session = await getExpandedCheckoutSession(rawSession.id);[m
+[32m+[m[32m      const created = await createPendingEntitlementFromCheckoutSession(session, { webhookEventId: event.id });[m
+[32m+[m[32m      const trustedUid = String(session.metadata?.firebase_uid || session.metadata?.userId || session.client_reference_id || "").trim();[m
+[32m+[m
+[32m+[m[32m      if (trustedUid) {[m
+[32m+[m[32m        const firebaseUser = await getAdminAuth().getUser(trustedUid);[m
+[32m+[m[32m        const checkoutEmail = String(session.customer_details?.email || session.customer_email || "").trim().toLowerCase();[m
+[32m+[m[32m        const firebaseEmail = String(firebaseUser.email || "").trim().toLowerCase();[m
+[32m+[m[32m        if (!firebaseUser.emailVerified || !firebaseEmail || firebaseEmail !== checkoutEmail) {[m
+[32m+[m[32m          throw new Error("Signed-in checkout identity could not be verified against the Stripe checkout email.");[m
+[32m+[m[32m        }[m
+[32m+[m[32m        await claimPendingEntitlement({ sessionId: session.id, uid: trustedUid, verifiedEmail: firebaseEmail });[m
+[32m+[m[32m      }[m
+ [m
+[31m-      if (rawSession.metadata?.userId) {[m
+[31m-        // Legacy flow: session was created by an authenticated checkout, so[m
+[31m-        // it already carries a Firebase uid. Untouched code path.[m
+[31m-        const record = await grantFoundingAccessFromCheckoutSession(rawSession, {[m
+[31m-          stripeEventId: event.id,[m
+[32m+[m[32m      if (created?.isNewSession) {[m
+[32m+[m[32m        await recordAnalyticsEvent({ eventName: "checkout_completed", uid: trustedUid || null }).catch((error) => {[m
+[32m+[m[32m          console.error("[stripe-webhook] failed to record checkout_completed analytics event", error);[m
+         });[m
+[31m-[m
+[31m-        // Retries replay the same event id — only fire the funnel event once.[m
+[31m-        if (record?.isNewStripeEvent) {[m
+[31m-          await recordAnalyticsEvent({[m
+[31m-            eventName: "checkout_completed",[m
+[31m-            uid: record.uid || null,[m
+[31m-            anonymousSessionId: record.customerAttribution?.anonymousSessionId || null,[m
+[31m-            utm_source: record.customerAttribution?.utm_source || null,[m
+[31m-            utm_medium: record.customerAttribution?.utm_medium || null,[m
+[31m-            utm_campaign: record.customerAttribution?.utm_campaign || null,[m
+[31m-          }).catch((analyticsError) => {[m
+[31m-            console.error("[stripe-webhook] failed to record checkout_completed analytics event", analyticsError);[m
+[31m-          });[m
+[31m-        }[m
+[31m-      } else {[m
+[31m-        // New flow: no Firebase uid yet — re-retrieve with discounts expanded[m
+[31m-        // (see getExpandedCheckoutSession) and fulfil against a pending[m
+[31m-        // entitlement instead of a user record.[m
+[31m-        const expandedSession = await getExpandedCheckoutSession(rawSession.id);[m
+[31m-        await createPendingEntitlementFromCheckoutSession(expandedSession);[m
+       }[m
+     }[m
+ [m
+[31m-    // Inert until a mode:"subscription" Checkout Session exists — no[m
+[31m-    // subscription product is created by this app today. Kept as a[m
+[31m-    // future-proofed hook so subscriptionStatus/MRR can populate later[m
+[31m-    // without another webhook migration.[m
+[31m-    if (event.type === "customer.subscription.created" || event.type === "customer.subscription.deleted") {[m
+[32m+[m[32m    if (["customer.subscription.created", "customer.subscription.deleted"].includes(event.type)) {[m
+       await handleSubscriptionEvent(event);[m
+     }[m
+ [m
+[32m+[m[32m    if (["charge.refunded", "payment_intent.payment_failed"].includes(event.type)) {[m
+[32m+[m[32m      await handlePaymentStateEvent(event);[m
+[32m+[m[32m    }[m
+[32m+[m
+     return NextResponse.json({ received: true });[m
+   } catch (error) {[m
+[31m-    console.error("[stripe-webhook] checkout handling failed", {[m
+[31m-      firebaseProjectId: getFirebaseProjectId(),[m
+[31m-    }, error);[m
+[31m-[m
+[31m-    return NextResponse.json([m
+[31m-      { error: error?.message || "Stripe webhook handling failed." },[m
+[31m-      { status: payload ? 500 : 400 },[m
+[31m-    );[m
+[32m+[m[32m    console.error("[stripe-webhook] handling failed", { firebaseProjectId: getFirebaseProjectId() }, error);[m
+[32m+[m[32m    return NextResponse.json({ error: error?.message || "Stripe webhook handling failed." }, { status: payload ? 500 : 400 });[m
+   }[m
+ }[m
+ [m
+[32m+[m[32masync function handlePaymentStateEvent(event) {[m
+[32m+[m[32m  const object = event.data.object;[m
+[32m+[m[32m  const paymentIntentId = String(object?.payment_intent || object?.id || "").trim();[m
+[32m+[m[32m  if (!paymentIntentId) return;[m
+[32m+[m[32m  const matches = await getAdminDb().collection("pendingEntitlements").where("stripePaymentIntentId", "==", paymentIntentId).limit(10).get();[m
+[32m+[m[32m  const status = event.type === "charge.refunded" ? "refunded" : "revoked";[m
+[32m+[m[32m  const batch = getAdminDb().batch();[m
+[32m+[m[32m  for (const doc of matches.docs) batch.set(doc.ref, { status, webhookEventId: event.id, updatedAt: new Date() }, { merge: true });[m
+[32m+[m[32m  await batch.commit();[m
+[32m+[m[32m}[m
+[32m+[m
+ async function handleSubscriptionEvent(event) {[m
+   const subscription = event.data.object;[m
+   const stripeCustomerId = String(subscription?.customer || "").trim();[m
+[31m-[m
+[31m-  if (!stripeCustomerId) {[m
+[31m-    return;[m
+[31m-  }[m
+[31m-[m
+[31m-  const db = getAdminDb();[m
+[31m-  const matches = await db.collection("customers").where("stripeCustomerId", "==", stripeCustomerId).limit(1).get();[m
+[31m-[m
+[31m-  if (matches.empty) {[m
+[31m-    return;[m
+[31m-  }[m
+[31m-[m
+[32m+[m[32m  if (!stripeCustomerId) return;[m
+[32m+[m[32m  const matches = await getAdminDb().collection("customers").where("stripeCustomerId", "==", stripeCustomerId).limit(1).get();[m
+[32m+[m[32m  if (matches.empty) return;[m
+   const customerDoc = matches.docs[0];[m
+   const subscriptionStatus = event.type === "customer.subscription.created"[m
+     ? (subscription.status === "trialing" ? "trialing" : "active")[m
+     : "canceled";[m
+[31m-[m
+   await customerDoc.ref.set({ subscriptionStatus }, { merge: true });[m
+[31m-[m
+   await recordAnalyticsEvent({[m
+     eventName: event.type === "customer.subscription.created" ? "subscription_created" : "subscription_cancelled",[m
+     uid: customerDoc.id,[m
+[31m-  }).catch((analyticsError) => {[m
+[31m-    console.error("[stripe-webhook] failed to record subscription analytics event", analyticsError);[m
+[31m-  });[m
+[32m+[m[32m  }).catch((error) => console.error("[stripe-webhook] subscription analytics failed", error));[m
+ }[m
+[1mdiff --git a/app/dashboard/components/LargeCostForm.jsx b/app/dashboard/components/LargeCostForm.jsx[m
+[1mindex 63d7ae0..61201c3 100644[m
+[1m--- a/app/dashboard/components/LargeCostForm.jsx[m
+[1m+++ b/app/dashboard/components/LargeCostForm.jsx[m
+[36m@@ -186,7 +186,7 @@[m [mexport default function LargeCostForm({[m
+     currentBalanceContribution: "0",[m
+     savingsContribution: "0",[m
+   });[m
+[31m-  const [confirmationCostId, setConfirmationCostId] = useState("");[m
+[32m+[m[32m  const [editFocusTarget, setEditFocusTarget] = useState("name");[m
+   const wrapperRef = useRef(null);[m
+   const formRef = useRef(null);[m
+ [m
+[36m@@ -206,7 +206,6 @@[m [mexport default function LargeCostForm({[m
+   }), [editingOriginalSavings, form.dueDate, planningContext, todayIso]);[m
+   const formFundingFields = fundingFieldsForForm(form, formAmount);[m
+   const formAllocationValid = validateFunding(formFundingFields, formAmount, formLimits);[m
+[31m-  const confirmationCost = costsWithStatus.find((cost) => cost.id === confirmationCostId);[m
+ [m
+   useEffect(() => {[m
+     function handleFocusRequest(event) {[m
+[36m@@ -224,12 +223,21 @@[m [mexport default function LargeCostForm({[m
+ [m
+   useEffect(() => {[m
+     if (!showForm || !editingId) return;[m
+[32m+[m[32m    const previousOverflow = document.body.style.overflow;[m
+[32m+[m[32m    document.body.style.overflow = "hidden";[m
+     const frame = window.requestAnimationFrame(() => {[m
+[31m-      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });[m
+[31m-      formRef.current?.querySelector("input")?.focus({ preventScroll: true });[m
+[32m+[m[32m      formRef.current?.querySelector(`#large-cost-${editFocusTarget}`)?.focus({ preventScroll: true });[m
+     });[m
+[31m-    return () => window.cancelAnimationFrame(frame);[m
+[31m-  }, [editingId, showForm]);[m
+[32m+[m[32m    function handleEscape(event) {[m
+[32m+[m[32m      if (event.key === "Escape") resetForm();[m
+[32m+[m[32m    }[m
+[32m+[m[32m    window.addEventListener("keydown", handleEscape);[m
+[32m+[m[32m    return () => {[m
+[32m+[m[32m      window.cancelAnimationFrame(frame);[m
+[32m+[m[32m      window.removeEventListener("keydown", handleEscape);[m
+[32m+[m[32m      document.body.style.overflow = previousOverflow;[m
+[32m+[m[32m    };[m
+[32m+[m[32m  }, [editFocusTarget, editingId, showForm]);[m
+ [m
+   function resetForm() {[m
+     setForm(EMPTY_FORM);[m
+[36m@@ -242,15 +250,17 @@[m [mexport default function LargeCostForm({[m
+     closeFundingEditor();[m
+     setError("");[m
+     setEditingId("");[m
+[32m+[m[32m    setEditFocusTarget("name");[m
+     setForm({ ...EMPTY_FORM, dueDate: todayIso });[m
+     setShowForm(true);[m
+   }[m
+ [m
+[31m-  function startEdit(cost) {[m
+[32m+[m[32m  function startEdit(cost, focusTarget = "amount") {[m
+     const contributions = resolveLargeCostContributions(cost);[m
+     closeFundingEditor();[m
+     setError("");[m
+     setEditingId(cost.id);[m
+[32m+[m[32m    setEditFocusTarget(focusTarget);[m
+     setForm({[m
+       name: cost.name || "",[m
+       amount: cost.amount?.toString() || "",[m
+[36m@@ -318,7 +328,6 @@[m [mexport default function LargeCostForm({[m
+ [m
+         return [...current, savedCost];[m
+       });[m
+[31m-      if (!editingId && resolvedCostId) setConfirmationCostId(resolvedCostId);[m
+       onNotice?.(editingId ? "Large cost updated." : "Large cost added.");[m
+       resetForm();[m
+     } catch (saveError) {[m
+[36m@@ -450,6 +459,23 @@[m [mexport default function LargeCostForm({[m
+       ) : null}[m
+ [m
+       {showForm ? ([m
+[32m+[m[32m        <div[m
+[32m+[m[32m          className={editingId ? "large-cost-modal-backdrop" : undefined}[m
+[32m+[m[32m          role={editingId ? "dialog" : undefined}[m
+[32m+[m[32m          aria-modal={editingId ? "true" : undefined}[m
+[32m+[m[32m          aria-labelledby={editingId ? "large-cost-edit-title" : undefined}[m
+[32m+[m[32m          onMouseDown={editingId ? (event) => { if (event.target === event.currentTarget) resetForm(); } : undefined}[m
+[32m+[m[32m        >[m
+[32m+[m[32m          <div className={editingId ? "large-cost-modal-panel" : undefined}>[m
+[32m+[m[32m            {editingId ? ([m
+[32m+[m[32m              <div className="large-cost-modal-head">[m
+[32m+[m[32m                <div>[m
+[32m+[m[32m                  <h3 id="large-cost-edit-title">Edit {form.name}</h3>[m
+[32m+[m[32m                  <p className="helper-text">Update the cost or due date, then save to recalculate the plan.</p>[m
+[32m+[m[32m                </div>[m
+[32m+[m[32m                <button className="secondary-button small-button" type="button" onClick={resetForm}>Close</button>[m
+[32m+[m[32m              </div>[m
+[32m+[m[32m            ) : null}[m
+         <form ref={formRef} className="edit-form large-cost-form forecast-inline-form" onSubmit={handleSave}>[m
+           <label className="field-label" htmlFor="large-cost-name">Name</label>[m
+           <input[m
+[36m@@ -473,6 +499,8 @@[m [mexport default function LargeCostForm({[m
+             value={form.dueDate}[m
+             onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}[m
+           />[m
+[32m+[m[32m          {!editingId ? ([m
+[32m+[m[32m            <>[m
+           <label className="field-label" htmlFor="large-cost-frequency">Frequency</label>[m
+           <select[m
+             id="large-cost-frequency"[m
+[36m@@ -521,19 +549,17 @@[m [mexport default function LargeCostForm({[m
+               />[m
+             ) : null}[m
+           </div>[m
+[32m+[m[32m            </>[m
+[32m+[m[32m          ) : null}[m
+           <div className="edit-actions">[m
+             <button className="primary-button small-button" type="submit" disabled={saving || !formAllocationValid}>[m
+               {saving ? "Saving..." : editingId ? "Save changes" : "Add cost"}[m
+             </button>[m
+[32m+[m[32m            {editingId ? <button className="secondary-button small-button" type="button" onClick={resetForm}>Cancel</button> : null}[m
+           </div>[m
+           {error ? <p className="error">{error}</p> : null}[m
+         </form>[m
+[31m-      ) : null}[m
+[31m-[m
+[31m-      {confirmationCost?.affordabilityPlan ? ([m
+[31m-        <div className="large-cost-confirmation" aria-live="polite">[m
+[31m-          <strong>{confirmationCost.name} was added.</strong>[m
+[31m-          <AffordabilityPlan plan={confirmationCost.affordabilityPlan} displayCurrency={displayCurrency} enableAi />[m
+[32m+[m[32m          </div>[m
+         </div>[m
+       ) : null}[m
+ [m
+[36m@@ -566,9 +592,8 @@[m [mexport default function LargeCostForm({[m
+                     displayCurrency={displayCurrency}[m
+                     onAction={(action) => {[m
+                       if (action === "Use more savings") openFundingEditor(cost);[m
+[31m-                      else if (action === "Review bills") window.dispatchEvent(new CustomEvent("ct:focus-quick-action", { detail: { target: "bills" } }));[m
+[31m-                      else if (action === "Review other Large Costs") wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });[m
+[31m-                      else startEdit(cost);[m
+[32m+[m[32m                      else if (action === "Reduce the cost") startEdit(cost, "amount");[m
+[32m+[m[32m                      else if (action === "Change the due date") startEdit(cost, "due-date");[m
+                     }}[m
+                   />[m
+                   <div className="forecast-cost-actions">[m
+[36m@@ -576,7 +601,7 @@[m [mexport default function LargeCostForm({[m
+                       {primaryLabel}[m
+                     </button>[m
+                     <div className="forecast-secondary-actions">[m
+[31m-                      <button className="bill-action-button bill-action-edit" type="button" onClick={() => startEdit(cost)}>[m
+[32m+[m[32m                      <button className="bill-action-button bill-action-edit" type="button" onClick={() => startEdit(cost, "amount")}>[m
+                         Edit cost or date[m
+                       </button>[m
+                       <button className="bill-action-button bill-action-remove" type="button" onClick={() => handleDelete(cost.id)}>[m
+[1mdiff --git a/app/globals.css b/app/globals.css[m
+[1mindex 2e27686..ac9bd2f 100644[m
+[1m--- a/app/globals.css[m
+[1m+++ b/app/globals.css[m
+[36m@@ -1661,6 +1661,66 @@[m [mh1 {[m
+   margin-top: 14px;[m
+ }[m
+ [m
+[32m+[m[32m.large-cost-modal-backdrop {[m
+[32m+[m[32m  position: fixed;[m
+[32m+[m[32m  inset: 0;[m
+[32m+[m[32m  z-index: 1200;[m
+[32m+[m[32m  display: flex;[m
+[32m+[m[32m  align-items: center;[m
+[32m+[m[32m  justify-content: center;[m
+[32m+[m[32m  padding: 24px;[m
+[32m+[m[32m  overflow: auto;[m
+[32m+[m[32m  background: rgba(20, 31, 28, 0.48);[m
+[32m+[m[32m  backdrop-filter: blur(3px);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m.large-cost-modal-panel {[m
+[32m+[m[32m  width: min(100%, 620px);[m
+[32m+[m[32m  max-height: min(90vh, 760px);[m
+[32m+[m[32m  overflow: auto;[m
+[32m+[m[32m  padding: 20px;[m
+[32m+[m[32m  border: 1px solid rgba(221, 213, 200, 0.96);[m
+[32m+[m[32m  border-radius: 16px;[m
+[32m+[m[32m  background: var(--paper, #fffdf8);[m
+[32m+[m[32m  box-shadow: 0 24px 70px rgba(20, 31, 28, 0.22);[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m.large-cost-modal-head {[m
+[32m+[m[32m  display: flex;[m
+[32m+[m[32m  align-items: flex-start;[m
+[32m+[m[32m  justify-content: space-between;[m
+[32m+[m[32m  gap: 16px;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m.large-cost-modal-head h3,[m
+[32m+[m[32m.large-cost-modal-head p {[m
+[32m+[m[32m  margin: 0;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m.large-cost-modal-head p {[m
+[32m+[m[32m  margin-top: 4px;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m.large-cost-modal-panel .large-cost-form {[m
+[32m+[m[32m  margin-top: 16px;[m
+[32m+[m[32m  padding: 0;[m
+[32m+[m[32m  border: 0;[m
+[32m+[m[32m  background: transparent;[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m@media (max-width: 640px) {[m
+[32m+[m[32m  .large-cost-modal-backdrop {[m
+[32m+[m[32m    align-items: flex-end;[m
+[32m+[m[32m    padding: 12px;[m
+[32m+[m[32m  }[m
+[32m+[m
+[32m+[m[32m  .large-cost-modal-panel {[m
+[32m+[m[32m    max-height: 92dvh;[m
+[32m+[m[32m    padding: 16px;[m
+[32m+[m[32m    border-radius: 16px 16px 10px 10px;[m
+[32m+[m[32m  }[m
+[32m+[m[32m}[m
+[32m+[m
+ .large-cost-list {[m
+   display: grid;[m
+   gap: 10px;[m
+[1mdiff --git a/firestore.rules b/firestore.rules[m
+[1mindex 678ef55..2dbd33f 100644[m
+[1m--- a/firestore.rules[m
+[1m+++ b/firestore.rules[m
+[36m@@ -7,7 +7,18 @@[m [mservice cloud.firestore {[m
+     }[m
+ [m
+     match /users/{userId}/{document=**} {[m
+[31m-      allow read, write: if request.auth != null && request.auth.uid == userId;[m
+[32m+[m[32m      allow read: if request.auth != null && request.auth.uid == userId;[m
+[32m+[m[32m      allow write: if request.auth != null[m
+[32m+[m[32m        && request.auth.uid == userId[m
+[32m+[m[32m        && document != "settings/billing";[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    match /pendingEntitlements/{entitlementId} {[m
+[32m+[m[32m      allow read, write: if false;[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    match /stripeEvents/{eventId} {[m
+[32m+[m[32m      allow read, write: if false;[m
+     }[m
+   }[m
+ }[m
+[1mdiff --git a/lib/billingAccess.server.js b/lib/billingAccess.server.js[m
+[1mindex bc42473..ef5b0c8 100644[m
+[1m--- a/lib/billingAccess.server.js[m
+[1m+++ b/lib/billingAccess.server.js[m
+[36m@@ -254,12 +254,39 @@[m [mexport async function grantFoundingAccessByEmail(email) {[m
+ [m
+   const userRecord = await getAdminAuth().getUserByEmail(normalizedEmail);[m
+ [m
+[31m-  return grantFoundingAccessToUser({[m
+[32m+[m[32m  const record = await grantFoundingAccessToUser({[m
+     userId: userRecord.uid,[m
+     email: userRecord.email || normalizedEmail,[m
+     accessStartDate: new Date(),[m
+[31m-    accessSource: "admin_override",[m
+[32m+[m[32m    accessSource: "internal_promo",[m
+[32m+[m[32m    amountPaid: 0,[m
+   });[m
+[32m+[m
+[32m+[m[32m  const now = new Date();[m
+[32m+[m[32m  const expiresAt = addMonths(now, FOUNDING_ACCESS_MONTHS);[m
+[32m+[m[32m  await getAdminDb().collection("pendingEntitlements").doc(`internal_${userRecord.uid}`).set({[m
+[32m+[m[32m    uid: userRecord.uid,[m
+[32m+[m[32m    status: "active",[m
+[32m+[m[32m    planKey: "founding_member",[m
+[32m+[m[32m    planName: "Founding Member",[m
+[32m+[m[32m    accessSource: "internal_promo",[m
+[32m+[m[32m    paymentType: "free",[m
+[32m+[m[32m    amountPaidMinor: 0,[m
+[32m+[m[32m    currency: "gbp",[m
+[32m+[m[32m    accessStartsAt: now,[m
+[32m+[m[32m    accessExpiresAt: expiresAt,[m
+[32m+[m[32m    accessDurationDays: 90,[m
+[32m+[m[32m    stripeCustomerId: null,[m
+[32m+[m[32m    stripeCheckoutSessionId: null,[m
+[32m+[m[32m    checkoutEmail: normalizedEmail,[m
+[32m+[m[32m    claimedEmail: normalizedEmail,[m
+[32m+[m[32m    claimedAt: FieldValue.serverTimestamp(),[m
+[32m+[m[32m    promotionLabel: "Internal promotional access",[m
+[32m+[m[32m    updatedAt: FieldValue.serverTimestamp(),[m
+[32m+[m[32m    createdAt: FieldValue.serverTimestamp(),[m
+[32m+[m[32m  }, { merge: true });[m
+[32m+[m
+[32m+[m[32m  return record;[m
+ }[m
+ [m
+ export async function grantFoundingAccessFromCheckoutSession(session, { stripeEventId = null } = {}) {[m
+[1mdiff --git a/lib/email/accessLinkTemplate.js b/lib/email/accessLinkTemplate.js[m
+[1mindex 884a71d..35ee1a6 100644[m
+[1m--- a/lib/email/accessLinkTemplate.js[m
+[1m+++ b/lib/email/accessLinkTemplate.js[m
+[36m@@ -17,7 +17,8 @@[m [mconst DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {[m
+ });[m
+ [m
+ export function formatAccessExpiry(date) {[m
+[31m-  const resolved = date instanceof Date ? date : new Date(date);[m
+[32m+[m[32m  const resolved = date?.toDate ? date.toDate() : date instanceof Date ? date : new Date(date);[m
+[32m+[m[32m  if (Number.isNaN(resolved.getTime())) throw new Error("Invalid access expiry date.");[m
+   return DATE_FORMAT.format(resolved);[m
+ }[m
+ [m
+[1mdiff --git a/lib/entitlements.server.js b/lib/entitlements.server.js[m
+[1mindex e6be263..937df7e 100644[m
+[1m--- a/lib/entitlements.server.js[m
+[1m+++ b/lib/entitlements.server.js[m
+[36m@@ -47,11 +47,11 @@[m [mimport { getStripeServerClient } from "@/lib/stripe";[m
+  */[m
+ export async function getExpandedCheckoutSession(sessionId) {[m
+   return getStripeServerClient().checkout.sessions.retrieve(sessionId, {[m
+[31m-    expand: ["discounts.promotion_code"],[m
+[32m+[m[32m    expand: ["discounts.promotion_code", "line_items.data.price.product"],[m
+   });[m
+ }[m
+ [m
+[31m-const CLAIM_TOKEN_TTL_DAYS = 30;[m
+[32m+[m[32mconst CLAIM_TOKEN_TTL_HOURS = Math.max(1, Math.min(168, Number(process.env.ACCESS_CLAIM_TOKEN_TTL_HOURS) || 24));[m
+ [m
+ export class UnfulfillableSessionError extends Error {[m
+   constructor(sessionId, reason) {[m
+[36m@@ -159,13 +159,18 @@[m [mexport async function getCheckoutFulfillability(session) {[m
+  * caller (webhook / success page) can render from — never the raw claim[m
+  * token, which only ever exists in memory here and in the outbound email.[m
+  */[m
+[31m-export async function createPendingEntitlementFromCheckoutSession(session) {[m
+[32m+[m[32mexport async function createPendingEntitlementFromCheckoutSession(session, { webhookEventId = null } = {}) {[m
+   const sessionId = String(session?.id || "").trim();[m
+ [m
+   if (!sessionId) {[m
+     throw new Error("Missing Stripe Checkout session id.");[m
+   }[m
+ [m
+[32m+[m[32m  const planMetadata = String(session.metadata?.planKey || session.metadata?.plan || "").trim();[m
+[32m+[m[32m  if (!["founding_member", FOUNDING_PLAN].includes(planMetadata)) {[m
+[32m+[m[32m    throw new UnfulfillableSessionError(sessionId, "unapproved_plan");[m
+[32m+[m[32m  }[m
+[32m+[m
+   const { fulfillable, coupon, isQaPurchase, amountPaid, currency } = await getCheckoutFulfillability(session);[m
+ [m
+   if (!fulfillable) {[m
+[36m@@ -185,7 +190,7 @@[m [mexport async function createPendingEntitlementFromCheckoutSession(session) {[m
+   const activeTokenHash = hashClaimToken(claimToken);[m
+   const startedAt = new Date(session.created ? session.created * 1000 : Date.now());[m
+   const accessExpiresAt = addMonths(startedAt, FOUNDING_ACCESS_MONTHS);[m
+[31m-  const claimTokenExpiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);[m
+[32m+[m[32m  const claimTokenExpiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_HOURS * 60 * 60 * 1000);[m
+   const maskedEmail = maskEmail(email);[m
+ [m
+   const outcome = await db.runTransaction(async (transaction) => {[m
+[36m@@ -199,23 +204,49 @@[m [mexport async function createPendingEntitlementFromCheckoutSession(session) {[m
+       return { isNewSession: false, maskedEmail: existing?.maskedEmail || maskedEmail };[m
+     }[m
+ [m
+[32m+[m[32m    const promotionCode = Array.isArray(session.discounts)[m
+[32m+[m[32m      ? session.discounts.find((item) => item?.promotion_code)?.promotion_code[m
+[32m+[m[32m      : null;[m
+[32m+[m[32m    const promotionCodeId = typeof promotionCode === "string" ? promotionCode : promotionCode?.id || null;[m
+[32m+[m[32m    const couponId = typeof promotionCode === "object" ? promotionCode?.coupon?.id || promotionCode?.promotion?.coupon?.id || null : null;[m
+[32m+[m[32m    const price = session.line_items?.data?.[0]?.price || null;[m
+[32m+[m
+     transaction.set(entRef, {[m
+       emailEnc: encryptSensitiveValue(email, sessionId),[m
+       maskedEmail,[m
+[32m+[m[32m      checkoutEmail: email,[m
+       activeTokenHash,[m
+[32m+[m[32m      tokenUsedAt: null,[m
+[32m+[m[32m      uid: null,[m
+       stripeCheckoutSessionId: sessionId,[m
+       stripeCustomerId: session.customer ? String(session.customer) : null,[m
+[32m+[m[32m      stripePaymentIntentId: session.payment_intent ? String(session.payment_intent) : null,[m
+[32m+[m[32m      stripeSubscriptionId: session.subscription ? String(session.subscription) : null,[m
+[32m+[m[32m      stripeProductId: typeof price?.product === "string" ? price.product : price?.product?.id || null,[m
+[32m+[m[32m      stripePriceId: price?.id || null,[m
+[32m+[m[32m      stripePromotionCodeId: promotionCodeId,[m
+[32m+[m[32m      stripeCouponId: couponId,[m
+       amountPaid,[m
+[32m+[m[32m      amountPaidMinor: amountPaid,[m
+       currency,[m
+       coupon,[m
+[32m+[m[32m      promotionLabel: coupon,[m
+       isQaPurchase,[m
+       plan: FOUNDING_PLAN,[m
+[32m+[m[32m      planKey: "founding_member",[m
+[32m+[m[32m      planName: "Founding Member",[m
+[32m+[m[32m      accessSource: isQaPurchase ? "stripe_promotion" : "stripe_paid",[m
+[32m+[m[32m      paymentType: isQaPurchase ? "promotional" : "paid",[m
+       accessStartedAt: startedAt,[m
+[32m+[m[32m      accessStartsAt: startedAt,[m
+       accessExpiresAt,[m
+[32m+[m[32m      accessDurationDays: 90,[m
+       claimTokenExpiresAt,[m
+[31m-      status: "pending",[m
+[32m+[m[32m      status: "pending_claim",[m
+       claimedUid: null,[m
+[32m+[m[32m      claimedEmail: null,[m
+       claimedAt: null,[m
+[32m+[m[32m      webhookEventId,[m
+       emailOutbox: {[m
+         status: "queued",[m
+         attempts: [],[m
+[36m@@ -247,6 +278,7 @@[m [mexport async function createPendingEntitlementFromCheckoutSession(session) {[m
+ [m
+     transaction.set(evtRef, {[m
+       flow: "public",[m
+[32m+[m[32m      webhookEventId,[m
+       stripeCheckoutSessionId: sessionId,[m
+       coupon,[m
+       isQaPurchase,[m
+[36m@@ -356,7 +388,7 @@[m [masync function ensureEmailSent(sessionId) {[m
+   const snapshot = await entitlementRef(sessionId).get();[m
+   if (!snapshot.exists) return;[m
+   const data = snapshot.data();[m
+[31m-  if (data?.status !== "pending") return;[m
+[32m+[m[32m  if (!["pending", "pending_claim"].includes(data?.status)) return;[m
+   if (data?.emailOutbox?.status === "sent") return;[m
+   await resendAccessEmail({ sessionId });[m
+ }[m
+[36m@@ -398,13 +430,13 @@[m [masync function rotateClaimToken(sessionId) {[m
+ [m
+   const data = snapshot.data();[m
+ [m
+[31m-  if (data.status === "claimed") {[m
+[32m+[m[32m  if (data.status === "claimed" || data.status === "active") {[m
+     throw new EntitlementClaimedError();[m
+   }[m
+ [m
+   const claimToken = generateClaimToken();[m
+   const activeTokenHash = hashClaimToken(claimToken);[m
+[31m-  const claimTokenExpiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);[m
+[32m+[m[32m  const claimTokenExpiresAt = new Date(Date.now() + CLAIM_TOKEN_TTL_HOURS * 60 * 60 * 1000);[m
+ [m
+   await ref.set({[m
+     activeTokenHash,[m
+[36m@@ -457,8 +489,8 @@[m [mexport async function claimPendingEntitlement({ sessionId, uid, verifiedEmail })[m
+ [m
+     const entitlement = entSnapshot.data();[m
+ [m
+[31m-    if (entitlement.status === "claimed") {[m
+[31m-      if (entitlement.claimedUid === uid) {[m
+[32m+[m[32m    if (entitlement.status === "claimed" || entitlement.status === "active") {[m
+[32m+[m[32m      if ((entitlement.uid || entitlement.claimedUid) === uid) {[m
+         return { alreadyClaimed: true, entitlement };[m
+       }[m
+       throw new EntitlementClaimedError();[m
+[36m@@ -560,9 +592,13 @@[m [mexport async function claimPendingEntitlement({ sessionId, uid, verifiedEmail })[m
+     }[m
+ [m
+     transaction.set(ref, {[m
+[31m-      status: "claimed",[m
+[32m+[m[32m      status: "active",[m
+[32m+[m[32m      uid,[m
+       claimedUid: uid,[m
+[32m+[m[32m      claimedEmail: normalisedEmail,[m
+       claimedAt: FieldValue.serverTimestamp(),[m
+[32m+[m[32m      tokenUsedAt: FieldValue.serverTimestamp(),[m
+[32m+[m[32m      activeTokenHash: null,[m
+       updatedAt: FieldValue.serverTimestamp(),[m
+     }, { merge: true });[m
+ [m
+[1mdiff --git a/lib/largeCostPlanner.js b/lib/largeCostPlanner.js[m
+[1mindex bf889f6..755e131 100644[m
+[1m--- a/lib/largeCostPlanner.js[m
+[1m+++ b/lib/largeCostPlanner.js[m
+[36m@@ -448,7 +448,7 @@[m [mexport function calculateLargeCostAffordabilityPlans({[m
+       state,[m
+       periods: planPeriods,[m
+       actions: state === "unaffordable_by_due_date"[m
+[31m-        ? ["Use more savings", "Reduce the cost", "Change the due date", "Review other Large Costs", "Review bills"][m
+[32m+[m[32m        ? ["Use more savings", "Reduce the cost", "Change the due date"][m
+         : [],[m
+     };[m
+     plan.deterministicExplanation = buildDeterministicExplanation(plan);[m
+[1mdiff --git a/output/playwright/large-cost-card.png b/output/playwright/large-cost-card.png[m
+[1mindex 373d3a2..c61bef9 100644[m
+Binary files a/output/playwright/large-cost-card.png and b/output/playwright/large-cost-card.png differ
+[1mdiff --git a/output/playwright/large-cost-funding-editor.png b/output/playwright/large-cost-funding-editor.png[m
+[1mindex 04a9225..1d627b9 100644[m
+Binary files a/output/playwright/large-cost-funding-editor.png and b/output/playwright/large-cost-funding-editor.png differ
+[1mdiff --git a/tests/e2e/additional-income-dashboard.spec.js b/tests/e2e/additional-income-dashboard.spec.js[m
+[1mindex ccfd324..d16f255 100644[m
+[1m--- a/tests/e2e/additional-income-dashboard.spec.js[m
+[1m+++ b/tests/e2e/additional-income-dashboard.spec.js[m
+[36m@@ -69,7 +69,7 @@[m [mtest("secondary income updates safe daily, graph and Large Cost chronology witho[m
+   test.setTimeout(60000);[m
+   await signIn(page, user.uid);[m
+ [m
+[31m-  await expect(page.locator(".hero-daily")).toContainText("£10/day");[m
+[32m+[m[32m  await expect(page.locator(".hero-daily")).toContainText("£10");[m
+   await page.getByRole("button", { name: "Update pay or income" }).click();[m
+   const editor = page.getByTestId("additional-income-editor");[m
+   await expect(editor.getByRole("button", { name: "Other money coming in (optional)" })).toBeVisible();[m
+[36m@@ -83,7 +83,7 @@[m [mtest("secondary income updates safe daily, graph and Large Cost chronology witho[m
+   await editor.getByRole("button", { name: "Add payment" }).click();[m
+ [m
+   await expect(editor).toContainText("1 additional payment scheduled");[m
+[31m-  await expect(page.locator(".hero-daily")).toContainText("£20/day");[m
+[32m+[m[32m  await expect(page.locator(".hero-daily")).toContainText("£20");[m
+   await expect(page.getByTestId("forecast-income-notes")).toContainText("Freelance payment: +£100");[m
+   await page.locator(".balance-editor").getByRole("button", { name: "Close" }).click();[m
+ [m
+[36m@@ -110,7 +110,7 @@[m [mtest("secondary income updates safe daily, graph and Large Cost chronology witho[m
+   await reopenedEditor.getByRole("button", { name: "Save changes" }).click();[m
+ [m
+   await expect(card).toContainText("Not affordable by due date — short by £50");[m
+[31m-  await expect(page.locator(".hero-daily")).toContainText("£0/day");[m
+[32m+[m[32m  await expect(page.locator(".hero-daily")).toContainText("£0");[m
+   await page.reload();[m
+   await page.getByRole("button", { name: "Update pay or income" }).click();[m
+   const persistedEditor = page.getByTestId("additional-income-editor");[m
+[1mdiff --git a/tests/e2e/founding-checkout.spec.js b/tests/e2e/founding-checkout.spec.js[m
+[1mindex 09a01ae..3864fe5 100644[m
+[1m--- a/tests/e2e/founding-checkout.spec.js[m
+[1m+++ b/tests/e2e/founding-checkout.spec.js[m
+[36m@@ -45,7 +45,7 @@[m [mfunction fixtureSession(sessionId, overrides = {}) {[m
+     created: Math.floor(Date.now() / 1000),[m
+     customer: `cus_${sessionId}`,[m
+     customer_details: { email: `${sessionId}@cleartill.test` },[m
+[31m-    metadata: {},[m
+[32m+[m[32m    metadata: { planKey: "founding_member" },[m
+     discounts: [],[m
+     ...overrides,[m
+   };[m
+[36m@@ -82,7 +82,7 @@[m [mtest.describe("Phase A — fulfilment", () => {[m
+ [m
+       const entitlement = await getEntitlement(sessionId);[m
+       expect(entitlement).toBeTruthy();[m
+[31m-      expect(entitlement.status).toBe("pending");[m
+[32m+[m[32m      expect(entitlement.status).toBe("pending_claim");[m
+       expect(entitlement.isQaPurchase).toBe(false);[m
+ [m
+       const customer = await getCustomer(`pending_${sessionId}`);[m
+[36m@@ -214,7 +214,7 @@[m [mtest.describe("Phase B — claim", () => {[m
+         claimPendingEntitlement({ sessionId, uid: otherUid, verifiedEmail: otherEmail }),[m
+       ).rejects.toBeInstanceOf(EmailMismatchError);[m
+ [m
+[31m-      expect((await getEntitlement(sessionId)).status).toBe("pending");[m
+[32m+[m[32m      expect((await getEntitlement(sessionId)).status).toBe("pending_claim");[m
+     } finally {[m
+       await cleanupSession(sessionId);[m
+     }[m
+[36m@@ -284,6 +284,11 @@[m [mtest.describe("Phase B — claim", () => {[m
+ });[m
+ [m
+ test.describe("Browser journey", () => {[m
+[32m+[m[32m  test("account billing API rejects an unauthenticated request", async ({ request }) => {[m
+[32m+[m[32m    const response = await request.get("/api/account");[m
+[32m+[m[32m    expect(response.status()).toBe(401);[m
+[32m+[m[32m  });[m
+[32m+[m
+   test.skip([m
+     process.env.CHECKOUT_AUTH_REQUIRED !== "false",[m
+     "Requires CHECKOUT_AUTH_REQUIRED=false in .env.local to exercise the new checkout UI.",[m
+[36m@@ -324,7 +329,7 @@[m [mtest.describe("Browser journey", () => {[m
+       await page.waitForURL(/\/dashboard/, { timeout: 15000 });[m
+ [m
+       const entitlement = await getEntitlement(sessionId);[m
+[31m-      expect(entitlement.status).toBe("claimed");[m
+[32m+[m[32m      expect(entitlement.status).toBe("active");[m
+     } finally {[m
+       await cleanupSession(sessionId);[m
+     }[m
+[1mdiff --git a/tests/e2e/large-costs-dashboard.spec.js b/tests/e2e/large-costs-dashboard.spec.js[m
+[1mindex a49b8cd..39e1be9 100644[m
+[1m--- a/tests/e2e/large-costs-dashboard.spec.js[m
+[1m+++ b/tests/e2e/large-costs-dashboard.spec.js[m
+[36m@@ -137,6 +137,7 @@[m [mtest("split editor, persistence, due-date maths, hero and forecast update withou[m
+   await expect(card).toContainText("Before");[m
+   await expect(card).toContainText("£101");[m
+   await expect(card).toContainText("£299");[m
+[32m+[m[32m  await expect(section.getByTestId("affordability-plan")).toHaveCount(1);[m
+   await expect(section.getByTestId("large-cost-dashboard-summary")).toContainText("1 planned cost · £600 due next · £0 funding shortfall");[m
+   await card.screenshot({ path: "output/playwright/large-cost-card.png" });[m
+ [m
+[36m@@ -155,8 +156,9 @@[m [mtest("split editor, persistence, due-date maths, hero and forecast update withou[m
+   // Edit closes the funding disclosure, reveals the form and moves focus to it.[m
+   await reloadedCard.getByRole("button", { name: "Edit cost or date" }).click();[m
+   await expect(reloadedCard.getByTestId("funding-editor")).toHaveCount(0);[m
+[31m-  await expect(reloadedSection.locator(".large-cost-form")).toBeVisible();[m
+[31m-  await expect(reloadedSection.locator("#large-cost-name")).toBeFocused();[m
+[32m+[m[32m  await expect(page.getByRole("dialog", { name: "Edit Car insurance" })).toBeVisible();[m
+[32m+[m[32m  await expect(reloadedSection.locator("#large-cost-amount")).toBeFocused();[m
+[32m+[m[32m  await page.getByRole("dialog", { name: "Edit Car insurance" }).screenshot({ path: "output/playwright/large-cost-edit-modal.png" });[m
+ [m
+   // Moving the due date into another pay cycle recalculates immediately.[m
+   await reloadedSection.locator("#large-cost-due-date").fill(laterDueDateIso);[m
+[36m@@ -171,17 +173,18 @@[m [mtest("split editor, persistence, due-date maths, hero and forecast update withou[m
+   await reloadedSection.locator("#large-cost-due-date").fill(dueDateIso);[m
+   await reloadedSection.getByRole("button", { name: "Save changes" }).click();[m
+   await expect(reloadedCard).toContainText("Affordable by due date");[m
+[31m-  await expect(page.locator(".hero-daily")).toContainText("£3.90/day");[m
+[31m-  await expect(page.getByTestId("weekly-outflow").filter({ hasText: "-£101" })).toHaveCount(1);[m
+[31m-  await expect(page.getByTestId("weekly-outflow").filter({ hasText: "-£299" })).toHaveCount(1);[m
+[32m+[m[32m  await expect(page.locator(".hero-daily")).toContainText("£3.90");[m
+[32m+[m[32m  const weeklyLargeCostAllocations = page.locator('[data-testid^="weekly-large-costs-"]');[m
+[32m+[m[32m  await expect(weeklyLargeCostAllocations.filter({ hasText: "£101" })).toHaveCount(1);[m
+[32m+[m[32m  await expect(weeklyLargeCostAllocations.filter({ hasText: "£299" })).toHaveCount(1);[m
+ [m
+   await reloadedCard.getByRole("button", { name: "Change funding" }).click();[m
+   await reloadedCard.getByTestId("funding-editor").getByRole("button", { name: "Savings", exact: true }).click();[m
+   await reloadedCard.getByTestId("funding-editor").getByRole("button", { name: "Save" }).click();[m
+   await expect(reloadedCard.getByTestId("funding-editor")).toHaveCount(0);[m
+   await expect(reloadedCard).toContainText("Affordable now");[m
+[31m-  await expect(page.locator(".hero-daily")).toContainText("£14/day");[m
+[31m-  await expect(page.getByTestId("weekly-outflow").filter({ hasText: /-£(101|299)/ })).toHaveCount(0);[m
+[32m+[m[32m  await expect(page.locator(".hero-daily")).toContainText("£14");[m
+[32m+[m[32m  await expect(page.locator('[data-testid^="weekly-large-costs-"]')).toHaveCount(0);[m
+   await expect(page.getByRole("button", { name: /Savings £0/ })).toBeVisible();[m
+ });[m
+ [m
+[36m@@ -210,4 +213,10 @@[m [mtest("an insufficient plan displays the precise shortfall", async ({ page }) =>[m
+   await expect(card).toContainText("Not affordable by due date — short by £300");[m
+   await expect(card).toContainText("This is not affordable");[m
+   await expect(card).toContainText("Still to fund£300");[m
+[32m+[m[32m  await card.getByRole("button", { name: "Reduce the cost" }).click();[m
+[32m+[m[32m  await expect(page.getByRole("dialog", { name: "Edit Boiler" })).toBeVisible();[m
+[32m+[m[32m  await expect(page.locator("#large-cost-amount")).toBeFocused();[m
+[32m+[m[32m  await page.getByRole("dialog", { name: "Edit Boiler" }).getByRole("button", { name: "Close" }).click();[m
+[32m+[m[32m  await card.getByRole("button", { name: "Change the due date" }).click();[m
+[32m+[m[32m  await expect(page.locator("#large-cost-due-date")).toBeFocused();[m
+ });[m
