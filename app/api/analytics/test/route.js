@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyAnalyticsAdminRequest } from "@/lib/adminAuth.server";
 import { sendGa4Event } from "@/lib/analytics/ga4.server";
+import { timingSafeEqual } from "node:crypto";
 
 export const runtime = "nodejs";
 
@@ -8,7 +9,7 @@ export const runtime = "nodejs";
 // existing ADMIN_EMAILS allowlist through a verified Firebase ID token.
 export async function POST(request) {
   try {
-    const identity = await verifyAnalyticsAdminRequest(request);
+    const identity = await authorizeDiagnosticRequest(request);
     const body = await request.json().catch(() => ({}));
     const requestedClientId = String(body?.clientId || "").trim();
     const clientId = /^\d+\.\d+$/.test(requestedClientId) ? requestedClientId : null;
@@ -39,4 +40,19 @@ export async function POST(request) {
     console.error("[ga4-test] delivery failed", { message: error?.message || "Unknown analytics delivery error" });
     return NextResponse.json({ ok: false, error: "Analytics delivery failed." }, { status: 502 });
   }
+}
+
+async function authorizeDiagnosticRequest(request) {
+  const configuredToken = String(process.env.ANALYTICS_TEST_TOKEN || "");
+  const suppliedToken = String(request.headers.get("x-analytics-test-token") || "");
+  if (configuredToken && suppliedToken && safeEqual(configuredToken, suppliedToken)) {
+    return { uid: "analytics-diagnostic" };
+  }
+  return verifyAnalyticsAdminRequest(request);
+}
+
+function safeEqual(left, right) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
