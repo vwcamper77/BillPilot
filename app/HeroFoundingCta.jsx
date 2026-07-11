@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { track } from "@/components/MetaPixel";
 import { trackEvent } from "@/lib/analytics/track";
+import { trackGa4Event } from "@/lib/analytics/ga4";
 
 const CAPACITY = 50;
 
@@ -25,6 +26,7 @@ export default function HeroFoundingCta({ foundingCount }) {
       content_category: "early_access",
     });
     trackEvent("hero_cta_clicked");
+    trackGa4Event("select_content", { content_type: "cta", content_id: "homepage_early_access" });
   }
 
   async function handleWaitlistSubmit(event) {
@@ -88,7 +90,7 @@ export default function HeroFoundingCta({ foundingCount }) {
             Get early access for {"£5"}
           </Link>
         )}
-        <a className="secondary-button landing-secondary-cta" href="#beta-offer">
+        <a className="secondary-button landing-secondary-cta" href="#beta-offer" onClick={() => trackGa4Event("select_content", { content_type: "cta", content_id: "homepage_beta_offer" })}>
           See beta offer
         </a>
       </div>

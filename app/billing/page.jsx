@@ -2,6 +2,7 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import BillingAccessGate from "./BillingAccessGate";
+import OfferView from "./OfferView";
 
 export const metadata = {
   title: "Billing & payments | ClearTill",
@@ -10,6 +11,7 @@ export const metadata = {
 export default function BillingPage() {
   return (
     <main className="billing-shell">
+      <OfferView />
       <header className="topbar">
         <div>
           <Link className="brand-link" href="/" aria-label="ClearTill home">

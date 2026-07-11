@@ -5,6 +5,7 @@ import FoundingFeedbackForm from "./FoundingFeedbackForm";
 import RepairAccessButton from "./RepairAccessButton";
 import RememberCheckoutSession from "./RememberCheckoutSession";
 import PurchasePixel from "./PurchasePixel";
+import DashboardLink from "./DashboardLink";
 import { grantFoundingAccessFromCheckoutSessionId } from "@/lib/billingAccess.server";
 import { formatBillingExpiry } from "@/lib/billingAccess";
 import { getFirebaseProjectId } from "@/lib/firebaseAdmin";
@@ -20,6 +21,7 @@ export default async function BillingSuccessPage({ searchParams }) {
   let accessError = "";
   let purchaseAmount = 5;
   let purchaseCurrency = "GBP";
+  let isQaPurchase = false;
 
   if (sessionId) {
     try {
@@ -29,6 +31,7 @@ export default async function BillingSuccessPage({ searchParams }) {
         ? Number(billingRecord.amountPaid) / 100
         : 5;
       purchaseCurrency = String(billingRecord?.currency || "gbp").toUpperCase();
+      isQaPurchase = String(billingRecord?.coupon || "").toUpperCase() === "CLEAR100";
     } catch (error) {
       // The underlying SDK error (Stripe/Firestore/Auth) is for logs only —
       // never surface raw error text to the user.
@@ -51,7 +54,7 @@ export default async function BillingSuccessPage({ searchParams }) {
   return (
     <main className="billing-shell billing-shell-success">
       {sessionId ? <RememberCheckoutSession sessionId={sessionId} /> : null}
-      {accessMessage && !accessError ? (
+      {accessMessage && !accessError && !isQaPurchase && purchaseAmount > 0 ? (
         <PurchasePixel sessionId={sessionId} amount={purchaseAmount} currency={purchaseCurrency} />
       ) : null}
       <header className="topbar">
@@ -94,7 +97,7 @@ export default async function BillingSuccessPage({ searchParams }) {
       </section>
 
       <div className="billing-success-actions">
-        <Link className="primary-link billing-success-primary" href="/dashboard">Go to dashboard</Link>
+        <DashboardLink />
         <Link className="quiet-link billing-success-account" href="/account">Account</Link>
       </div>
     </main>

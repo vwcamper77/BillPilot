@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { FieldValue, getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { touchCustomerActivity } from "@/lib/customerProfile.server";
+import { recordFirstSaveAndTutorial } from "@/lib/analytics/onboarding.server";
 
 export const runtime = "nodejs";
 
@@ -26,6 +27,8 @@ export async function POST(request) {
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
+
+        await recordFirstSaveAndTutorial({ uid: decodedToken.uid, saveEvent: "bill_added" });
 
         void touchCustomerActivity({
           uid: decodedToken.uid,
