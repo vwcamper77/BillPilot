@@ -55,9 +55,14 @@ export default function HeroCard({
       ) : null}
       {contextLine ? <p className="hero-context">{contextLine}</p> : null}
 
-      <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>
-        Update balance
-      </button>
+      <div className="hero-actions">
+        <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>
+          Update balance
+        </button>
+        <button className="secondary-button hero-action" type="button" onClick={onEditPaydaySettings}>
+          Update pay or income
+        </button>
+      </div>
 
       {canExplain ? (
         <div className="hero-disclosure">
@@ -72,9 +77,6 @@ export default function HeroCard({
           {showBreakdown ? (
             <div className="hero-disclosure-body">
               <ExplainBreakdown {...breakdownProps} />
-              <button className="secondary-button small-button" type="button" onClick={onEditPaydaySettings}>
-                Edit payday settings
-              </button>
             </div>
           ) : null}
         </div>

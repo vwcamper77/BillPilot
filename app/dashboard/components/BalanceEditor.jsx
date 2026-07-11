@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { formatCurrency, formatOrdinal, isValidDueDay } from "@/lib/billMath";
 import { getScrollBehavior } from "../lib/billHelpers";
+import AdditionalIncomeEditor from "./AdditionalIncomeEditor";
 
 const BALANCE_HELPER_TEXT = "This is just the money currently available in your account, so ClearTill can show today’s cash position after bills.";
 const BALANCE_MISSING_FORECAST_COPY = "Add your current available money to see today’s exact cash forecast.";
@@ -28,13 +29,11 @@ export default function BalanceEditor({
 
   hasBalanceSnapshot,
   currentBalance,
-  balanceSnapshotLabel,
   balanceInput,
   onBalanceInputChange,
   balanceError,
   savingBalance,
   onSubmitBalance,
-  onSkipBalance,
 
   income,
   hasPayday,
@@ -49,6 +48,11 @@ export default function BalanceEditor({
   savingEdit,
   editError,
   onSubmitIncome,
+
+  incomeEvents,
+  onIncomeEventsChange,
+  todayIso,
+  onNotice,
 
   displayCurrency,
   onCurrencySelect,
@@ -125,15 +129,6 @@ export default function BalanceEditor({
             </div>
           </form>
           <p className="helper-text balance-copy" style={{ marginTop: "8px" }}>{BALANCE_HELPER_TEXT}</p>
-          <button className="secondary-button small-button" type="button" onClick={onSkipBalance} style={{ marginTop: "8px" }}>
-            Skip for now
-          </button>
-          {hasBalanceSnapshot ? (
-            <div className="helper-text balance-copy">
-              <p>{balanceSnapshotLabel}</p>
-              <p>Still around {formatCurrency(currentBalance, displayCurrency)}? Update it whenever that changes.</p>
-            </div>
-          ) : null}
           <div className="field-row" style={{ marginTop: "14px" }}>
             <label className="field-label" htmlFor="display-currency">Display currency</label>
             <select
@@ -212,6 +207,15 @@ export default function BalanceEditor({
             <p className="helper-text helper-tooltip">
               Add your current available money first so ClearTill can forecast what may be left.
             </p>
+          ) : null}
+          {hasPayday && hasIncomeAmount ? (
+            <AdditionalIncomeEditor
+              incomeEvents={incomeEvents}
+              onIncomeEventsChange={onIncomeEventsChange}
+              todayIso={todayIso}
+              displayCurrency={displayCurrency}
+              onNotice={onNotice}
+            />
           ) : null}
           {editError ? <p className="error">{editError}</p> : null}
         </section>

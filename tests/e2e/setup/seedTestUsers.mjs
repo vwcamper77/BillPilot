@@ -191,6 +191,15 @@ export async function clearUserLargeCosts(uid) {
   await batch.commit();
 }
 
+export async function clearUserIncomeEvents(uid) {
+  const db = getFirestore(getFirebaseAdminApp());
+  const snapshot = await db.collection("users").doc(uid).collection("incomeEvents").get();
+  if (snapshot.empty) return;
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+}
+
 export async function mintCustomToken(uid) {
   const auth = getAuth(getFirebaseAdminApp());
   return auth.createCustomToken(uid);

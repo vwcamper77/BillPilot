@@ -6,8 +6,8 @@ export const runtime = "nodejs";
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const MODEL = "gpt-4o-mini";
 const ALLOWED_STATES = new Set([
-  "affordable_this_period",
-  "spread_across_pay_periods",
+  "affordable_now",
+  "affordable_by_due_date",
   "wait_until_payday",
   "unaffordable_by_due_date",
 ]);

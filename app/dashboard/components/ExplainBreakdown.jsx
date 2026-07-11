@@ -6,6 +6,7 @@ export default function ExplainBreakdown({
   hasPayday,
   totalBeforePayday,
   bigCostsDueBeforePayday,
+  additionalIncomeBeforePayday = 0,
   spendingRoomValue,
   displayCurrency,
 }) {
@@ -19,6 +20,12 @@ export default function ExplainBreakdown({
         <span>Less bills before payday</span>
         <strong>-{hasPayday ? formatCurrency(totalBeforePayday, displayCurrency) : "—"}</strong>
       </div>
+      {additionalIncomeBeforePayday > 0 ? (
+        <div className="forecast-breakdown-row">
+          <span>Confirmed other income before payday</span>
+          <strong>+{formatCurrency(additionalIncomeBeforePayday, displayCurrency)}</strong>
+        </div>
+      ) : null}
       <div className="forecast-breakdown-row">
         <span>Big costs hitting current account</span>
         <strong>-{hasPayday ? formatCurrency(bigCostsDueBeforePayday, displayCurrency) : "—"}</strong>
@@ -27,6 +34,7 @@ export default function ExplainBreakdown({
         <span>Spending room till payday</span>
         <strong>{spendingRoomValue}</strong>
       </div>
+      {additionalIncomeBeforePayday > 0 ? <p className="helper-text">Safe daily spending also checks that money is not used before it arrives.</p> : null}
     </div>
   );
 }

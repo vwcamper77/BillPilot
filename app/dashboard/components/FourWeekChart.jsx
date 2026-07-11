@@ -8,20 +8,29 @@ function niceAxisStep(value) {
   return niceResidual * magnitude;
 }
 
-export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoom, hasBalanceSnapshot, todayIso, displayCurrency, incomeAmount = 0 }) {
-  const { currentBalance, paydayDate, beforePayday, leftBeforePayday } = dashboard;
+export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, dailySpendingRoom, minimumProjectedBalance = null, hasBalanceSnapshot, todayIso, displayCurrency, incomeAmount = 0, additionalIncomeEvents = [] }) {
+  const { currentBalance, paydayDate, beforePayday, afterPayday, leftBeforePayday } = dashboard;
 
   if (!paydayDate || !hasBalanceSnapshot) return null;
 
   // Explicit waterfall points: openingBalance -> weeklyOutflow -> closingBalance per week,
   // on Monday-aligned week buckets. The pay amount lands in the week containing the pay
   // date, so weeks after payday show money coming back in rather than staying flat.
-  const waterfall = buildFourWeekCashflowWaterfall(todayIso, paydayDate, currentBalance, beforePayday, dueBeforePaydayLargeCosts, incomeAmount);
+  // The forecast continues through the whole displayed four-week window. Bills
+  // due after payday must therefore remain in the waterfall (including bills
+  // later in the same week as payday), even though the dashboard groups them
+  // separately in the bill list.
+  const chartBills = [...(beforePayday || []), ...(afterPayday || [])];
+  const waterfall = buildFourWeekCashflowWaterfall(todayIso, paydayDate, currentBalance, chartBills, dueBeforePaydayLargeCosts, incomeAmount, additionalIncomeEvents);
   const payDateBucketIndex = waterfall.findIndex((point) => point.containsPayDate);
 
   const closingBalances = waterfall.map((point) => point.closingBalance);
   const prePaydayBalances = waterfall.filter((point) => !point.isAfterPayCycle).map((point) => point.closingBalance);
-  const lowestBal = Math.min(leftBeforePayday, ...prePaydayBalances);
+  const lowestBal = Math.min(
+    leftBeforePayday,
+    ...prePaydayBalances,
+    Number.isFinite(Number(minimumProjectedBalance)) ? Number(minimumProjectedBalance) : Number.POSITIVE_INFINITY,
+  );
   const goesNegative = lowestBal < 0;
 
   // SVG layout
@@ -236,6 +245,15 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
           </g>
         ) : null}
       </svg>
+      {waterfall.some((point) => point.additionalIncomeReceived > 0) ? (
+        <div className="forecast-income-notes" data-testid="forecast-income-notes">
+          {waterfall.flatMap((point) => point.incomeBreakdown)
+            .filter((item) => item.type === "additional_income")
+            .map((item) => (
+              <span key={`${item.name}-${item.date}`}>{item.name}: +{formatCurrency(item.amount, displayCurrency)} on {formatDisplayDate(item.date)}</span>
+            ))}
+        </div>
+      ) : null}
     </section>
   );
 }

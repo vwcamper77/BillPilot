@@ -1063,28 +1063,21 @@ h1 {
 }
 
 .large-cost-dashboard-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
   margin: 14px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .large-cost-dashboard-summary > span {
-  display: grid;
-  gap: 3px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.62);
+  display: inline;
 }
 
-.large-cost-dashboard-summary small {
-  color: var(--muted);
-}
-
-.large-cost-dashboard-summary strong {
-  color: var(--ink);
-  text-transform: capitalize;
+.large-cost-dashboard-summary > span + span::before {
+  content: "·";
+  margin-right: 5px;
 }
 
 .split-funding-fields {
@@ -1114,6 +1107,19 @@ h1 {
   font-weight: 700;
   cursor: pointer;
   padding: 2px 0;
+}
+
+.funding-remaining-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.field-error {
+  margin: 4px 0 0;
+  color: #8a4438;
+  font-size: 0.84rem;
+  line-height: 1.4;
 }
 
 .split-funding-totals {
@@ -1206,7 +1212,31 @@ h1 {
 }
 
 .affordability-shortfall {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(249, 236, 231, 0.94);
   color: #7a4638;
+  font-weight: 700;
+}
+
+.affordability-calculation {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.affordability-calculation summary {
+  width: fit-content;
+  color: var(--accent-dark);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.affordability-calculation-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .affordability-actions {
@@ -1341,10 +1371,11 @@ h1 {
 }
 
 .forecast-cost-actions {
-  display: grid;
-  justify-items: start;
-  gap: 10px;
-  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
 }
 
 .forecast-secondary-actions {
@@ -1359,10 +1390,13 @@ h1 {
 
 .forecast-funding-editor {
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(229, 218, 200, 0.78);
+  width: min(100%, 760px);
+  padding: 16px;
+  border: 1px solid rgba(221, 213, 200, 0.88);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .forecast-funding-editor h4 {
@@ -1372,6 +1406,11 @@ h1 {
 
 .forecast-funding-editor .edit-actions {
   margin-top: 2px;
+}
+
+.forecast-funding-editor .split-funding-fields {
+  margin-top: 2px;
+  background: rgba(255, 253, 248, 0.88);
 }
 
 .improve-accuracy-panel {
@@ -2884,6 +2923,117 @@ h1 {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(214, 205, 191, 0.92);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.additional-income-editor {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+}
+
+.additional-income-toggle {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.additional-income-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.additional-income-body > .helper-text:first-child {
+  margin: 12px 0 0;
+}
+
+.additional-income-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.additional-income-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.additional-income-list li > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.additional-income-list span,
+.additional-income-list small {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.additional-income-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.additional-income-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.88);
+}
+
+.additional-income-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.forecast-income-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 640px) {
+  .additional-income-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .additional-income-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .hero-trust {

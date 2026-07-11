@@ -31,7 +31,7 @@ function plan(overrides = {}) {
 
 test("1. £600 before payday is fully protected from current balance", () => {
   const result = plan();
-  expect(result.plans[0].state).toBe("affordable_this_period");
+  expect(result.plans[0].state).toBe("affordable_now");
   expect(result.plans[0].currentPeriodAllocation).toBe(600);
   expect(result.plans[0].periods[0]).toMatchObject({
     openingAvailableBalance: 1000,
@@ -42,7 +42,7 @@ test("1. £600 before payday is fully protected from current balance", () => {
   });
 });
 
-test("2. £600 after payday keeps £200 savings separate from £400 current-account funding", () => {
+test("2. £600 after payday keeps savings separate and takes no current-period money unnecessarily", () => {
   const result = plan({
     largeCosts: [currentCost({
       dueDate: "2026-08-02",
@@ -54,22 +54,24 @@ test("2. £600 after payday keeps £200 savings separate from £400 current-acco
   expect(result.plans[0]).toMatchObject({
     savingsContribution: 200,
     currentBalanceContribution: 400,
-    currentPeriodAllocation: 400,
+    currentPeriodAllocation: 0,
     shortfall: 0,
   });
   expect(result.summary.savingsBeingUsed).toBe(200);
-  expect(result.summary.currentPeriodProtected).toBe(400);
+  expect(result.summary.currentPeriodProtected).toBe(0);
+  expect(result.summary.futurePeriodsPlanned).toBe(400);
 });
 
-test("3. a cost after payday allocates £140 now and £460 after payday", () => {
+test("3. a cost after payday protects only the amount future pay cannot cover", () => {
   const result = plan({
     currentBalance: 140,
+    incomeAmount: 460,
     largeCosts: [currentCost({ dueDate: "2026-08-02" })],
   });
-  expect(result.plans[0].state).toBe("spread_across_pay_periods");
+  expect(result.plans[0].state).toBe("affordable_by_due_date");
   expect(result.plans[0].currentPeriodAllocation).toBe(140);
   expect(result.plans[0].futurePeriodAllocations).toEqual([
-    { periodStart: "2026-07-20", periodEnd: "2026-08-19", amount: 460 },
+    { payDate: "2026-07-20", sourceType: "primary_pay", sourceLabel: "Pay", periodStart: "2026-07-20", periodEnd: "2026-08-19", amount: 460 },
   ]);
 });
 
@@ -122,17 +124,17 @@ test("7. earlier Large Costs consume shared future capacity first", () => {
 });
 
 test("8. editing the amount recalculates every allocation", () => {
-  const before = plan({ currentBalance: 140, largeCosts: [currentCost({ dueDate: "2026-08-02" })] });
-  const after = plan({ currentBalance: 140, largeCosts: [currentCost({ amount: 700, dueDate: "2026-08-02" })] });
-  expect(before.plans[0].periods.map((period) => period.protectedAmount)).toEqual([140, 460]);
-  expect(after.plans[0].periods.map((period) => period.protectedAmount)).toEqual([140, 560]);
+  const before = plan({ currentBalance: 500, incomeAmount: 400, largeCosts: [currentCost({ dueDate: "2026-08-02" })] });
+  const after = plan({ currentBalance: 500, incomeAmount: 400, largeCosts: [currentCost({ amount: 700, dueDate: "2026-08-02" })] });
+  expect(before.plans[0].periods.map((period) => period.protectedAmount)).toEqual([200, 400]);
+  expect(after.plans[0].periods.map((period) => period.protectedAmount)).toEqual([300, 400]);
 });
 
 test("9. editing the due date moves funding into the newly available period", () => {
   const before = plan({ currentBalance: 0, incomeAmount: 400, largeCosts: [currentCost({ amount: 700, dueDate: "2026-08-02" })] });
   const after = plan({ currentBalance: 0, incomeAmount: 400, largeCosts: [currentCost({ amount: 700, dueDate: "2026-09-02" })] });
   expect(before.plans[0].shortfall).toBe(300);
-  expect(after.plans[0].periods.map((period) => period.protectedAmount)).toEqual([0, 400, 300]);
+  expect(after.plans[0].periods.map((period) => period.protectedAmount)).toEqual([0, 300, 400]);
   expect(after.plans[0].shortfall).toBe(0);
 });
 
@@ -162,6 +164,38 @@ test("11. legacy split costs without explicit contribution fields remain compati
 test("12. the deterministic explanation remains available without AI", () => {
   const result = plan();
   expect(result.plans[0].deterministicExplanation).toBe(
-    "You can cover this £600 cost before payday. After protecting it, you have £400.00 left for 10 days — approximately £40.00 per day.",
+    "You can afford this now. Protect £600 before payday. This leaves approximately £40.00 per day until payday.",
   );
+});
+
+test("13. production screenshot scenario waits for payday instead of protecting the whole £2,000 now", () => {
+  const result = plan({
+    currentBalance: 6500,
+    incomeAmount: 2000,
+    largeCosts: [currentCost({ name: "Greece", amount: 2000, dueDate: "2026-08-01" })],
+  });
+  expect(result.plans[0]).toMatchObject({
+    state: "wait_until_payday",
+    currentPeriodAllocation: 0,
+    safeDailyAmountAfter: 650,
+    shortfall: 0,
+  });
+  expect(result.plans[0].futurePeriodAllocations).toEqual([
+    { payDate: "2026-07-20", sourceType: "primary_pay", sourceLabel: "Pay", periodStart: "2026-07-20", periodEnd: "2026-08-19", amount: 2000 },
+  ]);
+  expect(result.plans[0].deterministicExplanation).toBe(
+    "Wait until payday. You do not need to take money from your current balance yet. Fund £2,000 from your pay on 20 July.",
+  );
+});
+
+test("14. bills later in the future pay cycle remain reserved before allocating a Large Cost", () => {
+  const result = plan({
+    currentBalance: 500,
+    incomeAmount: 1000,
+    bills: [{ id: "bill-after-cost", amount: 700, nextDueDate: "2026-08-10", frequency: "one_off" }],
+    largeCosts: [currentCost({ dueDate: "2026-08-02" })],
+  });
+  expect(result.plans[0].periods.map((period) => period.protectedAmount)).toEqual([300, 300]);
+  expect(result.plans[0].state).toBe("affordable_by_due_date");
+  expect(result.plans[0].safeDailyAmountAfter).toBe(20);
 });

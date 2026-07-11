@@ -817,10 +817,6 @@ function DashboardPageContent() {
     () => largeCostsWithStatus.filter((cost) => cost.nextDueDate && dashboard.paydayDate && cost.nextDueDate < dashboard.paydayDate),
     [dashboard.paydayDate, largeCostsWithStatus],
   );
-  const balanceSnapshotLabel = useMemo(
-    () => formatBalanceSnapshotLabel(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt),
-    [displayAccount?.snapshotEnteredAt, displayAccount?.updatedAt],
-  );
   const importLocked = isImporting;
   const importQueueFinished = importJobs.length > 0 && !isImporting && importJobs.some((job) => job.status !== "queued");
   const importButtonLabel = getImportButtonLabel(isImporting, currentImportStep, importJobs, currentImportJobId);
@@ -1405,27 +1401,6 @@ function DashboardPageContent() {
     } catch (error) {
       safeError("[dashboard-bills-save] failed", { code: error?.code });
       throw error;
-    }
-  }
-
-  async function handleSkipBalance() {
-    if (!user || !auth?.currentUser) {
-      return;
-    }
-
-    setBalanceError("");
-    setPageNotice("You can add your current available money later for a more accurate forecast.");
-    setOptimisticBalance(null);
-    setBalanceInput("");
-
-    try {
-      await postDashboardSettingsAction("save_balance", {
-        currentBalance: null,
-        currency: "GBP",
-        snapshotEntered: false,
-      });
-    } catch (saveError) {
-      safeError("[dashboard-settings-balance-skip] failed", { code: saveError?.code });
     }
   }
 
@@ -3010,15 +2985,6 @@ function DashboardPageContent() {
               </div>
             </form>
             <p className="helper-text balance-copy" style={{ marginTop: "8px" }}>{BALANCE_HELPER_TEXT}</p>
-            <button className="secondary-button small-button" type="button" onClick={handleSkipBalance} disabled={importLocked} style={{ marginTop: "8px" }}>
-              Skip for now
-            </button>
-            {hasBalanceSnapshot ? (
-              <div className="helper-text balance-copy">
-                <p>{balanceSnapshotLabel}</p>
-                <p>Still around {formatCurrency(dashboard.currentBalance, displayCurrency)}? Update it whenever that changes.</p>
-              </div>
-            ) : null}
             <div className="field-row" style={{ marginTop: "14px" }}>
               <label className="field-label" htmlFor="display-currency">Display currency</label>
               <select
@@ -3082,9 +3048,13 @@ function DashboardPageContent() {
                 </p>
                 <p className="forecast-support">{spendingRoomHelper}</p>
                 {spendingRoomUntilPayday !== null && spendingRoomUntilPayday < 0 && bigCostsDueBeforePayday > 0 ? (
-                  <Link className="secondary-button small-button forecast-review-button" href="/big-costs">
+                  <button
+                    className="secondary-button small-button forecast-review-button"
+                    type="button"
+                    onClick={() => document.getElementById("large-costs-section")?.scrollIntoView({ behavior: getScrollBehavior(), block: "start" })}
+                  >
                     Review big costs
-                  </Link>
+                  </button>
                 ) : null}
               </div>
             </div>
@@ -3151,6 +3121,7 @@ function DashboardPageContent() {
                 fallbackCopy={spendingRoomFallbackCopy}
               />
             </div>
+            <div id="large-costs-section">
             <ForecastLargeCostsSection
               costs={dueBeforePaydayLargeCosts}
               allCosts={largeCostsWithStatus}
@@ -3175,6 +3146,7 @@ function DashboardPageContent() {
               onFundingEditorClose={closeFundingEditor}
               onFundingEditorSave={saveFundingEditor}
             />
+            </div>
           </section>
 
           <section className={`runway-panel ${!hasBills ? "is-disabled-soft" : ""}`}>
@@ -4632,11 +4604,6 @@ function ForecastLargeCostsSection({
         </p>
       )}
 
-      {allCosts.length ? (
-        <Link className="summary-card-link" href="/big-costs">
-          View big cost plan →
-        </Link>
-      ) : null}
     </section>
   );
 }
@@ -5846,7 +5813,7 @@ function getSetupMessage(setupStep) {
   if (setupStep === 1) {
     return {
       title: "Step 1 of 3 — Add your current available money",
-      detail: "ClearTill works best when you start with your current available money, even if you want to skip it for now.",
+      detail: "Start with your current available money so ClearTill can calculate today’s cash runway.",
     };
   }
 
@@ -6276,50 +6243,6 @@ function buildBatchOutcomeMessage(outcome, sourceCount) {
   }
 
   return parts.join(" ");
-}
-
-function formatBalanceSnapshotLabel(timestamp) {
-  const snapshotDate = toDateMaybe(timestamp);
-
-  if (!snapshotDate) {
-    return "Entered recently";
-  }
-
-  const todayIso = getTodayIso();
-  const snapshotIso = getTodayIso(snapshotDate);
-  const timeLabel = new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/London",
-  }).format(snapshotDate);
-
-  if (snapshotIso === todayIso) {
-    return `Entered today at ${timeLabel}`;
-  }
-
-  const dateLabel = new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "long",
-    timeZone: "Europe/London",
-  }).format(snapshotDate);
-
-  return `Entered ${dateLabel} at ${timeLabel}`;
-}
-
-function toDateMaybe(value) {
-  if (!value) {
-    return null;
-  }
-
-  if (typeof value.toDate === "function") {
-    return value.toDate();
-  }
-
-  if (value instanceof Date) {
-    return value;
-  }
-
-  return null;
 }
 
 function getSafeNextPath(value) {

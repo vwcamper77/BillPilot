@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { buildLargeCostDocument, formatCurrency, formatDisplayDate, normaliseLargeCostFundingStatus } from "@/lib/billMath";
 import { getLargeCostFundingSourceLimits, resolveLargeCostContributions, roundCurrency } from "@/lib/largeCostPlanner";
 import { safeError } from "@/lib/security/safeLog";
@@ -83,14 +82,30 @@ function validateFunding(fields, amount, limits) {
 }
 
 function SplitFundingFields({ idPrefix, amount, values, onChange, limits, displayCurrency }) {
-  const currentAmount = Number(values.currentBalanceContribution) || 0;
-  const savingsAmount = Number(values.savingsContribution) || 0;
+  const rawCurrentAmount = Number(values.currentBalanceContribution);
+  const rawSavingsAmount = Number(values.savingsContribution);
+  const currentAmount = Number.isFinite(rawCurrentAmount) ? rawCurrentAmount : 0;
+  const savingsAmount = Number.isFinite(rawSavingsAmount) ? rawSavingsAmount : 0;
   const allocated = roundCurrency(currentAmount + savingsAmount);
   const remaining = roundCurrency(amount - allocated);
+  const currentError = currentAmount < 0
+    ? "Current-balance allocation cannot be negative."
+    : currentAmount > amount
+      ? "Current-balance allocation cannot exceed the total cost."
+      : currentAmount > limits.currentBalance
+        ? `Maximum current-balance contribution without negative cash flow is ${formatCurrency(limits.currentBalance, displayCurrency)}.`
+        : "";
+  const savingsError = savingsAmount < 0
+    ? "Savings allocation cannot be negative."
+    : savingsAmount > amount
+      ? "Savings allocation cannot exceed the total cost."
+      : savingsAmount > limits.savings
+        ? `Savings are short by ${formatCurrency(savingsAmount - limits.savings, displayCurrency)}.`
+        : "";
 
-  function useRemaining(field, available) {
+  function useRemaining(field) {
     const currentValue = field === "currentBalanceContribution" ? currentAmount : savingsAmount;
-    if (remaining <= 0 || roundCurrency(currentValue + remaining) > roundCurrency(available)) return;
+    if (remaining <= 0) return;
     onChange(field, String(roundCurrency(currentValue + remaining)));
   }
 
@@ -109,10 +124,7 @@ function SplitFundingFields({ idPrefix, amount, values, onChange, limits, displa
             value={values.currentBalanceContribution}
             onChange={(event) => onChange("currentBalanceContribution", event.target.value)}
           />
-          <button className="funding-use-remaining" type="button" onClick={() => useRemaining("currentBalanceContribution", limits.currentBalance)}>
-            Use remaining
-          </button>
-          <span className="helper-text">Available through due date: {formatCurrency(limits.currentBalance, displayCurrency)}</span>
+          {currentError ? <span className="field-error" role="alert">{currentError}</span> : null}
         </div>
         <div className="field-row">
           <label className="field-label" htmlFor={`${idPrefix}-savings`}>From savings</label>
@@ -126,17 +138,26 @@ function SplitFundingFields({ idPrefix, amount, values, onChange, limits, displa
             value={values.savingsContribution}
             onChange={(event) => onChange("savingsContribution", event.target.value)}
           />
-          <button className="funding-use-remaining" type="button" onClick={() => useRemaining("savingsContribution", limits.savings)}>
-            Use remaining
-          </button>
           <span className="helper-text">Available savings: {formatCurrency(limits.savings, displayCurrency)}</span>
+          {savingsError ? <span className="field-error" role="alert">{savingsError}</span> : null}
         </div>
       </div>
       <div className="split-funding-totals" aria-live="polite">
         <span>Total cost <strong>{formatCurrency(amount, displayCurrency)}</strong></span>
-        <span>Amount allocated <strong>{formatCurrency(allocated, displayCurrency)}</strong></span>
-        <span>Remaining to allocate <strong>{formatCurrency(remaining, displayCurrency)}</strong></span>
+        <span>Allocated <strong>{formatCurrency(allocated, displayCurrency)}</strong></span>
+        <span>Remaining <strong>{formatCurrency(Math.max(0, remaining), displayCurrency)}</strong></span>
       </div>
+      {remaining > 0 ? (
+        <div className="funding-remaining-actions">
+          <button className="secondary-button small-button" type="button" onClick={() => useRemaining("currentBalanceContribution")}>
+            Put remaining {formatCurrency(remaining, displayCurrency)} into current balance
+          </button>
+          <button className="secondary-button small-button" type="button" onClick={() => useRemaining("savingsContribution")}>
+            Put remaining {formatCurrency(remaining, displayCurrency)} into savings
+          </button>
+        </div>
+      ) : null}
+      {remaining < 0 ? <p className="field-error" role="alert">Allocation exceeds the total cost by {formatCurrency(Math.abs(remaining), displayCurrency)}.</p> : null}
     </div>
   );
 }
@@ -167,6 +188,7 @@ export default function LargeCostForm({
   });
   const [confirmationCostId, setConfirmationCostId] = useState("");
   const wrapperRef = useRef(null);
+  const formRef = useRef(null);
 
   const formAmount = Math.max(0, Number(form.amount) || 0);
   const editingOriginalSavings = editingId
@@ -179,6 +201,8 @@ export default function LargeCostForm({
     currentBalance: planningContext?.currentBalance,
     incomeAmount: planningContext?.incomeAmount,
     savingsAvailable: (planningContext?.savingsAvailable || 0) + editingOriginalSavings,
+    bills: planningContext?.bills || [],
+    additionalIncomeEvents: planningContext?.additionalIncomeEvents || [],
   }), [editingOriginalSavings, form.dueDate, planningContext, todayIso]);
   const formFundingFields = fundingFieldsForForm(form, formAmount);
   const formAllocationValid = validateFunding(formFundingFields, formAmount, formLimits);
@@ -198,6 +222,15 @@ export default function LargeCostForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!showForm || !editingId) return;
+    const frame = window.requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      formRef.current?.querySelector("input")?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingId, showForm]);
+
   function resetForm() {
     setForm(EMPTY_FORM);
     setEditingId("");
@@ -206,6 +239,7 @@ export default function LargeCostForm({
   }
 
   function startCreate() {
+    closeFundingEditor();
     setError("");
     setEditingId("");
     setForm({ ...EMPTY_FORM, dueDate: todayIso });
@@ -214,6 +248,7 @@ export default function LargeCostForm({
 
   function startEdit(cost) {
     const contributions = resolveLargeCostContributions(cost);
+    closeFundingEditor();
     setError("");
     setEditingId(cost.id);
     setForm({
@@ -337,6 +372,8 @@ export default function LargeCostForm({
       currentBalance: planningContext?.currentBalance,
       incomeAmount: planningContext?.incomeAmount,
       savingsAvailable: (planningContext?.savingsAvailable || 0) + resolveLargeCostContributions(cost).savingsContribution,
+      bills: planningContext?.bills || [],
+      additionalIncomeEvents: planningContext?.additionalIncomeEvents || [],
     });
     if (!validateFunding(fields, amount, limits)) {
       setError("Allocate the full cost without exceeding the available current balance or savings.");
@@ -374,6 +411,22 @@ export default function LargeCostForm({
     }
   }
 
+  function fundingEditorValidation(cost) {
+    const amount = Number(cost.amount) || 0;
+    const fields = fundingFieldsForForm(fundingEditorForm, amount);
+    const limits = getLargeCostFundingSourceLimits({
+      todayIso,
+      paydayDate: planningContext?.paydayDate,
+      dueDate: cost.nextDueDate || cost.dueDate || todayIso,
+      currentBalance: planningContext?.currentBalance,
+      incomeAmount: planningContext?.incomeAmount,
+      savingsAvailable: (planningContext?.savingsAvailable || 0) + resolveLargeCostContributions(cost).savingsContribution,
+      bills: planningContext?.bills || [],
+      additionalIncomeEvents: planningContext?.additionalIncomeEvents || [],
+    });
+    return { limits, valid: validateFunding(fields, amount, limits) };
+  }
+
   return (
     <section ref={wrapperRef} className="forecast-large-costs">
       <div className="section-head">
@@ -388,16 +441,16 @@ export default function LargeCostForm({
 
       {costsWithStatus.length ? (
         <div className="large-cost-dashboard-summary" data-testid="large-cost-dashboard-summary">
-          <span><small>Protected this period</small><strong>{formatCurrency(planSummary?.currentPeriodProtected || 0, displayCurrency)}</strong></span>
-          <span><small>Planned from future pay</small><strong>{formatCurrency(planSummary?.futurePeriodsPlanned || 0, displayCurrency)}</strong></span>
-          <span><small>Savings being used</small><strong>{formatCurrency(planSummary?.savingsBeingUsed || 0, displayCurrency)}</strong></span>
-          <span><small>Closest due date</small><strong>{planSummary?.closestDueDate ? formatDisplayDate(planSummary.closestDueDate) : "Not set"}</strong></span>
-          <span><small>Overall state</small><strong>{String(planSummary?.affordabilityState || "Not calculated").replaceAll("_", " ")}</strong></span>
+          <span>
+            {costsWithStatus.length} planned {costsWithStatus.length === 1 ? "cost" : "costs"}
+            {" · "}{formatCurrency(costsWithStatus[0]?.amount || 0, displayCurrency)} due next
+            {" · "}{formatCurrency(planSummary?.totalShortfall || 0, displayCurrency)} funding shortfall
+          </span>
         </div>
       ) : null}
 
       {showForm ? (
-        <form className="edit-form large-cost-form forecast-inline-form" onSubmit={handleSave}>
+        <form ref={formRef} className="edit-form large-cost-form forecast-inline-form" onSubmit={handleSave}>
           <label className="field-label" htmlFor="large-cost-name">Name</label>
           <input
             id="large-cost-name"
@@ -495,11 +548,11 @@ export default function LargeCostForm({
           <ul className="forecast-compact-list">
             {plannedCosts.map((cost) => {
               const isEditingFunding = fundingEditorCostId === cost.id;
-              const fundingLabel = cost.fundingMeta?.label || "Unassigned";
               const primaryLabel = cost.fundingStatus === "unassigned" ? "Choose funding" : "Change funding";
+              const editorValidation = fundingEditorValidation(cost);
 
               return (
-              <li key={cost.id} className="forecast-compact-row">
+              <li key={cost.id} className="forecast-compact-row" data-testid="large-cost-card">
                 <div className="forecast-compact-main">
                   <div className="forecast-cost-summary-row">
                     <span className="forecast-compact-name">{cost.name}</span>
@@ -507,14 +560,7 @@ export default function LargeCostForm({
                   </div>
                   <div className="forecast-cost-summary-row forecast-cost-summary-row-secondary">
                     <span className="forecast-compact-meta">Due {cost.nextDueDate ? formatDisplayDate(cost.nextDueDate) : cost.dueLabel}</span>
-                    <span className="forecast-funding-status">{fundingLabel}</span>
                   </div>
-                  <span className="forecast-compact-note">{cost.fundingMeta.note}</span>
-                  {cost.fundingStatus === "split" ? (
-                    <span className="forecast-compact-meta">
-                      {formatCurrency(cost.currentBalanceContribution || cost.currentAccountAmount || 0, displayCurrency)} from current balance · {formatCurrency(cost.savingsContribution || 0, displayCurrency)} from savings
-                    </span>
-                  ) : null}
                   <AffordabilityPlan
                     plan={cost.affordabilityPlan}
                     displayCurrency={displayCurrency}
@@ -531,7 +577,7 @@ export default function LargeCostForm({
                     </button>
                     <div className="forecast-secondary-actions">
                       <button className="bill-action-button bill-action-edit" type="button" onClick={() => startEdit(cost)}>
-                        Edit
+                        Edit cost or date
                       </button>
                       <button className="bill-action-button bill-action-remove" type="button" onClick={() => handleDelete(cost.id)}>
                         Remove
@@ -539,7 +585,7 @@ export default function LargeCostForm({
                     </div>
                   </div>
                   {isEditingFunding ? (
-                    <div className="forecast-funding-editor">
+                    <div className="forecast-funding-editor" data-testid="funding-editor">
                       <h4>How will you pay for {cost.name}?</h4>
                       <div className="funding-toggle-row">
                         {[
@@ -563,19 +609,15 @@ export default function LargeCostForm({
                           amount={Number(cost.amount) || 0}
                           values={fundingEditorForm}
                           onChange={(field, value) => setFundingEditorForm((current) => ({ ...current, [field]: value }))}
-                          limits={getLargeCostFundingSourceLimits({
-                            todayIso,
-                            paydayDate: planningContext?.paydayDate,
-                            dueDate: cost.nextDueDate || cost.dueDate || todayIso,
-                            currentBalance: planningContext?.currentBalance,
-                            incomeAmount: planningContext?.incomeAmount,
-                            savingsAvailable: (planningContext?.savingsAvailable || 0) + resolveLargeCostContributions(cost).savingsContribution,
-                          })}
+                          limits={editorValidation.limits}
                           displayCurrency={displayCurrency}
                         />
                       ) : null}
+                      {fundingEditorForm.fundingStatus === "savings" && Number(cost.amount) > editorValidation.limits.savings ? (
+                        <p className="field-error" role="alert">Available savings: {formatCurrency(editorValidation.limits.savings, displayCurrency)}. You are short by {formatCurrency(Number(cost.amount) - editorValidation.limits.savings, displayCurrency)}.</p>
+                      ) : null}
                       <div className="edit-actions">
-                        <button className="primary-button small-button" type="button" onClick={() => saveFundingEditor(cost)}>
+                        <button className="primary-button small-button" type="button" disabled={!editorValidation.valid} onClick={() => saveFundingEditor(cost)}>
                           Save
                         </button>
                         <button className="secondary-button small-button" type="button" onClick={closeFundingEditor}>
@@ -598,11 +640,6 @@ export default function LargeCostForm({
         </p>
       )}
 
-      {costsWithStatus.length ? (
-        <Link className="summary-card-link" href="/big-costs">
-          View big cost plan →
-        </Link>
-      ) : null}
     </section>
   );
 }
