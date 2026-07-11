@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   getAdditionalUserInfo,
@@ -14,8 +14,44 @@ import CheckoutButton from "./CheckoutButton";
 import { auth, authPersistenceReady, googleProvider, isFirebaseClientConfigured } from "@/lib/firebase";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
+import { trackGa4Event } from "@/lib/analytics/ga4";
 
 const INITIAL_FORM = { email: "", password: "" };
+const AUTH_CONTEXT = "founding_member_checkout";
+
+// Codes where the person deliberately backed out (closed the popup / superseded it) vs a genuine failure.
+const CANCELLED_AUTH_CODES = new Set(["auth/popup-closed-by-user", "auth/cancelled-popup-request"]);
+
+// Allowlist so only recognised Firebase auth codes ever reach GA4 — never the raw message (which can carry the email).
+const KNOWN_AUTH_ERROR_CODES = new Set([
+  "auth/popup-blocked",
+  "auth/cancelled-popup-request",
+  "auth/popup-closed-by-user",
+  "auth/unauthorized-domain",
+  "auth/operation-not-allowed",
+  "auth/credential-already-in-use",
+  "auth/network-request-failed",
+  "auth/too-many-requests",
+  "auth/invalid-email",
+  "auth/email-already-in-use",
+  "auth/weak-password",
+  "auth/user-not-found",
+  "auth/wrong-password",
+  "auth/invalid-credential",
+]);
+
+function sanitizedErrorType(error) {
+  const code = String(error?.code || "");
+  return KNOWN_AUTH_ERROR_CODES.has(code) ? code.replace("auth/", "") : "unknown";
+}
+
+function trackAuthOutcome(error, method) {
+  if (CANCELLED_AUTH_CODES.has(String(error?.code || ""))) {
+    trackGa4Event("auth_cancelled", { method, context: AUTH_CONTEXT });
+  } else {
+    trackGa4Event("auth_failed", { method, context: AUTH_CONTEXT, error_type: sanitizedErrorType(error) });
+  }
+}
 
 export default function BillingAccessGate() {
   const [authReady, setAuthReady] = useState(false);
@@ -23,6 +59,8 @@ export default function BillingAccessGate() {
   const [mode, setMode] = useState("signup");
   const [form, setForm] = useState(INITIAL_FORM);
   const [status, setStatus] = useState({ busy: false, error: "" });
+  const authAttemptRef = useRef(false);
+  const checkoutReadyUidRef = useRef(null);
 
   useEffect(() => {
     if (!auth) {
@@ -43,6 +81,14 @@ export default function BillingAccessGate() {
         setAuthReady(true);
         setStatus({ busy: false, error: "" });
         trackEvent("paywall_viewed");
+
+        const isCheckoutReady = Boolean(currentUser) && !currentUser.isAnonymous;
+        if (isCheckoutReady && checkoutReadyUidRef.current !== currentUser.uid) {
+          checkoutReadyUidRef.current = currentUser.uid;
+          trackGa4Event("checkout_ready", { context: AUTH_CONTEXT });
+        } else if (!isCheckoutReady) {
+          checkoutReadyUidRef.current = null;
+        }
       });
     });
 
@@ -63,12 +109,17 @@ export default function BillingAccessGate() {
       return;
     }
 
+    if (authAttemptRef.current) return;
+    authAttemptRef.current = true;
+
     setStatus({ busy: true, error: "" });
+    trackGa4Event("auth_start", { method: "google", context: AUTH_CONTEXT });
 
     try {
       if (auth.currentUser?.isAnonymous) {
         await linkWithPopup(auth.currentUser, googleProvider);
         trackAccountCreated("google");
+        trackGa4Event("sign_up", { method: "google", context: AUTH_CONTEXT });
         setStatus({ busy: false, error: "" });
         return;
       }
@@ -76,8 +127,10 @@ export default function BillingAccessGate() {
       const result = await signInWithPopup(auth, googleProvider);
       if (getAdditionalUserInfo(result)?.isNewUser) {
         trackAccountCreated("google");
+        trackGa4Event("sign_up", { method: "google", context: AUTH_CONTEXT });
       } else {
         trackEvent("login", { method: "google" });
+        trackGa4Event("login", { method: "google", context: AUTH_CONTEXT });
       }
       setStatus({ busy: false, error: "" });
     } catch (error) {
@@ -87,18 +140,24 @@ export default function BillingAccessGate() {
           const retryResult = await signInWithPopup(auth, googleProvider);
           if (getAdditionalUserInfo(retryResult)?.isNewUser) {
             trackAccountCreated("google");
+            trackGa4Event("sign_up", { method: "google", context: AUTH_CONTEXT });
           } else {
             trackEvent("login", { method: "google" });
+            trackGa4Event("login", { method: "google", context: AUTH_CONTEXT });
           }
           setStatus({ busy: false, error: "" });
           return;
         } catch (retryError) {
+          trackAuthOutcome(retryError, "google");
           setStatus({ busy: false, error: friendlyGoogleAuthError(retryError) });
           return;
         }
       }
 
+      trackAuthOutcome(error, "google");
       setStatus({ busy: false, error: friendlyGoogleAuthError(error) });
+    } finally {
+      authAttemptRef.current = false;
     }
   }
 
@@ -118,25 +177,34 @@ export default function BillingAccessGate() {
       return;
     }
 
+    if (authAttemptRef.current) return;
+    authAttemptRef.current = true;
+
     setStatus({ busy: true, error: "" });
 
     try {
       if (mode === "signup") {
         trackEvent("signup_started", { method: "password" });
+        trackGa4Event("auth_start", { method: "password", context: AUTH_CONTEXT });
         await createUserWithEmailAndPassword(auth, email, password);
         trackEvent("account_created", { method: "password", attribution: getStoredAttribution() });
         trackEvent("onboarding_started");
+        trackGa4Event("sign_up", { method: "password", context: AUTH_CONTEXT });
       } else {
         await signInWithEmailAndPassword(auth, email, password);
         trackEvent("login", { method: "password" });
+        trackGa4Event("login", { method: "password", context: AUTH_CONTEXT });
       }
 
       setForm(INITIAL_FORM);
     } catch (error) {
+      trackAuthOutcome(error, "password");
       setStatus({
         busy: false,
         error: friendlyAuthError(error, mode),
       });
+    } finally {
+      authAttemptRef.current = false;
     }
   }
 

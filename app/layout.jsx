@@ -61,19 +61,32 @@ export default function RootLayout({ children }) {
         {isTestAuthBridgeEnabled ? <TestAuthBridge /> : null}
         {gaMeasurementId ? (
           <>
+            {/* A plain synchronous <script> (not next/script) — even
+                strategy="beforeInteractive" defers execution to Next's runtime
+                bootstrap via a __next_s queue, which still lands after
+                DOMContentLoaded. The stub defining window.gtag must run while
+                the browser is still parsing the HTML, or a trackGa4Event() call
+                fired immediately on a fresh page load (e.g. an auth attempt
+                right after landing on /billing) finds window.gtag undefined and
+                is silently lost. Only the actual library fetch needs to stay
+                async; it drains the queued dataLayer commands (js/config, then
+                any events) once it loads. */}
+            <script
+              id="google-analytics"
+              dangerouslySetInnerHTML={{
+                __html: `
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${gaMeasurementId}');
+              `,
+              }}
+            />
             <Script
               async
               src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
               strategy="afterInteractive"
             />
-            <Script id="google-analytics" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${gaMeasurementId}');
-              `}
-            </Script>
           </>
         ) : null}
         <div className="app-frame">

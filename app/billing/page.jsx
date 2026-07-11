@@ -2,13 +2,17 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import BillingAccessGate from "./BillingAccessGate";
+import PublicCheckoutOffer from "./PublicCheckoutOffer";
 import OfferView from "./OfferView";
+import { isPublicCheckoutEnabled } from "@/lib/checkoutFlags";
 
 export const metadata = {
   title: "Billing & payments | ClearTill",
 };
 
 export default function BillingPage() {
+  const publicCheckout = isPublicCheckoutEnabled();
+
   return (
     <main className="billing-shell">
       <OfferView />
@@ -48,7 +52,7 @@ export default function BillingPage() {
             <li>No Open Banking</li>
             <li>No judgement</li>
           </ul>
-          <BillingAccessGate />
+          {publicCheckout ? <PublicCheckoutOffer /> : <BillingAccessGate />}
         </div>
 
         <aside className="billing-panel billing-summary-panel billing-offer-panel" aria-label="Offer summary">
@@ -75,21 +79,43 @@ export default function BillingPage() {
       <section className="billing-panel billing-next-panel">
         <p className="billing-summary-label">What happens next</p>
         <div className="billing-steps">
-          <article>
-            <span>01</span>
-            <h3>Save your access</h3>
-            <p>Create your ClearTill login here so your founding member access stays with you.</p>
-          </article>
-          <article>
-            <span>02</span>
-            <h3>Complete secure checkout</h3>
-            <p>Pay through Stripe to activate your &pound;5 founding member access.</p>
-          </article>
-          <article>
-            <span>03</span>
-            <h3>Get early access</h3>
-            <p>Open ClearTill and start using your 90 days of early access straight away.</p>
-          </article>
+          {publicCheckout ? (
+            <>
+              <article>
+                <span>01</span>
+                <h3>Complete secure checkout</h3>
+                <p>Pay through Stripe to activate your &pound;5 founding member access.</p>
+              </article>
+              <article>
+                <span>02</span>
+                <h3>Check your email</h3>
+                <p>We&apos;ll send a secure sign-in link to the email you used at checkout.</p>
+              </article>
+              <article>
+                <span>03</span>
+                <h3>Get early access</h3>
+                <p>Follow the link to sign in and start using your 90 days of early access.</p>
+              </article>
+            </>
+          ) : (
+            <>
+              <article>
+                <span>01</span>
+                <h3>Save your access</h3>
+                <p>Create your ClearTill login here so your founding member access stays with you.</p>
+              </article>
+              <article>
+                <span>02</span>
+                <h3>Complete secure checkout</h3>
+                <p>Pay through Stripe to activate your &pound;5 founding member access.</p>
+              </article>
+              <article>
+                <span>03</span>
+                <h3>Get early access</h3>
+                <p>Open ClearTill and start using your 90 days of early access straight away.</p>
+              </article>
+            </>
+          )}
         </div>
       </section>
     </main>

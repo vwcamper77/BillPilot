@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatCurrency, formatDisplayDate } from "@/lib/billMath";
 import ExplainBreakdown from "./ExplainBreakdown";
+import FinancialDisclosure from "./FinancialDisclosure";
 
 export default function HeroCard({
   status,
@@ -51,9 +52,18 @@ export default function HeroCard({
         ) : headline}
       </p>
       {showDailyLine ? (
-        <p className="hero-daily">{formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day</p>
+        <p className="hero-daily">{formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)} per day for the next {daysTillPayday} day{daysTillPayday === 1 ? "" : "s"}</p>
       ) : null}
       {contextLine ? <p className="hero-context">{contextLine}</p> : null}
+
+      {canExplain ? (
+        <div className="hero-calculation" aria-label="Today's calculation">
+          <div className="financial-disclosure-static"><span>Current bank balance</span><strong>{formatCurrency(breakdownProps.currentBalance, displayCurrency)}</strong></div>
+          <FinancialDisclosure label="Reserved for bills before payday" amount={breakdownProps.totalBeforePayday} items={breakdownProps.billItems} displayCurrency={displayCurrency} testId="hero-bills" />
+          <FinancialDisclosure label="Large costs before payday" amount={breakdownProps.bigCostsDueBeforePayday} items={breakdownProps.largeCostItems} displayCurrency={displayCurrency} testId="hero-large-costs" />
+          <div className="financial-disclosure-static hero-calculation-total"><span>Free cash until payday</span><strong>{formatCurrency(Math.max(0, spendingRoomUntilPayday), displayCurrency)}</strong></div>
+        </div>
+      ) : null}
 
       <div className="hero-actions">
         <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>

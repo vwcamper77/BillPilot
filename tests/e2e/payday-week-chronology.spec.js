@@ -1,7 +1,8 @@
-// UI coverage for the payday-week chronology fix: a bill due before payday,
-// income landing on payday, and a bill due after payday but in the same
-// calendar week must all be reflected correctly in the hero numbers and the
-// four-week chart — never conflated, never pushed into the wrong week.
+// UI coverage for the "What you can safely spend each week" chart: a bill due
+// before payday, income landing on payday, and a bill due after payday but in
+// the same calendar week must all be reflected correctly — and the chart must
+// show safe-to-spend amounts, never a raw projected bank balance, as the
+// headline figure for a week.
 
 import { test, expect } from "@playwright/test";
 import {
@@ -41,6 +42,10 @@ function dayOfMonth(iso) {
   return Number(iso.slice(8, 10));
 }
 
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
 // Always land in "next week" (never today's own week), so the three dates —
 // bill before payday, payday itself, bill after payday — sit in one
 // unambiguous WC bucket (index 1) no matter what day the suite runs on.
@@ -70,6 +75,10 @@ async function gotoDashboardChart(page) {
   return chart;
 }
 
+function amountOf(text) {
+  return Number(String(text).replace(/[^0-9.-]/g, ""));
+}
+
 test.beforeAll(async () => {
   const { nonAdminUser } = await seedTestUsers();
   uid = nonAdminUser.uid;
@@ -96,41 +105,41 @@ test.describe("payday week chronology", () => {
 
     await signInAsBrowserUser(page, uid);
     const chart = await gotoDashboardChart(page);
-    await chart.screenshot({ path: "output/playwright/payday-week-split-chart.png" });
+    await chart.screenshot({ path: "output/playwright/weekly-safe-spend-chart.png" });
 
     // Hero: both "you're clear" and the daily allowance must reflect the £17
     // bill due before payday — £2,483, not the raw £2,500 balance.
     await expect(page.locator(".hero-value")).toContainText("£2,483");
-    const expectedDaily = (2483 / paydayOffset).toFixed(2);
-    await expect(page.locator(".hero-daily")).toContainText(`£${expectedDaily}/day`);
+    const expectedDaily = round2(2483 / paydayOffset);
+    await expect(page.locator(".hero-daily")).toContainText(`£${expectedDaily.toFixed(2)}/day`);
 
-    // No income — and no bill due next week — shown as available/deducted this week.
-    const paydayWeekBar = page.locator('[data-testid="waterfall-bar"][data-week-index="1"]');
-    const weekZeroBar = page.locator('[data-testid="waterfall-bar"][data-week-index="0"]');
-    expect(await weekZeroBar.getAttribute("data-closing-balance")).toBe("2500");
+    const paydayWeekCard = page.locator('[data-testid="weekly-spend-card"][data-week-index="1"]');
+    await expect(paydayWeekCard).toContainText("WC");
 
-    // The payday week (WC containing payday) must show every transaction that
-    // occurs within it — including the rent that falls after payday — and must
-    // not push that rent into the following week.
-    expect(await paydayWeekBar.getAttribute("data-closing-balance")).toBe("5383");
-    expect(await paydayWeekBar.getAttribute("data-weekly-outflow")).toBe("1117");
-    const weekTwoBar = page.locator('[data-testid="waterfall-bar"][data-week-index="2"]');
-    expect(await weekTwoBar.getAttribute("data-weekly-outflow")).toBe("0");
-    expect(await weekTwoBar.getAttribute("data-closing-balance")).toBe("5383");
+    // The payday week must show every transaction that occurs within it —
+    // including the rent that falls after payday — and must not push it into
+    // the following week's card.
+    const billsDue = paydayWeekCard.locator('[data-testid="bills-due"]');
+    expect(amountOf(await billsDue.textContent())).toBe(1117);
+    const projectedClosing = paydayWeekCard.locator('[data-testid="projected-closing-balance"]');
+    expect(amountOf(await projectedClosing.textContent())).toBe(5383);
 
-    // The payday week is visually split into a pre-payday and post-payday state.
-    const preSegment = page.locator('[data-testid="waterfall-bar-pre-payday"][data-week-index="1"]');
-    await expect(preSegment).toBeVisible();
-    expect(Number(await preSegment.getAttribute("data-value"))).toBe(2483);
+    const nextWeekCard = page.locator('[data-testid="weekly-spend-card"][data-week-index="2"]');
+    expect(amountOf(await nextWeekCard.locator('[data-testid="bills-due"]').textContent())).toBe(0);
+    expect(amountOf(await nextWeekCard.locator('[data-testid="projected-closing-balance"]').textContent())).toBe(5383);
 
-    // The full chronological bridge is available for the payday week: opening,
-    // the £17 bill, the £4,000 pay, then the £1,100 rent — applied once, in order.
-    const bridgeSteps = page.locator('[data-testid="payday-week-bridge-step"]');
-    await expect(bridgeSteps).toHaveCount(4);
-    const stepTypes = await bridgeSteps.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-step")));
-    expect(stepTypes).toEqual(["opening", "bill", "primary_pay", "bill"]);
-    const balancesAfter = await bridgeSteps.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-balance-after")));
-    expect(balancesAfter.slice(1)).toEqual(["2483", "6483", "5383"]);
+    // The payday week is split into a "before payday" and "after payday" card
+    // row — not one flat balance figure.
+    const preAvailable = paydayWeekCard.locator('[data-testid="available-to-spend"][data-segment="pre"]');
+    const postAvailable = paydayWeekCard.locator('[data-testid="available-to-spend"][data-segment="post"]');
+    await expect(preAvailable).toBeVisible();
+    await expect(postAvailable).toBeVisible();
+    expect(amountOf(await preAvailable.textContent())).toBe(round2(expectedDaily * 3));
+
+    // Available-to-spend must never equal the raw projected balance — it is a
+    // safe daily rate, not a bank balance.
+    expect(amountOf(await postAvailable.textContent())).toBeLessThan(5383);
+    expect(amountOf(await preAvailable.textContent())).toBeLessThan(2483);
   });
 
   test("multiple transactions on payday itself are all applied, income first", async ({ page }) => {
@@ -144,17 +153,11 @@ test.describe("payday week chronology", () => {
     await signInAsBrowserUser(page, uid);
     await gotoDashboardChart(page);
 
-    const bridgeSteps = page.locator('[data-testid="payday-week-bridge-step"]');
-    await expect(bridgeSteps).toHaveCount(3);
-    const stepTypes = await bridgeSteps.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-step")));
-    // Income clears before a same-day bill, so the bill never appears to be
-    // paid from money that hasn't landed yet.
-    expect(stepTypes).toEqual(["opening", "primary_pay", "bill"]);
-    const balancesAfter = await bridgeSteps.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-balance-after")));
-    expect(balancesAfter.slice(1)).toEqual(["4000", "3800"]);
-
-    const paydayWeekBar = page.locator('[data-testid="waterfall-bar"][data-week-index="1"]');
-    expect(await paydayWeekBar.getAttribute("data-closing-balance")).toBe("3800");
+    const paydayWeekCard = page.locator('[data-testid="weekly-spend-card"][data-week-index="1"]');
+    // Income clears before a same-day bill, so the £200 subscription is billed
+    // and the closing balance reflects it — 1000 + 3000 - 200 = 3800.
+    expect(amountOf(await paydayWeekCard.locator('[data-testid="projected-closing-balance"]').textContent())).toBe(3800);
+    expect(amountOf(await paydayWeekCard.locator('[data-testid="bills-due"]').textContent())).toBe(200);
   });
 
   test("a genuine shortfall before payday shows the real amount needed, not a misleading £0", async ({ page }) => {
@@ -176,8 +179,11 @@ test.describe("payday week chronology", () => {
     await page.getByRole("button", { name: "How it's worked out" }).click();
     await expect(page.locator(".forecast-breakdown-row.total")).toContainText("£300 needed before payday");
 
-    // The chart must not claim a "safe daily" allowance while short.
+    // The chart must not claim a "per day" allowance while short, and the
+    // affected week's card must show the shortfall, not a false £0.
     await expect(page.locator(".spend-curve-warning")).toBeVisible();
-    await expect(page.locator(".curve-stat-label", { hasText: "Safe daily" })).toHaveCount(0);
+    await expect(page.locator(".curve-stat-label", { hasText: "Per day" })).toHaveCount(0);
+    const shortWeek = page.locator('[data-testid="weekly-spend-card"]').filter({ hasText: "May go below £0" }).first();
+    await expect(shortWeek).toBeVisible();
   });
 });

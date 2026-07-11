@@ -178,6 +178,21 @@ export async function seedUserBill(uid, { id = "e2e-bill", name = "E2E bill", am
   }, { merge: true });
 }
 
+export async function seedUserIncomeEvent(uid, { id = "e2e-income-event", name = "Other income", amount = 100, expectedDate, frequency = "one_off", confidence = "confirmed" } = {}) {
+  const db = getFirestore(getFirebaseAdminApp());
+  await db.collection("users").doc(uid).collection("incomeEvents").doc(id).set({
+    name,
+    amount,
+    expectedDate,
+    frequency,
+    confidence,
+    status: "scheduled",
+    active: true,
+    currency: "GBP",
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
 export async function clearUserLargeCosts(uid) {
   const db = getFirestore(getFirebaseAdminApp());
   const snapshot = await db.collection("users").doc(uid).collection("largeCosts").get();

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { grantFoundingAccessFromCheckoutSession } from "@/lib/billingAccess.server";
+import { createPendingEntitlementFromCheckoutSession, getExpandedCheckoutSession } from "@/lib/entitlements.server";
 import { getAdminDb, getFirebaseProjectId } from "@/lib/firebaseAdmin";
 import { getStripeServerClient } from "@/lib/stripe";
 import { recordAnalyticsEvent } from "@/lib/customerProfile.server";
@@ -24,22 +25,34 @@ export async function POST(request) {
     const event = getStripeServerClient().webhooks.constructEvent(payload, signature, webhookSecret);
 
     if (event.type === "checkout.session.completed") {
-      const record = await grantFoundingAccessFromCheckoutSession(event.data.object, {
-        stripeEventId: event.id,
-      });
+      const rawSession = event.data.object;
 
-      // Retries replay the same event id — only fire the funnel event once.
-      if (record?.isNewStripeEvent) {
-        await recordAnalyticsEvent({
-          eventName: "checkout_completed",
-          uid: record.uid || null,
-          anonymousSessionId: record.customerAttribution?.anonymousSessionId || null,
-          utm_source: record.customerAttribution?.utm_source || null,
-          utm_medium: record.customerAttribution?.utm_medium || null,
-          utm_campaign: record.customerAttribution?.utm_campaign || null,
-        }).catch((analyticsError) => {
-          console.error("[stripe-webhook] failed to record checkout_completed analytics event", analyticsError);
+      if (rawSession.metadata?.userId) {
+        // Legacy flow: session was created by an authenticated checkout, so
+        // it already carries a Firebase uid. Untouched code path.
+        const record = await grantFoundingAccessFromCheckoutSession(rawSession, {
+          stripeEventId: event.id,
         });
+
+        // Retries replay the same event id — only fire the funnel event once.
+        if (record?.isNewStripeEvent) {
+          await recordAnalyticsEvent({
+            eventName: "checkout_completed",
+            uid: record.uid || null,
+            anonymousSessionId: record.customerAttribution?.anonymousSessionId || null,
+            utm_source: record.customerAttribution?.utm_source || null,
+            utm_medium: record.customerAttribution?.utm_medium || null,
+            utm_campaign: record.customerAttribution?.utm_campaign || null,
+          }).catch((analyticsError) => {
+            console.error("[stripe-webhook] failed to record checkout_completed analytics event", analyticsError);
+          });
+        }
+      } else {
+        // New flow: no Firebase uid yet — re-retrieve with discounts expanded
+        // (see getExpandedCheckoutSession) and fulfil against a pending
+        // entitlement instead of a user record.
+        const expandedSession = await getExpandedCheckoutSession(rawSession.id);
+        await createPendingEntitlementFromCheckoutSession(expandedSession);
       }
     }
 
