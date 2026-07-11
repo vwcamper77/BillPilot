@@ -534,11 +534,20 @@ function HomeDashboardContent() {
     "Large-cost funding",
     "large_cost",
   );
-  const nextPeriodIncome = [
-    ...(hasIncomeAmount && dashboard.paydayDate ? [{ id: "primary-pay", name: "Pay", date: dashboard.paydayDate, amount: Number(displayIncome.amount), type: "income" }] : []),
-    ...(dashboard.paydayDate && nextPaydayDate ? expandIncomeEvents(incomeEvents, dashboard.paydayDate, nextPaydayDate).filter((item) => item.date < nextPaydayDate).map((item) => ({ ...item, id: item.occurrenceId, type: "income" })) : []),
-  ];
+  const scheduledIncomeOccurrences = dashboard.paydayDate && nextPaydayDate
+    ? expandIncomeEvents(incomeEvents, todayIso, nextPaydayDate).filter((item) => item.date < nextPaydayDate)
+    : [];
+  const upcomingIncome = [
+    ...(hasIncomeAmount && dashboard.paydayDate ? [{ id: "primary-pay", name: "Monthly pay", date: dashboard.paydayDate, amount: Number(displayIncome.amount), type: "income" }] : []),
+    ...scheduledIncomeOccurrences.map((item) => ({ ...item, id: item.occurrenceId, type: "income" })),
+  ].filter((item) => item.date >= todayIso)
+    .sort((a, b) => a.date.localeCompare(b.date) || String(a.name).localeCompare(String(b.name)));
   const sumItemAmounts = (items) => items.reduce((total, item) => total + item.amount, 0);
+  const currentPeriodIncome = upcomingIncome.filter((item) => item.date < dashboard.paydayDate);
+  const currentIncomeTotal = sumItemAmounts(currentPeriodIncome);
+  const nextPeriodIncome = [
+    ...upcomingIncome.filter((item) => item.date >= dashboard.paydayDate && item.date < nextPaydayDate),
+  ];
   const nextIncomeTotal = sumItemAmounts(nextPeriodIncome);
   const nextBillTotal = sumItemAmounts(nextPeriodBills);
   const nextLargeCostTotal = sumItemAmounts(nextPeriodLargeCosts);
@@ -1130,20 +1139,18 @@ function HomeDashboardContent() {
           displayCurrency,
           billItems: beforePaydayBillItems,
           largeCostItems: beforePaydayLargeCostItems,
+          incomeItems: currentPeriodIncome,
         }}
       />
 
       {dashboard.paydayDate && nextPaydayDate ? (
-        <>
-          <section className="next-money-in" aria-label="Next money in">
-            <span>Next money in</span>
-            <strong>+{formatCurrency(hasIncomeAmount ? Number(displayIncome.amount) : 0, displayCurrency)} on {formatDisplayDate(dashboard.paydayDate)}</strong>
-          </section>
           <PayPeriodCards
             displayCurrency={displayCurrency}
             current={{
               endDate: dashboard.paydayDate,
               startingBalance: dashboard.currentBalance,
+              incomeTotal: currentIncomeTotal,
+              income: currentPeriodIncome,
               billTotal: dashboard.totalBeforePayday,
               bills: beforePaydayBillItems,
               largeCostTotal: bigCostsDueBeforePayday,
@@ -1164,7 +1171,6 @@ function HomeDashboardContent() {
               dailyAllowance: Math.max(0, nextFreeCash / nextPeriodDays),
             }}
           />
-        </>
       ) : null}
 
       <BalanceEditor

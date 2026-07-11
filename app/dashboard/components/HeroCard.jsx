@@ -1,8 +1,4 @@
-"use client";
-
-import { useState } from "react";
 import { formatCurrency, formatDisplayDate } from "@/lib/billMath";
-import ExplainBreakdown from "./ExplainBreakdown";
 import FinancialDisclosure from "./FinancialDisclosure";
 
 export default function HeroCard({
@@ -18,8 +14,6 @@ export default function HeroCard({
   onEditPaydaySettings,
   breakdownProps,
 }) {
-  const [showBreakdown, setShowBreakdown] = useState(false);
-
   const headline = (() => {
     if (!hasBalanceSnapshot) return "Add your current available money to get started";
     if (!hasPayday || spendingRoomUntilPayday === null) return "Set your payday to get started";
@@ -59,6 +53,7 @@ export default function HeroCard({
       {canExplain ? (
         <div className="hero-calculation" aria-label="Today's calculation">
           <div className="financial-disclosure-static"><span>Current bank balance</span><strong>{formatCurrency(breakdownProps.currentBalance, displayCurrency)}</strong></div>
+          <FinancialDisclosure label="Income arriving before payday" amount={breakdownProps.additionalIncomeBeforePayday} items={breakdownProps.incomeItems} displayCurrency={displayCurrency} sign="+" testId="hero-income" />
           <FinancialDisclosure label="Reserved for bills before payday" amount={breakdownProps.totalBeforePayday} items={breakdownProps.billItems} displayCurrency={displayCurrency} testId="hero-bills" />
           <FinancialDisclosure label="Large costs before payday" amount={breakdownProps.bigCostsDueBeforePayday} items={breakdownProps.largeCostItems} displayCurrency={displayCurrency} testId="hero-large-costs" />
           <div className="financial-disclosure-static hero-calculation-total"><span>Free cash until payday</span><strong>{formatCurrency(Math.max(0, spendingRoomUntilPayday), displayCurrency)}</strong></div>
@@ -74,23 +69,6 @@ export default function HeroCard({
         </button>
       </div>
 
-      {canExplain ? (
-        <div className="hero-disclosure">
-          <button
-            className="hero-disclosure-toggle"
-            type="button"
-            aria-expanded={showBreakdown}
-            onClick={() => setShowBreakdown((current) => !current)}
-          >
-            How it's worked out
-          </button>
-          {showBreakdown ? (
-            <div className="hero-disclosure-body">
-              <ExplainBreakdown {...breakdownProps} />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -1,25 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { formatCurrency, formatOrdinal, isValidDueDay } from "@/lib/billMath";
+import { calculateIncomeSchedule, formatCurrency, formatOrdinal, isValidDueDay } from "@/lib/billMath";
 import { getScrollBehavior } from "../lib/billHelpers";
 import AdditionalIncomeEditor from "./AdditionalIncomeEditor";
 
 const BALANCE_HELPER_TEXT = "This is just the money currently available in your account, so ClearTill can show today’s cash position after bills.";
 const BALANCE_MISSING_FORECAST_COPY = "Add your current available money to see today’s exact cash forecast.";
-
-function getIncomeStatusText(income, hasIncomeAmount, hasPayday, currency = "GBP") {
-  if (hasIncomeAmount && hasPayday) {
-    return `${formatCurrency(income.amount, currency)} on the ${formatOrdinal(income.payDay)} of each month.`;
-  }
-  if (hasIncomeAmount) {
-    return "Add payday";
-  }
-  if (hasPayday) {
-    return `Payday: ${formatOrdinal(income.payDay)} of each month`;
-  }
-  return "No payday set yet.";
-}
 
 export default function BalanceEditor({
   open,
@@ -88,6 +75,10 @@ export default function BalanceEditor({
     event.currentTarget.select();
   }
 
+  const selectedPaydayDate = isValidDueDay(incomeForm.payDay)
+    ? calculateIncomeSchedule(incomeForm.payDay, todayIso).nextPayDate
+    : "";
+
   return (
     <div ref={wrapperRef} className={`balance-editor${open ? "" : " is-collapsed"}`} inert={!open}>
       <div className="balance-editor-inner">
@@ -145,52 +136,57 @@ export default function BalanceEditor({
           {balanceError ? <p className="error">{balanceError}</p> : null}
         </section>
 
-        <section className="bill-section">
-          <div className="section-head">
-            <h3>When do you get paid?</h3>
+        <section className="income-schedule-card" data-testid="income-schedule-card">
+          <div className="income-schedule-header">
+            <div>
+              <span className="income-schedule-kicker">Income schedule</span>
+              <h2>Your regular pay</h2>
+              <p>Set when your main income normally arrives. Add bonuses, benefits or other payments below.</p>
+            </div>
             <button
               className="secondary-button small-button"
               type="button"
               onClick={() => onSetEditingIncome(!editingIncome)}
             >
-              {editingIncome ? "Cancel" : income ? "Edit" : "Set"}
+              {editingIncome ? "Cancel editing" : income ? "Edit regular pay" : "Add regular pay"}
             </button>
           </div>
           {editingIncome ? (
-            <form className="edit-form" onSubmit={onSubmitIncome}>
-              <label className="field-label" htmlFor="payday-amount">Amount</label>
-              <input
-                ref={paydayAmountInputRef}
-                id="payday-amount"
-                inputMode="decimal"
-                value={incomeForm.amount}
-                onChange={(event) => onIncomeFormChange((current) => ({ ...current, amount: event.target.value }))}
-                placeholder="Monthly income"
-              />
-              <label className="field-label" htmlFor="payday-day">When do you get paid?</label>
-              <input
-                id="payday-day"
-                inputMode="numeric"
-                value={incomeForm.payDay}
-                onChange={(event) => onIncomeFormChange((current) => ({ ...current, payDay: event.target.value }))}
-                placeholder="Day of month"
-              />
+            <form className="income-schedule-form" onSubmit={onSubmitIncome}>
+              <div className="field-row">
+                <label className="field-label" htmlFor="payday-amount">Regular take-home amount</label>
+                <input ref={paydayAmountInputRef} id="payday-amount" inputMode="decimal" value={incomeForm.amount} onChange={(event) => onIncomeFormChange((current) => ({ ...current, amount: event.target.value }))} placeholder="4000" />
+              </div>
+              <div className="field-row">
+                <label className="field-label" htmlFor="payday-date">Next payday date</label>
+                <input
+                  id="payday-date"
+                  type="date"
+                  min={todayIso}
+                  value={selectedPaydayDate}
+                  onChange={(event) => onIncomeFormChange((current) => ({
+                    ...current,
+                    payDay: event.target.value ? String(Number(event.target.value.slice(8, 10))) : "",
+                  }))}
+                />
+                <p className="field-help">ClearTill will repeat this payday on the same day each month.</p>
+              </div>
               <div className="edit-actions">
                 <button className="primary-button" type="submit" disabled={savingEdit}>
-                  {savingEdit ? "Saving..." : "Save"}
+                  {savingEdit ? "Saving..." : "Save regular pay"}
                 </button>
               </div>
             </form>
           ) : (
-            <>
-              <p className="helper-text">{getIncomeStatusText(income, hasIncomeAmount, isValidDueDay(income?.payDay), displayCurrency)}</p>
+            <div className="regular-pay-summary">
+              <div><span>Amount</span><strong>{hasIncomeAmount ? formatCurrency(income.amount, displayCurrency) : "Not set"}</strong></div>
+              <div><span>Schedule</span><strong>{hasPayday ? `${formatOrdinal(income.payDay)} of each month` : "Not set"}</strong></div>
               {income && hasIncomeAmount ? (
-                <div className="helper-text helper-tooltip">
-                  <p>Expected monthly income: {formatCurrency(Number(income.amount), displayCurrency)}</p>
+                <div className="regular-pay-forecast">
                   {hasBills ? (
                     <>
-                      <p>Monthly bills: {formatCurrency(totalMonthlyBills, displayCurrency)}</p>
-                      <p>Monthly spending room: {monthlySpendingRoomValue}</p>
+                      <span>Monthly bills <strong>{formatCurrency(totalMonthlyBills, displayCurrency)}</strong></span>
+                      <span>After monthly bills <strong>{monthlySpendingRoomValue}</strong></span>
                     </>
                   ) : null}
                 </div>
@@ -201,7 +197,7 @@ export default function BalanceEditor({
               {income && hasPayday && !hasIncomeAmount ? (
                 <p className="helper-text helper-tooltip">Add income amount if you want ClearTill to show monthly spending room.</p>
               ) : null}
-            </>
+            </div>
           )}
           {!hasBalanceSnapshot ? (
             <p className="helper-text helper-tooltip">

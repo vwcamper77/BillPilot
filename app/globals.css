@@ -3757,24 +3757,33 @@ h1 {
   margin-top: 2px;
 }
 
-.next-money-in {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin: 0 0 12px;
-  padding: 16px 20px;
+.income-schedule-card {
+  padding: 22px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fffdf9, #fffaf2);
+  box-shadow: 0 10px 26px rgba(62, 45, 24, .04);
 }
+.income-schedule-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.income-schedule-kicker { color: var(--accent-dark); font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.income-schedule-header h2 { margin: 4px 0 4px; font-size: 1.22rem; }
+.income-schedule-header p { max-width: 570px; margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.45; }
+.regular-pay-summary { margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.regular-pay-summary > div:not(.regular-pay-forecast) { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: white; display: flex; flex-direction: column; gap: 3px; }
+.regular-pay-summary span { color: var(--muted); font-size: .74rem; }
+.regular-pay-summary strong { color: var(--ink); font-size: .92rem; }
+.regular-pay-forecast { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 2px 2px 0; }
+.income-schedule-form { margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.income-schedule-form .edit-actions { grid-column: 1 / -1; }
+.income-schedule-form .field-help { margin: 5px 0 0; color: var(--muted); font-size: .72rem; line-height: 1.35; }
+.income-schedule-card .additional-income-editor { margin-top: 18px; background: white; }
+.additional-income-toggle > span:first-child { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.additional-income-toggle small { color: var(--muted); font-weight: 400; }
 
-.next-money-in span,
 .pay-period-card > p {
   color: var(--muted);
   font-size: 0.78rem;
 }
-
-.next-money-in strong { font-size: 1.05rem; color: var(--accent-dark); }
 
 .pay-period-grid {
   display: grid;
@@ -3850,6 +3859,9 @@ h1 {
   .financial-detail-row { grid-template-columns: minmax(0, 1fr) auto; }
   .financial-detail-row time { grid-column: 1; grid-row: 2; }
   .financial-detail-row strong { grid-column: 2; grid-row: 1 / span 2; }
+  .income-schedule-header { flex-direction: column; }
+  .regular-pay-summary, .income-schedule-form { grid-template-columns: 1fr; }
+  .income-schedule-form .edit-actions { grid-column: auto; }
 }
 
 .csv-edit-form input,

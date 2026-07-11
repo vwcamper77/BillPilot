@@ -108,12 +108,12 @@ export default function AdditionalIncomeEditor({ incomeEvents = [], onIncomeEven
         aria-expanded={expanded}
         onClick={() => setExpanded((current) => !current)}
       >
-        <span>{summary}</span>
+        <span><strong>Other scheduled income</strong><small>{summary}</small></span>
         <span aria-hidden="true">{expanded ? "−" : "+"}</span>
       </button>
       {expanded ? (
         <div className="additional-income-body">
-          <p className="helper-text">Confirmed payments affect safe spending, the forecast and Large Cost plans only from the date they arrive.</p>
+          <p className="helper-text">Bonuses, benefits and other confirmed payments are included in the hero calculation from the date they arrive.</p>
           {activeEvents.length ? (
             <ul className="additional-income-list">
               {activeEvents.map((event) => (

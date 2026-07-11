@@ -12,6 +12,7 @@ export default function PayPeriodCards({ current, next, displayCurrency }) {
         <h2>Current period</h2>
         <p>Now to {formatShortDisplayDate(current.endDate)}</p>
         <SummaryRow label="Starting balance" value={current.startingBalance} displayCurrency={displayCurrency} />
+        <FinancialDisclosure label="Income arriving" amount={current.incomeTotal} items={current.income} displayCurrency={displayCurrency} sign="+" testId="current-period-income" />
         <FinancialDisclosure label="Bills and commitments" amount={current.billTotal} items={current.bills} displayCurrency={displayCurrency} testId="current-period-bills" />
         <FinancialDisclosure label="Large-cost funding" amount={current.largeCostTotal} items={current.largeCosts} displayCurrency={displayCurrency} testId="current-period-large-costs" />
         <SummaryRow label="Free to spend" value={current.freeCash} displayCurrency={displayCurrency} />

@@ -53,10 +53,21 @@ test.beforeEach(async () => {
   await seedUserBill(uid, { id: "rent", name: "Rent", amount: 900, dueDay: dayOfMonth(addDaysIso(today, 3)) });
   await seedUserBill(uid, { id: "internet", name: "Internet", amount: 50, dueDay: dayOfMonth(addDaysIso(today, 6)) });
   await seedUserIncomeEvent(uid, { id: "refund", name: "Refund", amount: 125, expectedDate: addDaysIso(today, 15) });
+  await seedUserIncomeEvent(uid, { id: "bonus", name: "Bonus", amount: 1000, expectedDate: addDaysIso(today, 5) });
 });
 
 test("disclosures are exact, accessible, period-correct and mobile-safe", async ({ page }) => {
   await signIn(page);
+
+  const heroIncome = page.locator('[data-testid="hero-income"]');
+  await expect(heroIncome).toContainText("£1,000");
+  await heroIncome.getByRole("button").click();
+  await expect(heroIncome).toContainText("Bonus");
+  await expect(page.getByRole("button", { name: "How it's worked out" })).toHaveCount(0);
+  await expect(page.locator('[data-testid="next-money-in"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="income-schedule-card"]')).toContainText("Other scheduled income");
+  await page.reload();
+  await expect(heroIncome).toContainText("£1,000");
 
   const heroBills = page.locator('[data-testid="hero-bills"]');
   const toggle = heroBills.getByRole("button");
@@ -78,7 +89,7 @@ test("disclosures are exact, accessible, period-correct and mobile-safe", async 
   await expect(page.locator('[data-testid="current-pay-period"]')).toContainText("Rent");
   const nextIncome = page.locator('[data-testid="next-period-income"]');
   await nextIncome.getByRole("button").click();
-  await expect(nextIncome).toContainText("Pay");
+  await expect(nextIncome).toContainText("Monthly pay");
   await expect(nextIncome).toContainText("Refund");
 
   const weeklyCosts = page.locator('[data-testid^="weekly-costs-"]').filter({ hasText: "£950" });
