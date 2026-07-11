@@ -156,4 +156,28 @@ test.describe("payday week chronology", () => {
     const paydayWeekBar = page.locator('[data-testid="waterfall-bar"][data-week-index="1"]');
     expect(await paydayWeekBar.getAttribute("data-closing-balance")).toBe("3800");
   });
+
+  test("a genuine shortfall before payday shows the real amount needed, not a misleading £0", async ({ page }) => {
+    const today = todayIsoLondon();
+    const { billBeforeOffset, paydayOffset } = nextWeekOffsets();
+    const billBeforeDate = addDaysIso(today, billBeforeOffset);
+    const paydayDate = addDaysIso(today, paydayOffset);
+
+    // £500 balance, an £800 bill due before payday: a genuine £300 shortfall.
+    await seedDashboardState(uid, { currentBalance: 500, payDay: dayOfMonth(paydayDate), payAmount: 1000 });
+    await seedUserBill(uid, { id: "big-bill", name: "Big bill", amount: 800, dueDay: dayOfMonth(billBeforeDate) });
+
+    await signInAsBrowserUser(page, uid);
+    await gotoDashboardChart(page);
+
+    await expect(page.locator(".hero-value")).toContainText("£300");
+    await expect(page.locator(".hero-value")).not.toContainText("£0");
+    await expect(page.getByRole("button", { name: "How it's worked out" })).toBeVisible();
+    await page.getByRole("button", { name: "How it's worked out" }).click();
+    await expect(page.locator(".forecast-breakdown-row.total")).toContainText("£300 needed before payday");
+
+    // The chart must not claim a "safe daily" allowance while short.
+    await expect(page.locator(".spend-curve-warning")).toBeVisible();
+    await expect(page.locator(".curve-stat-label", { hasText: "Safe daily" })).toHaveCount(0);
+  });
 });

@@ -137,4 +137,34 @@ test.describe("payday-week chronological cashflow", () => {
     expect(paydayWeek.closingBalance).toBe(6483 - 600 - 500);
     expect(paydayWeek.steps).toHaveLength(5);
   });
+
+  test("a genuine shortfall before payday is reported as a real negative amount, not floored to £0", () => {
+    // Balance £1,000, bills £1,185 before payday, £400 confirmed income before
+    // payday, £500 of large costs also due before payday — a true £285 shortfall.
+    const result = calculateSafeSpendingPlan({
+      todayIso: "2026-07-11",
+      horizonDate: "2026-07-25",
+      currentBalance: 1000,
+      bills: [
+        { id: "bill-a", amount: 1185, nextDueDate: "2026-07-14" },
+      ],
+      largeCostAllocations: [
+        { id: "cost-a", currentAccountAmount: 500, nextDueDate: "2026-07-20" },
+      ],
+      additionalIncomeEvents: [{
+        id: "gig",
+        name: "Side gig",
+        amount: 400,
+        expectedDate: "2026-07-16",
+        frequency: "one_off",
+        confidence: "confirmed",
+        status: "scheduled",
+        active: true,
+      }],
+    });
+    expect(result.minimumProjectedBalance).toBeLessThan(0);
+    // The reported shortfall must equal the true worst dip, not a £0 floor.
+    expect(result.spendingRoom).toBe(result.minimumProjectedBalance);
+    expect(result.spendingRoom).toBeLessThan(0);
+  });
 });

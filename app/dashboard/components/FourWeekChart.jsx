@@ -73,7 +73,10 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
   const sym = displayCurrency === "EUR" ? "€" : displayCurrency === "USD" ? "$" : "£";
 
   const todayX = dayOffsetX(todayIso, 0);
-  const paydayX = payDateBucketIndex !== -1 ? dayOffsetX(paydayDate, payDateBucketIndex) : null;
+  // The payday week is drawn as two half-width bars (pre/post payday) rather
+  // than one continuous timeline, so the marker sits at the visual gap between
+  // them instead of a day-proportional offset that wouldn't line up with it.
+  const paydayX = payDateBucketIndex !== -1 ? toBarCenterX(payDateBucketIndex) : null;
   const paydaySharesWeekWithToday = payDateBucketIndex === 0;
 
   return (
@@ -88,7 +91,7 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
           <span className="curve-stat-label">After bills and plans</span>
           <strong className={goesNegative ? "curve-negative" : ""}>{formatCurrency(lowestBal, displayCurrency)}</strong>
         </span>
-        {dailySpendingRoom !== null ? (
+        {dailySpendingRoom !== null && !goesNegative ? (
           <span className="curve-stat">
             <span className="curve-stat-label">Safe daily</span>
             <strong>{formatCurrency(dailySpendingRoom, displayCurrency)}/day</strong>
@@ -119,44 +122,75 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
           const muted = point.isAfterPayCycle;
           const labelFitsInside = bh >= 16;
           const labelY = labelFitsInside ? barTopY + 13 : barTopY - 5;
+          const isSplitWeek = point.containsPayDate && Number.isFinite(point.prePaydayClosingBalance);
 
-          // The payday week gets a second, darker segment grounded at £0 showing
-          // the pre-payday balance, plus a divider at that height — so the bar
-          // visibly splits into "before payday" and "after payday" states instead
-          // of hiding the mid-week transition behind one flat closing number.
-          let prePaydaySegment = null;
-          if (point.containsPayDate && Number.isFinite(point.prePaydayClosingBalance)) {
-            const preValue = point.prePaydayClosingBalance;
-            const preNegative = preValue < 0;
-            const preScaledH = (Math.abs(preValue) / cashRange) * chartH;
-            const preBh = Math.max(preScaledH, 1);
-            const preTopY = preNegative ? zeroY : zeroY - preBh;
-            prePaydaySegment = (
+          // The payday week renders as two clearly separate bars — before
+          // payday and after payday — connected by a step line, instead of one
+          // flat bar that hides the mid-week jump. The original single bar is
+          // still drawn beneath (invisible) so its data attributes stay intact.
+          let splitBars = null;
+          if (isSplitWeek) {
+            const halfGap = 4;
+            const halfW = (barW - halfGap) / 2;
+            const preX = toBarX(i);
+            const postX = preX + halfW + halfGap;
+
+            const renderHalf = (value, x, segment) => {
+              const segNegative = value < 0;
+              const segScaledH = (Math.abs(value) / cashRange) * chartH;
+              const segBh = Math.max(segScaledH, 2);
+              const segTopY = segNegative ? zeroY : zeroY - segBh;
+              const segLabelFits = segBh >= 16;
+              const segLabelY = segLabelFits ? segTopY + 12 : segTopY - 5;
+              return {
+                topY: segTopY,
+                node: (
+                  <g key={segment}>
+                    <rect
+                      data-testid={`waterfall-bar-${segment}-payday`}
+                      data-week-index={i}
+                      data-value={value}
+                      x={x.toFixed(1)}
+                      y={segTopY.toFixed(1)}
+                      width={halfW.toFixed(1)}
+                      height={segBh.toFixed(1)}
+                      fill={segNegative ? "var(--warn)" : segment === "pre" ? "var(--accent-dark)" : "var(--accent)"}
+                      opacity={0.85}
+                      rx="2.5"
+                    />
+                    <text
+                      data-testid={`waterfall-bar-${segment}-payday-label`}
+                      data-week-index={i}
+                      x={(x + halfW / 2).toFixed(1)}
+                      y={segLabelY.toFixed(1)}
+                      textAnchor="middle"
+                      fontSize="8"
+                      fontWeight="600"
+                      fill={segLabelFits ? "#ffffff" : "var(--ink)"}
+                    >
+                      {formatCurrency(value, displayCurrency)}
+                    </text>
+                  </g>
+                ),
+              };
+            };
+
+            const pre = renderHalf(point.prePaydayClosingBalance, preX, "pre");
+            const post = renderHalf(point.closingBalance, postX, "post");
+            splitBars = (
               <>
-                <rect
-                  data-testid="waterfall-bar-pre-payday"
+                {pre.node}
+                <path
+                  data-testid="waterfall-bar-step-connector"
                   data-week-index={i}
-                  data-value={preValue}
-                  x={toBarX(i).toFixed(1)}
-                  y={preTopY.toFixed(1)}
-                  width={barW.toFixed(1)}
-                  height={preBh.toFixed(1)}
-                  fill={preNegative ? "var(--warn)" : "var(--accent-dark)"}
-                  opacity={0.9}
-                  rx="3"
-                />
-                <line
-                  data-testid="waterfall-bar-payday-divider"
-                  data-week-index={i}
-                  x1={toBarX(i).toFixed(1)}
-                  y1={preTopY.toFixed(1)}
-                  x2={(toBarX(i) + barW).toFixed(1)}
-                  y2={preTopY.toFixed(1)}
-                  stroke="#ffffff"
+                  d={`M ${(preX + halfW).toFixed(1)} ${pre.topY.toFixed(1)} H ${(preX + halfW + halfGap / 2).toFixed(1)} V ${post.topY.toFixed(1)} H ${postX.toFixed(1)}`}
+                  fill="none"
+                  stroke="var(--ink)"
                   strokeWidth="1"
                   strokeDasharray="2 2"
-                  opacity="0.9"
+                  opacity="0.45"
                 />
+                {post.node}
               </>
             );
           }
@@ -176,23 +210,25 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
                 width={barW.toFixed(1)}
                 height={bh.toFixed(1)}
                 fill={negative ? "var(--warn)" : "var(--accent)"}
-                opacity={muted ? 0.18 : point.containsPayDate ? 0.45 : 0.78}
+                opacity={muted ? 0.18 : isSplitWeek ? 0 : 0.78}
                 rx="3"
               />
-              {prePaydaySegment}
-              <text
-                data-testid="waterfall-bar-label"
-                data-week-index={i}
-                x={toBarCenterX(i).toFixed(1)}
-                y={labelY.toFixed(1)}
-                textAnchor="middle"
-                fontSize="9.5"
-                fontWeight="600"
-                fill={labelFitsInside ? "#ffffff" : "var(--ink)"}
-                opacity={muted ? 0.6 : 1}
-              >
-                {formatCurrency(point.closingBalance, displayCurrency)}
-              </text>
+              {splitBars}
+              {!isSplitWeek ? (
+                <text
+                  data-testid="waterfall-bar-label"
+                  data-week-index={i}
+                  x={toBarCenterX(i).toFixed(1)}
+                  y={labelY.toFixed(1)}
+                  textAnchor="middle"
+                  fontSize="9.5"
+                  fontWeight="600"
+                  fill={labelFitsInside ? "#ffffff" : "var(--ink)"}
+                  opacity={muted ? 0.6 : 1}
+                >
+                  {formatCurrency(point.closingBalance, displayCurrency)}
+                </text>
+              ) : null}
             </g>
           );
         })}
