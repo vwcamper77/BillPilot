@@ -12,12 +12,29 @@ export async function POST(request) {
     const identity = await authorizeDiagnosticRequest(request);
     const body = await request.json().catch(() => ({}));
     const requestedClientId = String(body?.clientId || "").trim();
+    const requestedSessionId = String(body?.sessionId || "").trim();
     const clientId = /^\d+\.\d+$/.test(requestedClientId) ? requestedClientId : null;
+    const sessionId = /^\d+$/.test(requestedSessionId) && Number(requestedSessionId) > 0
+      ? Number(requestedSessionId)
+      : null;
+    console.info("[ga4-test] browser identifiers", {
+      clientIdPresent: Boolean(clientId),
+      sessionIdPresent: Boolean(sessionId),
+    });
+    if (!clientId || !sessionId) {
+      return NextResponse.json({
+        ok: false,
+        error: "A real GA4 browser client ID and session ID are required.",
+        clientIdPresent: Boolean(clientId),
+        sessionIdPresent: Boolean(sessionId),
+      }, { status: 400 });
+    }
     const result = await sendGa4Event({
       eventName: "qa_analytics_test",
       clientId,
       userId: identity.uid,
-      params: { test_flow: true },
+      params: { test_flow: true, session_id: sessionId, engagement_time_msec: 1 },
+      forceDebug: true,
     });
 
     return NextResponse.json({

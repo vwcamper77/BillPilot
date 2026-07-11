@@ -10,6 +10,7 @@ import FunnelSection from "./FunnelSection";
 import AdPerformanceTable from "./AdPerformanceTable";
 import CustomerTable from "./CustomerTable";
 import CustomerDetailDrawer from "./CustomerDetailDrawer";
+import Ga4BrowserDiagnostic from "./Ga4BrowserDiagnostic";
 
 const RANGE_OPTIONS = [
   { value: "7", label: "Last 7 days" },
@@ -129,6 +130,8 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {status.error ? <p className="helper-text billing-error">{status.error}</p> : null}
+
+      <Ga4BrowserDiagnostic user={user} />
 
       {data ? (
         <>
