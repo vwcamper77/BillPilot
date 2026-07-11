@@ -25,7 +25,14 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
   const payDateBucketIndex = waterfall.findIndex((point) => point.containsPayDate);
 
   const closingBalances = waterfall.map((point) => point.closingBalance);
-  const prePaydayBalances = waterfall.filter((point) => !point.isAfterPayCycle).map((point) => point.closingBalance);
+  // A week containing payday closes with its post-payday balance, which is
+  // never the low point before payday — use its pre-payday checkpoint instead
+  // so "after bills and plans" reflects every bill due before payday, not a
+  // balance already boosted by income that hasn't arrived yet.
+  const prePaydayBalances = waterfall
+    .filter((point) => !point.isAfterPayCycle)
+    .map((point) => (point.containsPayDate ? point.prePaydayClosingBalance : point.closingBalance))
+    .filter((value) => Number.isFinite(value));
   const lowestBal = Math.min(
     leftBeforePayday,
     ...prePaydayBalances,
@@ -112,6 +119,48 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
           const muted = point.isAfterPayCycle;
           const labelFitsInside = bh >= 16;
           const labelY = labelFitsInside ? barTopY + 13 : barTopY - 5;
+
+          // The payday week gets a second, darker segment grounded at £0 showing
+          // the pre-payday balance, plus a divider at that height — so the bar
+          // visibly splits into "before payday" and "after payday" states instead
+          // of hiding the mid-week transition behind one flat closing number.
+          let prePaydaySegment = null;
+          if (point.containsPayDate && Number.isFinite(point.prePaydayClosingBalance)) {
+            const preValue = point.prePaydayClosingBalance;
+            const preNegative = preValue < 0;
+            const preScaledH = (Math.abs(preValue) / cashRange) * chartH;
+            const preBh = Math.max(preScaledH, 1);
+            const preTopY = preNegative ? zeroY : zeroY - preBh;
+            prePaydaySegment = (
+              <>
+                <rect
+                  data-testid="waterfall-bar-pre-payday"
+                  data-week-index={i}
+                  data-value={preValue}
+                  x={toBarX(i).toFixed(1)}
+                  y={preTopY.toFixed(1)}
+                  width={barW.toFixed(1)}
+                  height={preBh.toFixed(1)}
+                  fill={preNegative ? "var(--warn)" : "var(--accent-dark)"}
+                  opacity={0.9}
+                  rx="3"
+                />
+                <line
+                  data-testid="waterfall-bar-payday-divider"
+                  data-week-index={i}
+                  x1={toBarX(i).toFixed(1)}
+                  y1={preTopY.toFixed(1)}
+                  x2={(toBarX(i) + barW).toFixed(1)}
+                  y2={preTopY.toFixed(1)}
+                  stroke="#ffffff"
+                  strokeWidth="1"
+                  strokeDasharray="2 2"
+                  opacity="0.9"
+                />
+              </>
+            );
+          }
+
           return (
             <g key={point.weekStart}>
               <rect
@@ -127,9 +176,10 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
                 width={barW.toFixed(1)}
                 height={bh.toFixed(1)}
                 fill={negative ? "var(--warn)" : "var(--accent)"}
-                opacity={muted ? 0.18 : 0.78}
+                opacity={muted ? 0.18 : point.containsPayDate ? 0.45 : 0.78}
                 rx="3"
               />
+              {prePaydaySegment}
               <text
                 data-testid="waterfall-bar-label"
                 data-week-index={i}
@@ -252,6 +302,24 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
             .map((item) => (
               <span key={`${item.name}-${item.date}`}>{item.name}: +{formatCurrency(item.amount, displayCurrency)} on {formatDisplayDate(item.date)}</span>
             ))}
+        </div>
+      ) : null}
+      {payDateBucketIndex !== -1 && waterfall[payDateBucketIndex].steps.length > 0 ? (
+        <div className="payday-week-bridge" data-testid="payday-week-bridge">
+          <span data-testid="payday-week-bridge-step" data-step="opening">
+            {formatDisplayDate(waterfall[payDateBucketIndex].weekStart)}: {formatCurrency(waterfall[payDateBucketIndex].openingBalance, displayCurrency)}
+          </span>
+          {waterfall[payDateBucketIndex].steps.map((step) => (
+            <span
+              key={`${step.type}-${step.date}-${step.name}`}
+              data-testid="payday-week-bridge-step"
+              data-step={step.type}
+              data-date={step.date}
+              data-balance-after={step.balanceAfter}
+            >
+              {step.name}: {step.amount >= 0 ? "+" : "-"}{formatCurrency(Math.abs(step.amount), displayCurrency)} on {formatDisplayDate(step.date)} → {formatCurrency(step.balanceAfter, displayCurrency)}
+            </span>
+          ))}
         </div>
       ) : null}
     </section>
