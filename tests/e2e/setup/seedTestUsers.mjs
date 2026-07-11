@@ -141,6 +141,15 @@ export async function seedDashboardState(uid, { currentBalance = null, payDay = 
   await Promise.all(writes);
 }
 
+export async function seedUserSavings(uid, totalSetAside = 0) {
+  const db = getFirestore(getFirebaseAdminApp());
+  await db.collection("users").doc(uid).collection("settings").doc("savings").set({
+    totalSetAside,
+    currency: "GBP",
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
 export async function clearUserBills(uid) {
   const db = getFirestore(getFirebaseAdminApp());
   const snapshot = await db.collection("users").doc(uid).collection("bills").get();
@@ -154,6 +163,21 @@ export async function clearUserBills(uid) {
   await batch.commit();
 }
 
+export async function seedUserBill(uid, { id = "e2e-bill", name = "E2E bill", amount = 1, dueDay = 5 } = {}) {
+  const db = getFirestore(getFirebaseAdminApp());
+  await db.collection("users").doc(uid).collection("bills").doc(id).set({
+    type: "bill",
+    name,
+    amount,
+    currency: "GBP",
+    frequency: "monthly",
+    dueDay,
+    reminderOffsetDays: 1,
+    active: true,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
 export async function clearUserLargeCosts(uid) {
   const db = getFirestore(getFirebaseAdminApp());
   const snapshot = await db.collection("users").doc(uid).collection("largeCosts").get();
@@ -162,6 +186,15 @@ export async function clearUserLargeCosts(uid) {
     return;
   }
 
+  const batch = db.batch();
+  snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+  await batch.commit();
+}
+
+export async function clearUserIncomeEvents(uid) {
+  const db = getFirestore(getFirebaseAdminApp());
+  const snapshot = await db.collection("users").doc(uid).collection("incomeEvents").get();
+  if (snapshot.empty) return;
   const batch = db.batch();
   snapshot.docs.forEach((doc) => batch.delete(doc.ref));
   await batch.commit();

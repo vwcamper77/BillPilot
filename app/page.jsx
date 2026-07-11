@@ -2,6 +2,7 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import HeroFoundingCta from "./HeroFoundingCta";
 import { getFoundingMemberCount } from "@/lib/billingAccess.server";
+import OfferCta from "./OfferCta";
 
 export const revalidate = 30;
 
@@ -237,9 +238,7 @@ export default async function HomePage() {
               See what bills are due before you're paid. Know what money is really clear to
               spend. No bank login.
             </p>
-            <Link className="primary-link landing-offer-button" href="/billing">
-              Try ClearTill for {"\u00A35"}
-            </Link>
+            <OfferCta />
           </div>
         </div>
       </section>

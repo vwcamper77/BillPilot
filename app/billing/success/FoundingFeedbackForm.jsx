@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { auth } from "@/lib/firebase";
+import { trackGa4Event } from "@/lib/analytics/ga4";
 
 export default function FoundingFeedbackForm() {
   const [answer, setAnswer] = useState("");
@@ -46,6 +47,8 @@ export default function FoundingFeedbackForm() {
       if (!response.ok || !payload?.ok) {
         throw new Error(payload?.error || "Sorry, we could not save that feedback. Please try again.");
       }
+
+      trackGa4Event("feedback_submitted");
 
       setAnswer("");
       setStatus({

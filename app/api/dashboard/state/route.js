@@ -27,6 +27,7 @@ export async function POST(request) {
     const [
       balanceSnapshot,
       incomeSnapshot,
+      incomeEventsSnapshot,
       savingsSnapshot,
       preferencesSnapshot,
       billsSnapshot,
@@ -35,6 +36,7 @@ export async function POST(request) {
     ] = await Promise.all([
       userRef.collection("settings").doc("balance").get(),
       userRef.collection("income").doc("main").get(),
+      userRef.collection("incomeEvents").where("active", "==", true).get(),
       userRef.collection("settings").doc("savings").get(),
       userRef.collection("settings").doc("preferences").get(),
       userRef.collection("bills").where("active", "==", true).get(),
@@ -47,6 +49,7 @@ export async function POST(request) {
       action,
       balance: balanceSnapshot.exists ? serialiseDoc(balanceSnapshot) : null,
       income: incomeSnapshot.exists ? serialiseDoc(incomeSnapshot) : null,
+      incomeEvents: incomeEventsSnapshot.docs.map(serialiseDoc),
       savings: savingsSnapshot.exists ? serialiseDoc(savingsSnapshot) : null,
       preferences: preferencesSnapshot.exists ? serialiseDoc(preferencesSnapshot) : null,
       bills: billsSnapshot.docs.map(serialiseDoc),

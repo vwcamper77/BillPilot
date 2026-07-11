@@ -168,10 +168,27 @@ test.describe("buildFourWeekCashflowWaterfall", () => {
     expect(points[3].isAfterPayCycle).toBe(true);
   });
 
+  test("a bill due after payday in the same week is deducted from the payday balance", () => {
+    const bills = [{ nextDueDate: "2026-07-26", amount: 1100 }];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-20", 500, bills, [], 4500);
+
+    expect(points[2].containsPayDate).toBe(true);
+    expect(points[2].openingBalance).toBe(500);
+    expect(points[2].incomeReceived).toBe(4500);
+    expect(points[2].weeklyOutflow).toBe(1100);
+    expect(points[2].closingBalance).toBe(3900);
+  });
+
   test("with no income amount set, closing balance is unaffected", () => {
     const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-22", 1500, [], [], 0);
     const payDatePoint = points.find((point) => point.containsPayDate);
     expect(payDatePoint.incomeReceived).toBe(0);
     expect(payDatePoint.closingBalance).toBe(payDatePoint.openingBalance);
+  });
+
+  test("allocations beyond the four-week window are not duplicated into week four", () => {
+    const largeCosts = [{ nextDueDate: "2026-09-01", currentAccountAmount: 600 }];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-20", 1000, [], largeCosts, 2000);
+    expect(points.map((point) => point.weeklyOutflow)).toEqual([0, 0, 0, 0]);
   });
 });

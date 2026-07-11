@@ -1062,6 +1062,200 @@ h1 {
   margin-top: 18px;
 }
 
+.large-cost-dashboard-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.large-cost-dashboard-summary > span {
+  display: inline;
+}
+
+.large-cost-dashboard-summary > span + span::before {
+  content: "·";
+  margin-right: 5px;
+}
+
+.split-funding-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.split-funding-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.funding-use-remaining,
+.affordability-action {
+  width: fit-content;
+  border: 0;
+  background: none;
+  color: var(--accent-dark);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.funding-remaining-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.field-error {
+  margin: 4px 0 0;
+  color: #8a4438;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.split-funding-totals {
+  display: grid;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.split-funding-totals span,
+.affordability-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.large-cost-confirmation {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  border-radius: 12px;
+  background: rgba(232, 243, 239, 0.58);
+}
+
+.affordability-plan {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.affordability-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.affordability-plan h4,
+.affordability-copy,
+.affordability-ai-copy {
+  margin: 0;
+}
+
+.affordability-state {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(232, 243, 239, 0.9);
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.affordability-state-unaffordable_by_due_date {
+  background: rgba(249, 236, 231, 0.94);
+  color: #7a4638;
+}
+
+.affordability-copy {
+  color: #4f514d;
+  line-height: 1.5;
+}
+
+.affordability-ai-copy {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.affordability-breakdown {
+  display: grid;
+  gap: 6px;
+}
+
+.affordability-row {
+  color: #655e56;
+  font-size: 0.88rem;
+}
+
+.affordability-total {
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.affordability-shortfall {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(249, 236, 231, 0.94);
+  color: #7a4638;
+  font-weight: 700;
+}
+
+.affordability-calculation {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.affordability-calculation summary {
+  width: fit-content;
+  color: var(--accent-dark);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.affordability-calculation-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.affordability-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+@media (max-width: 640px) {
+  .split-funding-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .affordability-plan-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .forecast-compact-list {
   list-style: none;
   margin: 10px 0 0;
@@ -1177,10 +1371,11 @@ h1 {
 }
 
 .forecast-cost-actions {
-  display: grid;
-  justify-items: start;
-  gap: 10px;
-  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
 }
 
 .forecast-secondary-actions {
@@ -1195,10 +1390,13 @@ h1 {
 
 .forecast-funding-editor {
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(229, 218, 200, 0.78);
+  width: min(100%, 760px);
+  padding: 16px;
+  border: 1px solid rgba(221, 213, 200, 0.88);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .forecast-funding-editor h4 {
@@ -1208,6 +1406,11 @@ h1 {
 
 .forecast-funding-editor .edit-actions {
   margin-top: 2px;
+}
+
+.forecast-funding-editor .split-funding-fields {
+  margin-top: 2px;
+  background: rgba(255, 253, 248, 0.88);
 }
 
 .improve-accuracy-panel {
@@ -2720,6 +2923,117 @@ h1 {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.78);
   border-color: rgba(214, 205, 191, 0.92);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.additional-income-editor {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+}
+
+.additional-income-toggle {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.additional-income-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.additional-income-body > .helper-text:first-child {
+  margin: 12px 0 0;
+}
+
+.additional-income-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.additional-income-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.additional-income-list li > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.additional-income-list span,
+.additional-income-list small {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.additional-income-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.additional-income-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.88);
+}
+
+.additional-income-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.forecast-income-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 640px) {
+  .additional-income-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .additional-income-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .hero-trust {
@@ -4644,4 +4958,178 @@ h1 {
   .admin-table td {
     white-space: normal;
   }
+}
+
+/* --- Home restructure (feat/home-restructure) --- */
+
+/* Collapsible section */
+.collapsible-section {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.collapsible-section-header {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--ink);
+}
+.collapsible-section-title {
+  font-weight: 700;
+}
+.collapsible-section-summary {
+  margin-left: auto;
+  white-space: nowrap;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.92rem;
+}
+.collapsible-section-chevron {
+  transition: transform 180ms ease;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.collapsible-section-chevron.is-open {
+  transform: rotate(180deg);
+}
+.collapsible-section-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 180ms ease;
+}
+.collapsible-section-body.is-collapsed {
+  grid-template-rows: 0fr;
+}
+.collapsible-section-inner {
+  overflow: hidden;
+}
+.collapsible-section-inner > *:first-child {
+  margin-top: 0;
+}
+.collapsible-section-inner > *:last-child {
+  padding-bottom: 16px;
+}
+
+/* Balance editor — zero-height inline expansion under the hero */
+.balance-editor {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 180ms ease;
+  margin-bottom: 12px;
+}
+.balance-editor.is-collapsed {
+  grid-template-rows: 0fr;
+  margin-bottom: 0;
+}
+.balance-editor-inner {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Hero card additions */
+.hero-daily {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-dark);
+}
+.hero-context {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.hero-disclosure {
+  margin-top: 10px;
+}
+.hero-disclosure-toggle {
+  min-height: 34px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent-dark);
+  font-weight: 600;
+  font-size: 0.88rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hero-disclosure-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Quick actions row */
+.quick-actions-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.quick-action-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.quick-action-button:hover {
+  border-color: var(--accent);
+  background: var(--soft);
+}
+
+/* Attention strip — renders only when non-empty */
+.attention-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.attention-strip-item {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--soft);
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+/* Setup wizard — full-screen sequenced steps */
+.setup-wizard-shell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 40px;
+}
+.setup-wizard {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.setup-wizard-progress {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.setup-wizard h1 {
+  margin: 4px 0 0;
+  font-size: 1.5rem;
 }
