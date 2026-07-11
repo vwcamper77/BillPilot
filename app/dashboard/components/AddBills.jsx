@@ -36,12 +36,14 @@ import {
   classifyBill,
   getScrollBehavior,
   mergeOutcomeBills,
+  normaliseVoiceBillText,
   parseDueDayFromText,
   prettifySubCategory,
   scoreAndClassifyBill,
 } from "../lib/billHelpers";
 
 const SUPPLIER_NAME_OPTIONS = getSupplierNames();
+const BILL_CATEGORY_KEYS = ["household", "subscription", "vehicle", "debt", "family", "work_side_project", "other"];
 
 function BillReviewCard({
   draft,
@@ -115,13 +117,11 @@ function BillReviewCard({
               value={form?.category || ""}
               onChange={(event) => onFormChange((current) => ({ ...current, category: event.target.value }))}
             >
-              <option value="household">Household</option>
-              <option value="subscription">Subscription</option>
-              <option value="vehicle">Vehicle</option>
-              <option value="debt">Debt / repayment</option>
-              <option value="family">Children / family</option>
-              <option value="work_side_project">Work / side project</option>
-              <option value="other">Other</option>
+              {BILL_CATEGORY_KEYS.map((category) => (
+                <option key={category} value={category}>
+                  {CATEGORY_META[category].icon} {CATEGORY_META[category].label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="bill-review-actions">
@@ -236,6 +236,9 @@ export default function AddBills({
 
   const recognitionRef = useRef(null);
   const transcriptRef = useRef("");
+  const voiceCapturedTextRef = useRef("");
+  const voiceReviewRequestedRef = useRef(false);
+  const voiceReviewRef = useRef(null);
   const uploadInputRef = useRef(null);
   const wrapperRef = useRef(null);
   const messageInputRef = useRef(null);
@@ -308,6 +311,8 @@ export default function AddBills({
       setVoiceMessage("Listening...");
       setChatError("");
       transcriptRef.current = "";
+      voiceCapturedTextRef.current = "";
+      voiceReviewRequestedRef.current = false;
     };
 
     recognition.onresult = (event) => {
@@ -330,11 +335,14 @@ export default function AddBills({
       }
 
       transcriptRef.current = finalTranscript;
-      setMessage(`${finalTranscript} ${interimTranscript}`.trim());
+      const capturedText = normaliseVoiceBillText(`${finalTranscript} ${interimTranscript}`);
+      voiceCapturedTextRef.current = capturedText;
+      setMessage(capturedText);
     };
 
     recognition.onerror = (event) => {
       setListening(false);
+      voiceReviewRequestedRef.current = false;
 
       if (event.error === "not-allowed") {
         setVoiceMessage("Microphone access was blocked. You can still type your bill.");
@@ -351,8 +359,20 @@ export default function AddBills({
 
     recognition.onend = () => {
       setListening(false);
+      const shouldReview = voiceReviewRequestedRef.current;
+      const capturedText = voiceCapturedTextRef.current.trim();
+      voiceReviewRequestedRef.current = false;
+
+      if (shouldReview && capturedText) {
+        setVoiceMessage("Reviewing voice input...");
+        void voiceReviewRef.current?.(capturedText);
+        return;
+      }
+
       setVoiceMessage((current) =>
-        current === "Listening..."
+        shouldReview && !capturedText
+          ? "I did not catch that. Try again, or type your bill."
+          : current === "Listening..."
           ? "Voice captured. Review it, then add it."
           : current,
       );
@@ -372,10 +392,12 @@ export default function AddBills({
 
   const importLocked = isImporting;
 
-  async function handleSubmit(event) {
+  async function handleSubmit(event, messageOverride) {
     event.preventDefault();
+    const isVoiceSubmission = typeof messageOverride === "string";
+    const submittedMessage = isVoiceSubmission ? messageOverride : message;
 
-    if (!message.trim() && !importJobs.length) {
+    if (!submittedMessage.trim() && !importJobs.length) {
       return;
     }
 
@@ -384,13 +406,13 @@ export default function AddBills({
 
     try {
       setSubmitting(true);
-      if (importJobs.length) {
+      if (importJobs.length && !isVoiceSubmission) {
         await reviewImportQueue();
       } else {
         const response = await runWithTimeout(fetch("/api/parse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message: submittedMessage }),
         }), "The parser is taking too long. Try again.");
         const parsed = await response.json();
 
@@ -400,7 +422,7 @@ export default function AddBills({
 
         const parsedWithContext = applyQuickAddContext(parsed, quickAddContext);
         const reviewDrafts = buildBillReviewDrafts(parsedWithContext, {
-          sourceText: message,
+          sourceText: submittedMessage,
           quickAddContext,
         });
 
@@ -422,7 +444,7 @@ export default function AddBills({
           return;
         }
 
-        const fallbackDraft = buildLooseBillReviewDraft(message, quickAddContext);
+        const fallbackDraft = buildLooseBillReviewDraft(submittedMessage, quickAddContext);
 
         if (fallbackDraft) {
           setBillReviewDrafts([fallbackDraft]);
@@ -442,8 +464,11 @@ export default function AddBills({
       }
     } finally {
       setSubmitting(false);
+      if (isVoiceSubmission) setVoiceMessage("");
     }
   }
+
+  voiceReviewRef.current = (capturedText) => handleSubmit({ preventDefault() {} }, capturedText);
 
   async function reviewImportQueue() {
     if (isImporting) return;
@@ -777,6 +802,7 @@ export default function AddBills({
     }
 
     if (listening) {
+      voiceReviewRequestedRef.current = true;
       recognitionRef.current.stop();
       return;
     }
@@ -1448,7 +1474,7 @@ export default function AddBills({
             onClick={handleVoiceToggle}
             aria-pressed={listening}
           >
-            {listening ? "Stop listening" : "Speak"}
+            {listening ? "Finish & review" : "Speak"}
           </button>
           <button
             className="secondary-button"
@@ -1587,13 +1613,11 @@ export default function AddBills({
                             <label className="field-label" htmlFor={`csv-cat-${s.id}`}>Category</label>
                             <select id={`csv-cat-${s.id}`} className="category-select" value={csvEditForm.category} onChange={(e) => setCsvEditForm((f) => ({ ...f, category: e.target.value }))}>
                               <option value="">Auto-detect</option>
-                              <option value="household">Household</option>
-                              <option value="subscription">Subscription</option>
-                              <option value="vehicle">Vehicle</option>
-                              <option value="debt">Debt / repayment</option>
-                              <option value="family">Children / family</option>
-                              <option value="work_side_project">Work / side project</option>
-                              <option value="other">Other</option>
+                              {BILL_CATEGORY_KEYS.map((category) => (
+                                <option key={category} value={category}>
+                                  {CATEGORY_META[category].icon} {CATEGORY_META[category].label}
+                                </option>
+                              ))}
                             </select>
                           </div>
                           <div className="csv-suggestion-actions">

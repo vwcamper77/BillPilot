@@ -329,7 +329,6 @@ export default function AccountPage() {
         </div>
         <div className="topbar-actions">
           <Link className="secondary-button" href="/dashboard">Back to dashboard</Link>
-          <Link className="secondary-button" href="/big-costs">Big costs</Link>
         </div>
       </header>
 

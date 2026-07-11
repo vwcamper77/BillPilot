@@ -15,6 +15,19 @@ export const CATEGORY_META = {
   other: { icon: "📌", label: "Other" },
 };
 
+// Browser speech recognition commonly hears "Council Tax" as phrases such as
+// "cancer tax" or "counsel tax". In the voice-bill context those phrases are
+// unambiguous enough to clean before parsing and showing the review draft.
+export function normaliseVoiceBillText(value) {
+  return String(value || "")
+    .replace(
+      /\b(?:cance(?:r|l)?|cancel|counsel|council)\s+(?:tax(?:es)?|tacks?|tacx|attacks?)\b/gi,
+      "Council Tax",
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function classifyBill(bill) {
   const raw = `${bill.name || ""} ${bill.description || ""}`.toLowerCase();
 

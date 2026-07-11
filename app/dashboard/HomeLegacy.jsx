@@ -5150,14 +5150,13 @@ function HeroCard({ status, headline, subLine, onUpdateBalance, trustLine, trust
 function OverviewLinksSection({ costsTotal, savingsTotal, generalSavings, assignedSavings, displayCurrency }) {
   return (
     <div className="overview-rows">
-      <Link className="overview-row" href="/big-costs">
+      <div className="overview-row">
         <span className="overview-row-label">Large upcoming costs</span>
         <span style={{ display: "flex", alignItems: "center" }}>
           <span className="overview-row-value">{formatCurrency(costsTotal, displayCurrency)} planned</span>
-          <span className="overview-row-arrow">→</span>
         </span>
-      </Link>
-      <Link className="overview-row" href="/big-costs">
+      </div>
+      <div className="overview-row">
         <span className="overview-row-label">Savings set aside</span>
         <span style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <span className="overview-row-value">
@@ -5168,9 +5167,8 @@ function OverviewLinksSection({ costsTotal, savingsTotal, generalSavings, assign
               {`${formatCurrency(generalSavings, displayCurrency)} general pot + ${formatCurrency(assignedSavings, displayCurrency)} assigned`}
             </span>
           ) : null}
-          <span className="overview-row-arrow">→</span>
         </span>
-      </Link>
+      </div>
     </div>
   );
 }
