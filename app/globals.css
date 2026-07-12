@@ -3752,12 +3752,20 @@ h1 {
 }
 
 .weekly-spend-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  display: flex;
   gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-color: var(--accent) var(--soft);
+  scrollbar-width: thin;
+  padding-bottom: 8px;
 }
 
 .weekly-spend-card {
+  flex: 0 0 min(280px, calc(100% - 12px));
+  scroll-snap-align: start;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 10px 12px;
@@ -3827,6 +3835,55 @@ h1 {
   color: var(--muted);
 }
 
+.weekly-safe-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.weekly-safe-info-button {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent-dark);
+  font: 700 0.68rem/1 Georgia, serif;
+  cursor: pointer;
+}
+
+.weekly-safe-info-button:hover,
+.weekly-safe-info-button:focus-visible {
+  background: var(--accent);
+  color: white;
+  outline: none;
+}
+
+.weekly-safe-info-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(20, 107, 99, 0.2);
+}
+
+.weekly-safe-info-popup {
+  display: grid;
+  gap: 4px;
+  margin: 3px 0 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 8px 20px rgba(62, 45, 24, 0.1);
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.weekly-safe-info-popup strong {
+  font-size: 0.74rem;
+}
+
 .weekly-spend-row.secondary {
   border-top: 1px solid var(--line);
   padding-top: 4px;
@@ -3874,6 +3931,34 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel);
+}
+
+.weekly-spend-slider-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.weekly-spend-slider-button {
+  min-height: 40px;
+  width: fit-content;
+}
+
+.weekly-spend-slider-button:last-child {
+  justify-self: end;
+}
+
+.weekly-spend-slider-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.weekly-spend-slider-status {
+  color: var(--muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
 }
 
 .pay-period-card h2 { margin: 0; font-size: 1rem; }
@@ -3931,6 +4016,9 @@ h1 {
 .weekly-balance-details summary { cursor: pointer; color: var(--muted); font-size: .72rem; min-height: 30px; display: flex; align-items: center; }
 
 @media (max-width: 680px) {
+  .spend-curve-card { padding: 14px; }
+  .weekly-spend-card { flex-basis: calc(100% - 18px); }
+  .weekly-spend-slider-button { padding-inline: 10px; font-size: 0.75rem; }
   .pay-period-grid { grid-template-columns: 1fr; }
   .financial-detail-row { grid-template-columns: minmax(0, 1fr) auto; }
   .financial-detail-row time { grid-column: 1; grid-row: 2; }
@@ -3938,6 +4026,54 @@ h1 {
   .income-schedule-header { flex-direction: column; }
   .regular-pay-summary, .income-schedule-form { grid-template-columns: 1fr; }
   .income-schedule-form .edit-actions { grid-column: auto; }
+}
+
+/* Four-week safe-spending forecast */
+.forecast-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.forecast-heading-row .spend-curve-title { margin-bottom: 3px; font-size: 1.08rem; }
+.forecast-heading-row p { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.4; }
+.forecast-tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 14px; border-radius: 10px; background: #efe8dc; }
+.forecast-tabs button { flex: 1; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-weight: 700; cursor: pointer; }
+.forecast-tabs button[aria-selected="true"] { background: white; color: var(--accent-dark); box-shadow: 0 2px 8px rgba(62,45,24,.08); }
+.weekly-spend-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; overflow: visible; padding: 0; }
+.weekly-spend-card { display: flex; flex-direction: column; min-width: 0; padding: 12px; cursor: pointer; transition: border-color 150ms ease, transform 150ms ease; }
+.weekly-spend-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.weekly-spend-card.is-current { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+.weekly-spend-card.is-short { border-color: #d98b83; background: #fff5f3; }
+.weekly-today-badge { padding: 2px 6px; border-radius: 999px; background: var(--accent); color: white; font-size: .62rem; font-weight: 800; }
+.weekly-payday-marker-slot { display: flex; align-items: center; min-height: 25px; }
+.weekly-spend-payday-badge { display: inline-block; margin: 0; padding: 3px 6px; border-radius: 999px; background: #e5f3ef; white-space: normal; }
+.weekly-spend-value { min-height: 48px; color: var(--ink); font-size: clamp(1.05rem, 1.65vw, 1.42rem); font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+.weekly-spend-card.is-short .weekly-spend-value { color: var(--warn); }
+.weekly-spend-rate { display: grid; gap: 1px; min-height: 38px; margin-top: 3px; font-size: .76rem; font-weight: 700; }
+.weekly-spend-rate span { color: var(--muted); font-size: .68rem; font-weight: 500; }
+.weekly-bar-area { display: grid; place-items: end center; height: 132px; margin: 9px 0; border-bottom: 1px solid var(--line); background: repeating-linear-gradient(to top, transparent 0, transparent 32px, rgba(62,45,24,.06) 33px); }
+.weekly-bar-scale { display: flex; align-items: flex-end; justify-content: center; width: 54px; height: 100%; }
+.weekly-cash-bar { width: 100%; min-height: 2px; border-radius: 7px 7px 0 0; background: linear-gradient(180deg, var(--accent), var(--accent-dark)); }
+.weekly-shortfall-marker { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 5px; border: 2px solid var(--warn); border-radius: 50%; color: var(--warn); font-size: 1.25rem; font-weight: 900; }
+.weekly-payday-split { display: grid; gap: 5px; min-height: 68px; margin: 7px 0; padding: 7px; border-left: 3px solid var(--accent); background: #f1f8f5; font-size: .66rem; }
+.weekly-payday-split span { display: grid; gap: 1px; }
+.weekly-payday-split strong { color: var(--ink); font-size: .7rem; overflow-wrap: anywhere; }
+.weekly-summary-line { min-height: 34px; margin: auto 0 3px; padding-top: 7px; color: var(--muted); font-size: .68rem; line-height: 1.35; overflow-wrap: anywhere; }
+.weekly-view-breakdown { min-height: 34px; padding: 0; border: 0; background: transparent; color: var(--accent-dark); font-size: .7rem; font-weight: 800; cursor: pointer; text-align: left; }
+.weekly-spend-slider-controls { display: none; }
+.cashflow-details { max-width: 720px; margin-inline: auto; }
+.cashflow-details-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0 12px; }
+.cashflow-details-heading span:first-child { color: var(--muted); font-size: .68rem; }
+.cashflow-details-heading h3 { margin: 2px 0 0; font-size: 1rem; }
+.cashflow-detail-list { border-block: 1px solid var(--line); }
+.cashflow-detail-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: .84rem; }
+.cashflow-detail-row strong { text-align: right; overflow-wrap: anywhere; }
+.cashflow-detail-row.is-primary { color: var(--accent-dark); font-size: .92rem; }
+.cashflow-details-nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; }
+
+@media (max-width: 680px) {
+  .forecast-heading-row { display: block; }
+  .weekly-spend-grid { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-inline: contain; }
+  .weekly-spend-card { flex: 0 0 100%; scroll-snap-align: start; }
+  .weekly-spend-slider-controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+  .weekly-spend-slider-controls button:last-child { justify-self: end; }
+  .weekly-bar-area { height: 150px; }
 }
 
 .csv-edit-form input,
