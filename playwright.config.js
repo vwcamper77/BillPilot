@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+process.env.EMAIL_SERVICE_MODE = "mock";
+
 const testPort = process.env.PLAYWRIGHT_PORT || "3000";
 const testBaseUrl = `http://localhost:${testPort}`;
 

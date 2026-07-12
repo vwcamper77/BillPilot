@@ -84,6 +84,8 @@ test.describe("Phase A — fulfilment", () => {
       expect(entitlement).toBeTruthy();
       expect(entitlement.status).toBe("pending_claim");
       expect(entitlement.isQaPurchase).toBe(false);
+      expect(entitlement.emailOutbox.status).toBe("sent");
+      expect(entitlement.emailOutbox.skippedReason).toBe("blocked_test_address");
 
       const customer = await getCustomer(`pending_${sessionId}`);
       expect(customer.paymentStatus).toBe("paid");
@@ -138,6 +140,9 @@ test.describe("Phase A — fulfilment", () => {
 
       const customer = await getCustomer(`pending_${sessionId}`);
       expect(customer.totalPaid).toBe(500); // not 1500
+      const entitlement = await getEntitlement(sessionId);
+      expect(entitlement.emailOutbox.sendCount).toBe(1);
+      expect(entitlement.emailOutbox.emailSendId).toBeTruthy();
     } finally {
       await cleanupSession(sessionId);
     }
