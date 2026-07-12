@@ -1,4 +1,4 @@
-const siteUrl = "https://cleartill.money";
+const siteUrl = "https://www.cleartill.money";
 
 export default function sitemap() {
   return [

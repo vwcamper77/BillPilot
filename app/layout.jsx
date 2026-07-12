@@ -10,11 +10,29 @@ const isTestAuthBridgeEnabled = process.env.NODE_ENV !== "production";
 const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const gtmContainerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID;
 
+const SITE_URL = "https://www.cleartill.money";
+const OG_TITLE = "ClearTill — Know what you can safely spend until payday";
+const OG_DESCRIPTION = "Balance. Bills. One clear answer.";
+
+// Shared by the root layout and every page that needs to restate metadata
+// (a page-level `metadata` export replaces openGraph/twitter wholesale
+// rather than merging with the root's — see CLAUDE.md notes on this file
+// for the per-page pages that must spread this back in).
+export const SOCIAL_IMAGE = {
+  url: "/social/cleartill-og-v2.png",
+  secureUrl: `${SITE_URL}/social/cleartill-og-v2.png`,
+  width: 1200,
+  height: 630,
+  type: "image/png",
+  alt: OG_TITLE,
+};
+
 export const metadata = {
-  metadataBase: new URL("https://cleartill.money"),
-  title: "ClearTill — Know what you can safely spend until payday",
-  description: "Balance. Bills. One clear answer.",
+  metadataBase: new URL(SITE_URL),
+  title: OG_TITLE,
+  description: OG_DESCRIPTION,
   manifest: "/site.webmanifest",
+  alternates: { canonical: "/" },
   icons: {
     icon: [
       { url: "/favicon/favicon.svg", type: "image/svg+xml" },
@@ -25,24 +43,18 @@ export const metadata = {
     apple: "/app-icons/apple-touch-icon-180x180.png",
   },
   openGraph: {
-    title: "ClearTill — Know what you can safely spend until payday",
-    description: "Balance. Bills. One clear answer.",
-    siteName: "ClearTill",
     type: "website",
-    images: [
-      {
-        url: "/cleartill-social-preview.png",
-        width: 1200,
-        height: 630,
-        alt: "ClearTill — Know what you can safely spend until payday",
-      },
-    ],
+    siteName: "ClearTill",
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+    url: SITE_URL,
+    images: [SOCIAL_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "ClearTill — Know what you can safely spend until payday",
-    description: "Balance. Bills. One clear answer.",
-    images: ["/cleartill-social-preview.png"],
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+    images: [SOCIAL_IMAGE.url],
   },
 };
 
