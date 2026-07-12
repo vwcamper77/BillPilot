@@ -9,22 +9,24 @@ export default function ExplainBreakdown({
   spendingRoomValue,
   displayCurrency,
 }) {
+  const formatWholeCurrency = (amount) => formatCurrency(Math.round(Number(amount) || 0), displayCurrency);
+
   return (
     <div className="forecast-breakdown-list">
       <div className="forecast-breakdown-row">
-        <span>Current Balance</span>
-        <strong>{hasBalanceSnapshot ? formatCurrency(currentBalance, displayCurrency) : "—"}</strong>
+        <span>In your account now</span>
+        <strong>{hasBalanceSnapshot ? formatWholeCurrency(currentBalance) : "—"}</strong>
       </div>
       <div className="forecast-breakdown-row">
-        <span>Less bills before payday</span>
-        <strong>-{hasPayday ? formatCurrency(totalBeforePayday, displayCurrency) : "—"}</strong>
+        <span>Bills due before you're paid</span>
+        <strong>-{hasPayday ? formatWholeCurrency(totalBeforePayday) : "—"}</strong>
       </div>
       <div className="forecast-breakdown-row">
-        <span>Big costs hitting current account</span>
-        <strong>-{hasPayday ? formatCurrency(bigCostsDueBeforePayday, displayCurrency) : "—"}</strong>
+        <span>Big costs due before you're paid</span>
+        <strong>-{hasPayday ? formatWholeCurrency(bigCostsDueBeforePayday) : "—"}</strong>
       </div>
       <div className="forecast-breakdown-row total">
-        <span>Spending room till payday</span>
+        <span>Clear to spend before you're paid</span>
         <strong>{spendingRoomValue}</strong>
       </div>
     </div>

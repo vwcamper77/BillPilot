@@ -18,13 +18,13 @@ export default function HeroCard({
   breakdownProps,
 }) {
   const [showBreakdown, setShowBreakdown] = useState(false);
+  const formatWholeCurrency = (amount) => formatCurrency(Math.round(Number(amount) || 0), displayCurrency);
 
   const headline = (() => {
     if (!hasBalanceSnapshot) return "Add your current available money to get started";
     if (!hasPayday || spendingRoomUntilPayday === null) return "Set your payday to get started";
-    if (status === "negative") return `You're short: ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
-    if (status === "low") return `Almost clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
-    return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left till payday`;
+    if (status === "negative") return `You're short: ${formatWholeCurrency(Math.abs(spendingRoomUntilPayday))} needed before payday`;
+    return `Clear to spend before you're paid: ${formatWholeCurrency(spendingRoomUntilPayday)}`;
   })();
 
   const showDailyLine = hasBalanceSnapshot && hasPayday
@@ -51,9 +51,32 @@ export default function HeroCard({
         ) : headline}
       </p>
       {showDailyLine ? (
-        <p className="hero-daily">{formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)}/day</p>
+        <p className="hero-daily">about {formatWholeCurrency(Math.max(0, dailySpendingRoom))}/day clear</p>
       ) : null}
       {contextLine ? <p className="hero-context">{contextLine}</p> : null}
+
+      {hasBalanceSnapshot && hasPayday ? (
+        <div className="forecast-breakdown-list">
+          {Number(breakdownProps.currentBalance) !== 0 ? (
+            <div className="forecast-breakdown-row">
+              <span>In your account now</span>
+              <strong>{formatWholeCurrency(breakdownProps.currentBalance)}</strong>
+            </div>
+          ) : null}
+          {Number(breakdownProps.totalBeforePayday) !== 0 ? (
+            <div className="forecast-breakdown-row">
+              <span>Bills due before you're paid</span>
+              <strong>{formatWholeCurrency(breakdownProps.totalBeforePayday)}</strong>
+            </div>
+          ) : null}
+          {Number(daysTillPayday) !== 0 ? (
+            <div className="forecast-breakdown-row">
+              <span>Days to stretch it</span>
+              <strong>{daysTillPayday}</strong>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>
         Update balance

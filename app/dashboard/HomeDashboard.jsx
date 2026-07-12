@@ -477,8 +477,8 @@ function HomeDashboardContent() {
     if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
     if (!hasPayday) return "Set your payday";
     if (spendingRoomUntilPayday === null) return "—";
-    if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
-    return formatCurrency(spendingRoomUntilPayday, displayCurrency);
+    if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.round(Math.abs(spendingRoomUntilPayday)), displayCurrency)} needed before payday`;
+    return formatCurrency(Math.round(spendingRoomUntilPayday), displayCurrency);
   })();
 
   const largeCostsWithStatus = useMemo(

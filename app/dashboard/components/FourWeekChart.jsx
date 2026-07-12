@@ -73,8 +73,8 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, da
         </span>
         {dailySpendingRoom !== null ? (
           <span className="curve-stat">
-            <span className="curve-stat-label">Safe daily</span>
-            <strong>{formatCurrency(dailySpendingRoom, displayCurrency)}/day</strong>
+            <span className="curve-stat-label">Clear per day</span>
+            <strong>{formatCurrency(Math.round(dailySpendingRoom), displayCurrency)}/day</strong>
           </span>
         ) : null}
         <span className="curve-stat">

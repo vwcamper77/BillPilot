@@ -204,7 +204,7 @@ export default function BillList({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedBillIds, setSelectedBillIds] = useState(new Set());
   const [billListPage, setBillListPage] = useState(0);
-  const [billListFilter, setBillListFilter] = useState("all");
+  const [billListFilter, setBillListFilter] = useState(dashboard.paydayDate ? "before" : "all");
 
   const hasBills = bills.length > 0;
 
@@ -229,19 +229,11 @@ export default function BillList({
       return null;
     }
 
-    const total = allBillsForList.reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
-    const label = billListFilter === "before"
-      ? "bills before payday"
-      : billListFilter === "after"
-        ? "bills after payday"
-        : billListFilter === "recent"
-          ? "recently added bills"
-          : billListFilter === "paid"
-            ? "paid bills"
-            : "total monthly bills";
+    const total = bills.reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
+    const label = "total monthly bills";
 
     return { amount: formatCurrency(total, displayCurrency), label };
-  }, [allBillsForList, billListFilter, displayCurrency, hasBills]);
+  }, [bills, displayCurrency, hasBills]);
 
   function startBillEdit(bill) {
     const splitName = splitBillDisplayName(bill.name || "");
