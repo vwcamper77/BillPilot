@@ -1,5 +1,9 @@
 import { test, expect } from "@playwright/test";
-import { classifyBill, normaliseVoiceBillText } from "../../app/dashboard/lib/billHelpers.js";
+import {
+  buildBillReviewDraft,
+  classifyBill,
+  normaliseVoiceBillText,
+} from "../../app/dashboard/lib/billHelpers.js";
 
 test.describe("normaliseVoiceBillText", () => {
   test("corrects common Council Tax speech-recognition mistakes", () => {
@@ -26,5 +30,25 @@ test.describe("normaliseVoiceBillText", () => {
   test("classifies corrected utility names without exact typing", () => {
     expect(classifyBill({ name: "waterwater" }).subCategory).toBe("wastewater");
     expect(classifyBill({ name: "Home Insurteqnce" }).subCategory).toBe("home_insurance");
+    expect(classifyBill({ name: "Waste water from Affinity Water" }).subCategory).toBe("wastewater");
+    expect(normaliseVoiceBillText("insuayrnasce")).toBe("insurance");
+  });
+
+  test("keeps the selected Smart Add utility subtype through review", () => {
+    const draft = buildBillReviewDraft({
+      action: "create_bill",
+      name: "Finte and Affinity Water",
+      amount: 60,
+      dueDay: 16,
+    }, {
+      sourceText: "Waste water from Finte and Affinity Water",
+      quickAddContext: {
+        name: "Wastewater",
+        category: "household",
+        subCategory: "wastewater",
+      },
+    });
+
+    expect(draft.subCategory).toBe("wastewater");
   });
 });

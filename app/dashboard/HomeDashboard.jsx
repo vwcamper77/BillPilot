@@ -895,7 +895,11 @@ function HomeDashboardContent() {
 
   function handleAddMissingUtility(check) {
     if (!check) return;
-    triggerQuickAction("bills", "add-bills", { name: check.label, category: "household" });
+    triggerQuickAction("bills", "add-bills", {
+      name: check.label,
+      category: "household",
+      subCategory: check.key,
+    });
   }
 
   function openBalanceEditor(withFocusPayday) {

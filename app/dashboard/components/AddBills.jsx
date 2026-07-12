@@ -267,7 +267,11 @@ export default function AddBills({
       if (detail.target !== "add-bills") return;
 
       if (detail.name) {
-        setQuickAddContext({ name: detail.name, category: detail.category || "household" });
+        setQuickAddContext({
+          name: detail.name,
+          category: detail.category || "household",
+          subCategory: detail.subCategory || null,
+        });
         setMessage(detail.name);
         setAssistantMessage("");
         setChatError("");

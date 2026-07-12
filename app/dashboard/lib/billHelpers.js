@@ -15,11 +15,38 @@ export const CATEGORY_META = {
   other: { icon: "📌", label: "Other" },
 };
 
+function editDistance(left, right) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    let diagonal = previous[0];
+    previous[0] = leftIndex;
+
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const above = previous[rightIndex];
+      previous[rightIndex] = Math.min(
+        above + 1,
+        previous[rightIndex - 1] + 1,
+        diagonal + (left[leftIndex - 1] === right[rightIndex - 1] ? 0 : 1),
+      );
+      diagonal = above;
+    }
+  }
+
+  return previous[right.length];
+}
+
+function normaliseInsuranceMisspellings(value) {
+  return String(value || "").replace(/\b[a-z]{7,13}\b/gi, (word) => (
+    editDistance(word.toLowerCase(), "insurance") <= 4 ? "insurance" : word
+  ));
+}
+
 // Browser speech recognition commonly hears "Council Tax" as phrases such as
 // "cancer tax" or "counsel tax". In the voice-bill context those phrases are
 // unambiguous enough to clean before parsing and showing the review draft.
 export function normaliseVoiceBillText(value) {
-  return String(value || "")
+  return normaliseInsuranceMisspellings(value)
     .replace(
       /\b(?:cance(?:r|l)?|cancel|counsel|council)\s+(?:tax(?:es)?|tacks?|tacx|attacks?)\b/gi,
       "Council Tax",
@@ -49,8 +76,8 @@ export function classifyBill(bill) {
   if (any(["electricity", "electric", "energy bill", "gas bill"])) return { category: "household", subCategory: "energy", confidence: "high", needsReview: false, reason: "energy keyword" };
   if (any(["energy", "gas", "electric"])) return { category: "household", subCategory: "energy", confidence: "medium", needsReview: false, reason: "energy keyword" };
 
-  if (any(["southern water", "thames water", "severn trent", "united utilities", "yorkshire water", "affinity water", "south east water"])) return { category: "household", subCategory: "water", confidence: "high", needsReview: false, reason: "water supplier" };
   if (any(["wastewater", "waste water", "sewerage", "sewage", "drainage"])) return { category: "household", subCategory: "wastewater", confidence: "high", needsReview: false, reason: "wastewater keyword" };
+  if (any(["southern water", "thames water", "severn trent", "united utilities", "yorkshire water", "affinity water", "south east water"])) return { category: "household", subCategory: "water", confidence: "high", needsReview: false, reason: "water supplier" };
   if (any(["water"])) return { category: "household", subCategory: "water", confidence: "medium", needsReview: false, reason: "water keyword" };
 
   if (any(["council tax", "council rates"])) return { category: "household", subCategory: "council_tax", confidence: "high", needsReview: false, reason: "council tax" };
@@ -312,6 +339,7 @@ export function applyQuickAddContext(parsed, quickAddContext) {
     return {
       ...item,
       category: quickAddContext.category || "household",
+      subCategory: quickAddContext.subCategory || item.subCategory || null,
     };
   };
 
@@ -412,7 +440,7 @@ export function buildBillReviewDraft(item, { sourceText = "", quickAddContext = 
     dueDay: isValidDueDay(item.dueDay) ? Number(item.dueDay) : null,
     frequency: item.frequency || "monthly",
     category: item.category || quickAddContext?.category || inferred.category || "other",
-    subCategory: inferred.subCategory || null,
+    subCategory: quickAddContext?.subCategory || item.subCategory || inferred.subCategory || null,
     confidence: Number(item.confidence ?? inferred.confidence ?? 0.65),
     sourceText: sourceText || "",
     sourceLabel: importJobName || "",
