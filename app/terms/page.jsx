@@ -3,6 +3,7 @@ import Logo from "@/components/Logo";
 
 export const metadata = {
   title: "Terms of Service | ClearTill",
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

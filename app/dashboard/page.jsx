@@ -1,4 +1,8 @@
 import HomeDashboard from "./HomeDashboard";
+
+export const metadata = {
+  alternates: { canonical: "/dashboard" },
+};
 import HomeLegacy from "./HomeLegacy";
 
 export default async function DashboardPage({ searchParams }) {

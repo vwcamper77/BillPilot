@@ -4,6 +4,7 @@ import TrustShield from "@/components/TrustShield";
 
 export const metadata = {
   title: "Checkout cancelled | ClearTill",
+  alternates: { canonical: "/billing/cancel" },
 };
 
 export default function BillingCancelPage() {

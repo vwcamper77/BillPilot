@@ -19,6 +19,7 @@ import { isPublicCheckoutEnabled } from "@/lib/checkoutFlags";
 
 export const metadata = {
   title: "Payment received | ClearTill",
+  alternates: { canonical: "/billing/success" },
 };
 
 export default async function BillingSuccessPage({ searchParams }) {

@@ -3,6 +3,7 @@ import Logo from "@/components/Logo";
 
 export const metadata = {
   title: "ClearTill Security",
+  alternates: { canonical: "/security" },
 };
 
 export default function SecurityPage() {

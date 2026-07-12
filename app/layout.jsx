@@ -11,8 +11,9 @@ const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const gtmContainerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID;
 
 export const metadata = {
-  title: "ClearTill",
-  description: "Know you're clear till you're paid.",
+  metadataBase: new URL("https://cleartill.money"),
+  title: "ClearTill — Know what you can safely spend until payday",
+  description: "Balance. Bills. One clear answer.",
   manifest: "/site.webmanifest",
   icons: {
     icon: [
@@ -24,9 +25,24 @@ export const metadata = {
     apple: "/app-icons/apple-touch-icon-180x180.png",
   },
   openGraph: {
-    title: "ClearTill",
-    description: "Know you're clear till you're paid.",
+    title: "ClearTill — Know what you can safely spend until payday",
+    description: "Balance. Bills. One clear answer.",
     siteName: "ClearTill",
+    type: "website",
+    images: [
+      {
+        url: "/cleartill-social-preview.png",
+        width: 1200,
+        height: 630,
+        alt: "ClearTill — Know what you can safely spend until payday",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "ClearTill — Know what you can safely spend until payday",
+    description: "Balance. Bills. One clear answer.",
+    images: ["/cleartill-social-preview.png"],
   },
 };
 

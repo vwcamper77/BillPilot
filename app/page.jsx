@@ -6,6 +6,10 @@ import OfferCta from "./OfferCta";
 
 export const revalidate = 30;
 
+export const metadata = {
+  alternates: { canonical: "/" },
+};
+
 const SAFE_POINTS = [
   "what is in your account now",
   "what bills are due before you're paid",

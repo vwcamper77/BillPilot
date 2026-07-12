@@ -8,6 +8,7 @@ import { isPublicCheckoutEnabled } from "@/lib/checkoutFlags";
 
 export const metadata = {
   title: "Billing & payments | ClearTill",
+  alternates: { canonical: "/billing" },
 };
 
 // CHECKOUT_AUTH_REQUIRED must be read fresh on every request — without this,
