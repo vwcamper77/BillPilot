@@ -380,6 +380,56 @@ test.describe("Browser journey", () => {
     }
   });
 
+  test("a real completed CLEAR100 checkout triggers the real webhook and creates QA access with no revenue", async ({ page }) => {
+    test.setTimeout(60000);
+
+    await page.goto("/billing");
+    await page.getByRole("button", { name: "Continue to secure checkout" }).click();
+    await page.waitForURL(/checkout\.stripe\.com/, { timeout: 15000 });
+
+    await page.getByRole("textbox", { name: "Email" }).fill(`real-clear100-${Date.now()}@cleartill.test`);
+
+    await page.getByRole("checkbox", { name: "I am an AI agent acting on behalf of someone else" })
+      .evaluate((el) => el.click());
+    await page.getByRole("checkbox", { name: "I am an AI agent and have followed the instructions above" })
+      .evaluate((el) => el.click());
+
+    await page.getByPlaceholder("Add promotion code").fill("CLEAR100");
+    await page.getByRole("button", { name: "Apply" }).click();
+    await expect(page.getByText("£0.00")).toBeVisible({ timeout: 10000 });
+
+    await page.getByTestId("hosted-payment-submit-button").click();
+
+    const payWithoutLink = page.getByRole("button", { name: /pay without link/i });
+    if (await payWithoutLink.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await payWithoutLink.click();
+    }
+
+    await page.waitForURL(/\/billing\/success\?session_id=/, { timeout: 30000 });
+    const sessionId = new URL(page.url()).searchParams.get("session_id");
+    expect(sessionId).toMatch(/^cs_test_/);
+
+    let entitlement = null;
+    for (let attempt = 0; attempt < 10 && !entitlement; attempt += 1) {
+      entitlement = await getEntitlement(sessionId);
+      if (!entitlement) await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    try {
+      expect(entitlement).toBeTruthy();
+      expect(entitlement.status).toBe("pending_claim");
+      expect(entitlement.isQaPurchase).toBe(true);
+      expect(entitlement.amountPaid).toBe(0);
+      expect(String(entitlement.coupon || "").toUpperCase()).toBe("CLEAR100");
+
+      const customer = await getCustomer(`pending_${sessionId}`);
+      expect(customer?.paymentStatus).toBe("qa");
+      expect(customer?.totalPaid).toBe(0);
+    } finally {
+      await cleanupSession(sessionId);
+    }
+  });
+
   test("a claim link signs the visitor in and redirects to onboarding", async ({ page }) => {
     const testSecret = process.env.E2E_TEST_SECRET;
     test.skip(!testSecret, "Requires E2E_TEST_SECRET in .env.local.");
