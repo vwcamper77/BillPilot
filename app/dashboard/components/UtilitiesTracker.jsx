@@ -36,7 +36,9 @@ export function buildTrackerChecks(bills) {
   const activeBills = (bills || []).filter((bill) => bill?.active !== false);
 
   return TRACKER_CHECKS.map((check) => {
-    const matchedBill = activeBills.find((bill) => trackerBillMatch(bill?.name, check.keywords));
+    const matchedBill = activeBills.find((bill) => (
+      bill?.subCategory === check.key || trackerBillMatch(bill?.name, check.keywords)
+    ));
     return {
       ...check,
       found: Boolean(matchedBill),

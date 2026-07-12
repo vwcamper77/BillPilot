@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { normaliseVoiceBillText } from "../../app/dashboard/lib/billHelpers.js";
+import { classifyBill, normaliseVoiceBillText } from "../../app/dashboard/lib/billHelpers.js";
 
 test.describe("normaliseVoiceBillText", () => {
   test("corrects common Council Tax speech-recognition mistakes", () => {
@@ -14,5 +14,17 @@ test.describe("normaliseVoiceBillText", () => {
   test("leaves unrelated bill speech unchanged", () => {
     expect(normaliseVoiceBillText("my broadband is £35 on the 15th"))
       .toBe("my broadband is £35 on the 15th");
+  });
+
+  test("corrects common wastewater and home-insurance misspellings", () => {
+    expect(normaliseVoiceBillText("waterwater is £42 on the 8th"))
+      .toBe("Wastewater is £42 on the 8th");
+    expect(normaliseVoiceBillText("Home Insurteqnce £25 monthly"))
+      .toBe("Home insurance £25 monthly");
+  });
+
+  test("classifies corrected utility names without exact typing", () => {
+    expect(classifyBill({ name: "waterwater" }).subCategory).toBe("wastewater");
+    expect(classifyBill({ name: "Home Insurteqnce" }).subCategory).toBe("home_insurance");
   });
 });

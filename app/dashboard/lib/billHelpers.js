@@ -24,12 +24,14 @@ export function normaliseVoiceBillText(value) {
       /\b(?:cance(?:r|l)?|cancel|counsel|council)\s+(?:tax(?:es)?|tacks?|tacx|attacks?)\b/gi,
       "Council Tax",
     )
+    .replace(/\bwater\s*water\b/gi, "Wastewater")
+    .replace(/\bhome\s+ins[a-z]*nce\b/gi, "Home insurance")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 export function classifyBill(bill) {
-  const raw = `${bill.name || ""} ${bill.description || ""}`.toLowerCase();
+  const raw = normaliseVoiceBillText(`${bill.name || ""} ${bill.description || ""}`).toLowerCase();
 
   function has(kw) {
     if (kw.length <= 3) {
