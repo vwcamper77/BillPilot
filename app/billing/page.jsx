@@ -10,6 +10,14 @@ export const metadata = {
   title: "Billing & payments | ClearTill",
 };
 
+// CHECKOUT_AUTH_REQUIRED must be read fresh on every request — without this,
+// Next.js prerenders this page as static HTML at build time (no per-request
+// data dependency otherwise), baking in whatever the flag's value was at the
+// last deploy. If the flag changes without a rebuild, this page and the
+// dynamic /api/stripe/public-checkout route (which does read it live) fall
+// out of sync — the UI shows one flow while the API enforces the other.
+export const dynamic = "force-dynamic";
+
 export default function BillingPage() {
   const publicCheckout = isPublicCheckoutEnabled();
 
