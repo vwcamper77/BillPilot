@@ -34,7 +34,7 @@ async function signIn(page) {
   await page.waitForFunction(() => typeof window.__cleartillTestSignIn === "function");
   await page.evaluate((value) => window.__cleartillTestSignIn(value), token);
   await page.goto("/dashboard");
-  await page.locator('[data-testid="hero-bills"]').waitFor({ state: "visible", timeout: 20000 });
+  await page.getByRole("button", { name: "How it's worked out" }).waitFor({ state: "visible", timeout: 20000 });
 }
 
 test.beforeAll(async () => {
@@ -59,14 +59,20 @@ test.beforeEach(async () => {
 test("disclosures are exact, accessible, period-correct and mobile-safe", async ({ page }) => {
   await signIn(page);
 
+  const heroBreakdown = page.getByRole("button", { name: "How it's worked out" });
+  await expect(heroBreakdown).toHaveAttribute("aria-expanded", "false");
+  await heroBreakdown.click();
+  await expect(heroBreakdown).toHaveAttribute("aria-expanded", "true");
+
   const heroIncome = page.locator('[data-testid="hero-income"]');
   await expect(heroIncome).toContainText("£1,000");
   await heroIncome.getByRole("button").click();
   await expect(heroIncome).toContainText("Bonus");
-  await expect(page.getByRole("button", { name: "How it's worked out" })).toHaveCount(0);
+  await expect(heroBreakdown).toHaveCount(1);
   await expect(page.locator('[data-testid="next-money-in"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="income-schedule-card"]')).toContainText("Other scheduled income");
   await page.reload();
+  await heroBreakdown.click();
   await expect(heroIncome).toContainText("£1,000");
 
   const heroBills = page.locator('[data-testid="hero-bills"]');
@@ -86,6 +92,10 @@ test("disclosures are exact, accessible, period-correct and mobile-safe", async 
   const zeroLargeCosts = page.locator('[data-testid="hero-large-costs"]');
   await expect(zeroLargeCosts.getByRole("button")).toHaveCount(0);
 
+  const payPeriods = page.getByRole("button", { name: /Pay periods/ });
+  await expect(payPeriods).toHaveAttribute("aria-expanded", "false");
+  await payPeriods.click();
+  await expect(payPeriods).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator('[data-testid="current-pay-period"]')).toContainText("Rent");
   const nextIncome = page.locator('[data-testid="next-period-income"]');
   await nextIncome.getByRole("button").click();

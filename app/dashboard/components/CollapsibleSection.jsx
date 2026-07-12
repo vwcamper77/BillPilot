@@ -8,6 +8,7 @@ export default function CollapsibleSection({
   children,
   defaultCollapsed = true,
   storageKey,
+  className = "",
 }) {
   const storageId = storageKey ? `ct.ui.sections.${storageKey}` : null;
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
@@ -45,7 +46,7 @@ export default function CollapsibleSection({
   }
 
   return (
-    <section className="collapsible-section">
+    <section className={`collapsible-section ${className}`.trim()}>
       <button
         type="button"
         className="collapsible-section-header"

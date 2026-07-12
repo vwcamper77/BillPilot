@@ -1179,6 +1179,12 @@ function HomeDashboardContent() {
       />
 
       {dashboard.paydayDate && nextPaydayDate ? (
+        <CollapsibleSection
+          title="Pay periods"
+          summaryValue="Current → next"
+          storageKey="payperiods"
+          className="pay-period-section"
+        >
           <PayPeriodCards
             displayCurrency={displayCurrency}
             current={{
@@ -1206,6 +1212,7 @@ function HomeDashboardContent() {
               dailyAllowance: Math.max(0, nextFreeCash / nextPeriodDays),
             }}
           />
+        </CollapsibleSection>
       ) : null}
 
       <BalanceEditor
