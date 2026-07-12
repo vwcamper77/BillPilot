@@ -34,3 +34,18 @@ test("expiry, refund and revocation override payment type", () => {
   expect(toAccountBillingResponse({ status: "refunded" }).status).toBe("refunded");
   expect(toAccountBillingResponse({ status: "revoked" }).status).toBe("revoked");
 });
+
+test("trialing and active subscriptions grant access", () => {
+  for (const subscriptionStatus of ["trialing", "active", "past_due"]) {
+    const result = toAccountBillingResponse({ billingMode: "subscription", subscriptionStatus, accessExpiresAt: "2099-10-09T00:00:00.000Z" });
+    expect(result.status).toBe("active");
+    expect(result.planKey).toBe("monthly_subscription");
+    expect(result.billingMode).toBe("subscription");
+  }
+});
+
+test("definitive non-entitled subscription states do not grant access", () => {
+  for (const subscriptionStatus of ["unpaid", "paused", "canceled", "incomplete", "incomplete_expired"]) {
+    expect(toAccountBillingResponse({ billingMode: "subscription", subscriptionStatus, accessExpiresAt: "2099-10-09T00:00:00.000Z" }).status).toBe("inactive");
+  }
+});

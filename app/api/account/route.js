@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { deleteUserAccount, deleteUserData, exportUserData, resetUserData } from "@/lib/accountData";
-import { getAdminAuth } from "@/lib/firebaseAdmin";
+import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { logSecurityEvent, SECURITY_ACTIONS } from "@/lib/security/auditLog";
 import { resolveEntitlementForUid } from "@/lib/entitlementResolver.server";
+import { BLOCKING_SUBSCRIPTION_STATUSES } from "@/lib/subscriptionState";
 
 export const runtime = "nodejs";
 
@@ -76,7 +77,14 @@ export async function POST(request) {
       }
 
       case "delete_account": {
-        // TODO: Cancel or disconnect Stripe billing before full account deletion when paid plans exist.
+        const customerSnapshot = await getAdminDb().collection("customers").doc(decodedToken.uid).get();
+        const customer = customerSnapshot.exists ? customerSnapshot.data() : {};
+        if (customer.stripeSubscriptionId && BLOCKING_SUBSCRIPTION_STATUSES.has(customer.subscriptionStatus)) {
+          return NextResponse.json({
+            ok: false,
+            error: "Manage and cancel your subscription before deleting your account.",
+          }, { status: 409 });
+        }
         // Log the request before deletion so the audit trail survives the account removal.
         await logSecurityEvent({
           userId: decodedToken.uid,

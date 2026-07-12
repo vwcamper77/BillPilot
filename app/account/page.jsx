@@ -9,6 +9,7 @@ import TrustShield from "@/components/TrustShield";
 import AdminFoundingAccessForm from "@/components/AdminFoundingAccessForm";
 import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";
 import { trackEvent } from "@/lib/analytics/track";
+import ManageSubscriptionButton from "./ManageSubscriptionButton";
 
 const ACCOUNT_DIALOGS = {
   reset_data: {
@@ -403,6 +404,9 @@ export default function AccountPage() {
             ) : null}
             <div className="account-row"><div><strong>Billing email</strong><span>{billing?.billingEmail || "Not recorded"}</span></div></div>
             <div className="account-row"><div><strong>Account email</strong><span>{billing?.accountEmail || user.email || "Not recorded"}</span></div></div>
+            {billing?.billingMode === "subscription" ? (
+              <div className="account-row"><div><strong>Subscription</strong><span>Update payment details, view invoices or cancel in Stripe.</span></div><ManageSubscriptionButton /></div>
+            ) : null}
           </div>
         </section>
 

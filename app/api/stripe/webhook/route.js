@@ -3,6 +3,8 @@ import { claimPendingEntitlement, createPendingEntitlementFromCheckoutSession, g
 import { getAdminAuth, getAdminDb, getFirebaseProjectId } from "@/lib/firebaseAdmin";
 import { getStripeServerClient } from "@/lib/stripe";
 import { recordAnalyticsEvent } from "@/lib/customerProfile.server";
+import { isSubscriptionTrialEnabled } from "@/lib/subscriptionFlags";
+import { processSubscriptionCheckout, processSubscriptionLifecycle } from "@/lib/subscriptionEntitlements.server";
 
 export const runtime = "nodejs";
 
@@ -21,6 +23,13 @@ export async function POST(request) {
     if (event.type === "checkout.session.completed") {
       const rawSession = event.data.object;
       const session = await getExpandedCheckoutSession(rawSession.id);
+      if (session.mode === "subscription") {
+        if (!isSubscriptionTrialEnabled()) {
+          throw new Error("Subscription trial webhook received while the feature is disabled.");
+        }
+        await processSubscriptionCheckout(session, event.id);
+        return NextResponse.json({ received: true });
+      }
       const created = await createPendingEntitlementFromCheckoutSession(session, { webhookEventId: event.id });
       const trustedUid = String(session.metadata?.firebase_uid || session.metadata?.userId || session.client_reference_id || "").trim();
 
@@ -41,8 +50,8 @@ export async function POST(request) {
       }
     }
 
-    if (["customer.subscription.created", "customer.subscription.deleted"].includes(event.type)) {
-      await handleSubscriptionEvent(event);
+    if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "invoice.paid", "invoice.payment_failed"].includes(event.type)) {
+      if (isSubscriptionTrialEnabled()) await processSubscriptionLifecycle(event);
     }
 
     if (["charge.refunded", "payment_intent.payment_failed"].includes(event.type)) {
@@ -66,20 +75,4 @@ async function handlePaymentStateEvent(event) {
   for (const doc of matches.docs) batch.set(doc.ref, { status, webhookEventId: event.id, updatedAt: new Date() }, { merge: true });
   await batch.commit();
 }
-
-async function handleSubscriptionEvent(event) {
-  const subscription = event.data.object;
-  const stripeCustomerId = String(subscription?.customer || "").trim();
-  if (!stripeCustomerId) return;
-  const matches = await getAdminDb().collection("customers").where("stripeCustomerId", "==", stripeCustomerId).limit(1).get();
-  if (matches.empty) return;
-  const customerDoc = matches.docs[0];
-  const subscriptionStatus = event.type === "customer.subscription.created"
-    ? (subscription.status === "trialing" ? "trialing" : "active")
-    : "canceled";
-  await customerDoc.ref.set({ subscriptionStatus }, { merge: true });
-  await recordAnalyticsEvent({
-    eventName: event.type === "customer.subscription.created" ? "subscription_created" : "subscription_cancelled",
-    uid: customerDoc.id,
-  }).catch((error) => console.error("[stripe-webhook] subscription analytics failed", error));
-}
+// Subscription lifecycle writes are isolated in subscriptionEntitlements.server.js.
