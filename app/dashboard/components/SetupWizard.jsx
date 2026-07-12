@@ -57,8 +57,10 @@ export default function SetupWizard({
   bills,
   onBillsChange,
   hasIncome,
+  onFinishBillsStep,
 }) {
   const meta = STEP_META[setupStep] || STEP_META[3];
+  const billCount = bills?.length || 0;
 
   return (
     <main className="dashboard-shell setup-wizard-shell">
@@ -105,15 +107,33 @@ export default function SetupWizard({
             onCurrencySelect={onCurrencySelect}
           />
         ) : (
-          <AddBills
-            bills={bills}
-            onBillsChange={onBillsChange}
-            hasIncome={hasIncome}
-            hasBalanceSnapshot={hasBalanceSnapshot}
-            hasPayday={hasPayday}
-            displayCurrency={displayCurrency}
-            autoFocusOnMount
-          />
+          <>
+            <AddBills
+              bills={bills}
+              onBillsChange={onBillsChange}
+              hasIncome={hasIncome}
+              hasBalanceSnapshot={hasBalanceSnapshot}
+              hasPayday={hasPayday}
+              displayCurrency={displayCurrency}
+              autoFocusOnMount
+            />
+            {billCount > 0 ? (
+              <div className="setup-wizard-bills-progress">
+                <p className="helper-text setup-wizard-bills-tally">
+                  {billCount} bill{billCount === 1 ? "" : "s"} added
+                  {billCount === 1 ? " — add another, or continue when you're ready." : "."}
+                </p>
+                <ul className="setup-wizard-bills-list">
+                  {bills.map((bill) => (
+                    <li key={bill.id}>{bill.name}</li>
+                  ))}
+                </ul>
+                <button className="primary-button" type="button" onClick={onFinishBillsStep}>
+                  Continue to dashboard
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
     </main>

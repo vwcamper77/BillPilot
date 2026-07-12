@@ -168,6 +168,8 @@ export default function BalanceEditor({
                     ...current,
                     payDay: event.target.value ? String(Number(event.target.value.slice(8, 10))) : "",
                   }))}
+                  onClick={(event) => event.currentTarget.showPicker?.()}
+                  className="date-input-full-click"
                 />
                 <p className="field-help">ClearTill will repeat this payday on the same day each month.</p>
               </div>

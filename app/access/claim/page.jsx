@@ -24,8 +24,7 @@ const API_ERROR_MESSAGES = {
 
 export default function AccessClaimPage() {
   const router = useRouter();
-  const [phase, setPhase] = useState("loading"); // loading | need-email | working | error | done
-  const [email, setEmail] = useState("");
+  const [phase, setPhase] = useState("loading"); // loading | working | error | done
   const [message, setMessage] = useState("");
   const [canResend, setCanResend] = useState(false);
   const [resendState, setResendState] = useState({ busy: false, sent: false });
@@ -51,15 +50,46 @@ export default function AccessClaimPage() {
       return;
     }
 
-    if (!isSignInWithEmailLink(auth, paramsRef.current.href)) {
+    if (!isSignInWithEmailLink(auth, paramsRef.current.href) || !ct || !sid) {
       setPhase("error");
       setMessage("This link is not a valid sign-in link.");
       setCanResend(Boolean(sid));
       return;
     }
 
-    setPhase("need-email");
+    // No form to fill in — the email is already known server-side for this
+    // exact token, so resolve it automatically and sign straight in.
+    autoSignIn(ct, sid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function autoSignIn(claimToken, sessionId) {
+    setPhase("working");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/access/claim-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claimToken, sessionId }),
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload?.email) {
+        const code = payload?.code;
+        setPhase("error");
+        setMessage(API_ERROR_MESSAGES[code] || payload?.error || "This access link is not valid.");
+        setCanResend(code === "link_expired" || code === "invalid_token");
+        return;
+      }
+
+      await completeSignIn(payload.email);
+    } catch {
+      setPhase("error");
+      setMessage("We could not sign you in with this link.");
+      setCanResend(true);
+    }
+  }
 
   async function completeSignIn(enteredEmail) {
     setPhase("working");
@@ -131,31 +161,6 @@ export default function AccessClaimPage() {
 
       <section className="billing-panel billing-status-panel">
         {phase === "loading" ? <p className="helper-text">Checking your link...</p> : null}
-
-        {phase === "need-email" ? (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              completeSignIn(email.trim().toLowerCase());
-            }}
-          >
-            <p className="billing-status-copy">
-              Confirm the email you used at checkout to finish signing in.
-            </p>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="you@example.com"
-              className="billing-email-input"
-            />
-            <button className="primary-button billing-primary-button" type="submit">
-              Continue
-            </button>
-          </form>
-        ) : null}
-
         {phase === "working" ? <p className="helper-text">Signing you in...</p> : null}
         {phase === "done" ? <p className="helper-text billing-success">You&apos;re in — redirecting...</p> : null}
 

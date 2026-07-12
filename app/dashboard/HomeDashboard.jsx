@@ -58,6 +58,7 @@ import SetupWizard from "./components/SetupWizard";
 
 const RECENT_SESSION_STORAGE_KEY = "cleartill_recent_checkout_session_id";
 const SETUP_COMPLETED_STORAGE_KEY = "ct.setup.completedAt";
+const JUST_FINISHED_ONBOARDING_KEY = "ct.onboarding.justFinishedBills";
 
 function isValidIncomeAmount(value) {
   const amount = Number(value);
@@ -397,12 +398,41 @@ function HomeDashboardContent() {
   const hasPayday = isValidDueDay(displayIncome?.payDay);
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
   const hasBills = bills.length > 0;
-  const setupStep = !hasBalanceSnapshot ? 1 : !hasPayday ? 2 : !hasBills ? 3 : 4;
+  // First-time onboarding shouldn't bounce someone out of "add your bills"
+  // the instant they add one — let them keep going until they say they're
+  // done. Returning users (who've completed setup before) skip this: as
+  // soon as they have a bill again, they're back on the full dashboard.
+  const hasCompletedSetupBefore = typeof window !== "undefined" && Boolean(window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY));
+  const [billsStepConfirmed, setBillsStepConfirmed] = useState(false);
+  const setupStep = !hasBalanceSnapshot
+    ? 1
+    : !hasPayday
+      ? 2
+      : (!hasBills || (!hasCompletedSetupBefore && !billsStepConfirmed))
+        ? 3
+        : 4;
 
   useEffect(() => {
     if (setupStep === 4 && typeof window !== "undefined" && !window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY)) {
       window.localStorage.setItem(SETUP_COMPLETED_STORAGE_KEY, new Date().toISOString());
     }
+  }, [setupStep]);
+
+  function handleFinishBillsStep() {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(JUST_FINISHED_ONBOARDING_KEY, "1");
+    }
+    setBillsStepConfirmed(true);
+  }
+
+  // Land on the Bills section, already open and scrolled into view, the
+  // moment someone finishes onboarding — instead of a fully collapsed
+  // dashboard they'd have to go hunting through.
+  useEffect(() => {
+    if (setupStep !== 4 || typeof window === "undefined") return;
+    if (window.sessionStorage.getItem(JUST_FINISHED_ONBOARDING_KEY) !== "1") return;
+    window.sessionStorage.removeItem(JUST_FINISHED_ONBOARDING_KEY);
+    triggerQuickAction("bills", "add-bills");
   }, [setupStep]);
 
   const totalMonthlyBills = bills.reduce((sum, b) => sum + (b.amount || 0), 0);
@@ -1080,6 +1110,7 @@ function HomeDashboardContent() {
         bills={bills}
         onBillsChange={setBills}
         hasIncome={Boolean(displayIncome)}
+        onFinishBillsStep={handleFinishBillsStep}
       />
     );
   }

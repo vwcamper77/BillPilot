@@ -451,8 +451,6 @@ test.describe("Browser journey", () => {
       expect(signInUrl).toContain("/access/claim");
 
       await page.goto(signInUrl);
-      await page.getByPlaceholder("you@example.com").fill(email);
-      await page.getByRole("button", { name: "Continue" }).click();
       await page.waitForURL(/\/dashboard/, { timeout: 15000 });
 
       const entitlement = await getEntitlement(sessionId);
