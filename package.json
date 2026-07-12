@@ -6,6 +6,7 @@
     "dev": "node scripts/dev-server.mjs",
     "build": "next build",
     "start": "next start",
+    "test:unit": "playwright test --config=playwright.unit.config.js",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -14,6 +15,7 @@
     "next": "^15.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "resend": "^6.17.2",
     "stripe": "^22.3.0",
     "tesseract.js": "^7.0.0"
   },

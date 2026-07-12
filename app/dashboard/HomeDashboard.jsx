@@ -34,6 +34,8 @@ import {
   getTodayIso,
   isValidDueDay,
 } from "@/lib/billMath";
+import { calculateLargeCostAffordabilityPlans } from "@/lib/largeCostPlanner";
+import { calculateSafeSpendingPlan, expandIncomeEvents } from "@/lib/cashflowTimeline";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
 import { logSecurityEventClient } from "@/lib/security/clientSecurity";
@@ -51,10 +53,12 @@ import LargeCostForm from "./components/LargeCostForm";
 import SavingsEditor from "./components/SavingsEditor";
 import UtilitiesTracker, { buildTrackerChecks } from "./components/UtilitiesTracker";
 import FourWeekChart from "./components/FourWeekChart";
+import PayPeriodCards from "./components/PayPeriodCards";
 import SetupWizard from "./components/SetupWizard";
 
 const RECENT_SESSION_STORAGE_KEY = "cleartill_recent_checkout_session_id";
 const SETUP_COMPLETED_STORAGE_KEY = "ct.setup.completedAt";
+const JUST_FINISHED_ONBOARDING_KEY = "ct.onboarding.justFinishedBills";
 
 function isValidIncomeAmount(value) {
   const amount = Number(value);
@@ -66,34 +70,6 @@ function toDateMaybe(value) {
   if (typeof value.toDate === "function") return value.toDate();
   if (value instanceof Date) return value;
   return null;
-}
-
-function formatBalanceSnapshotLabel(timestamp) {
-  const snapshotDate = toDateMaybe(timestamp);
-
-  if (!snapshotDate) {
-    return "Entered recently";
-  }
-
-  const todayIso = getTodayIso();
-  const snapshotIso = getTodayIso(snapshotDate);
-  const timeLabel = new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/London",
-  }).format(snapshotDate);
-
-  if (snapshotIso === todayIso) {
-    return `Entered today at ${timeLabel}`;
-  }
-
-  const dateLabel = new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "long",
-    timeZone: "Europe/London",
-  }).format(snapshotDate);
-
-  return `Entered ${dateLabel} at ${timeLabel}`;
 }
 
 function getSafeNextPath(value) {
@@ -130,6 +106,7 @@ function HomeDashboardContent() {
   const [largeCosts, setLargeCosts] = useState([]);
   const [savings, setSavings] = useState(null);
   const [income, setIncome] = useState(null);
+  const [incomeEvents, setIncomeEvents] = useState([]);
   const [account, setAccount] = useState(null);
   const [accessCheck, setAccessCheck] = useState({
     state: "checking",
@@ -328,6 +305,7 @@ function HomeDashboardContent() {
       setLargeCosts([]);
       setSavings(null);
       setIncome(null);
+      setIncomeEvents([]);
       setAccount(null);
       setBalanceInput("");
       setIncomeForm({ amount: "", payDay: "" });
@@ -353,6 +331,7 @@ function HomeDashboardContent() {
         setLargeCosts(Array.isArray(payload?.largeCosts) ? payload.largeCosts : []);
         setSavings(payload?.savings || null);
         setIncome(nextIncome);
+        setIncomeEvents(Array.isArray(payload?.incomeEvents) ? payload.incomeEvents : []);
         setOptimisticIncome(null);
         setIncomeForm({
           amount: nextIncome?.amount === null || nextIncome?.amount === undefined ? "" : String(nextIncome.amount),
@@ -375,6 +354,7 @@ function HomeDashboardContent() {
         setLargeCosts([]);
         setSavings(null);
         setIncome(null);
+        setIncomeEvents([]);
         setAccount(null);
         setReminders([]);
       })
@@ -418,12 +398,41 @@ function HomeDashboardContent() {
   const hasPayday = isValidDueDay(displayIncome?.payDay);
   const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
   const hasBills = bills.length > 0;
-  const setupStep = !hasBalanceSnapshot ? 1 : !hasPayday ? 2 : !hasBills ? 3 : 4;
+  // First-time onboarding shouldn't bounce someone out of "add your bills"
+  // the instant they add one — let them keep going until they say they're
+  // done. Returning users (who've completed setup before) skip this: as
+  // soon as they have a bill again, they're back on the full dashboard.
+  const hasCompletedSetupBefore = typeof window !== "undefined" && Boolean(window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY));
+  const [billsStepConfirmed, setBillsStepConfirmed] = useState(false);
+  const setupStep = !hasBalanceSnapshot
+    ? 1
+    : !hasPayday
+      ? 2
+      : (!hasBills || (!hasCompletedSetupBefore && !billsStepConfirmed))
+        ? 3
+        : 4;
 
   useEffect(() => {
     if (setupStep === 4 && typeof window !== "undefined" && !window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY)) {
       window.localStorage.setItem(SETUP_COMPLETED_STORAGE_KEY, new Date().toISOString());
     }
+  }, [setupStep]);
+
+  function handleFinishBillsStep() {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(JUST_FINISHED_ONBOARDING_KEY, "1");
+    }
+    setBillsStepConfirmed(true);
+  }
+
+  // Land on the Bills section, already open and scrolled into view, the
+  // moment someone finishes onboarding — instead of a fully collapsed
+  // dashboard they'd have to go hunting through.
+  useEffect(() => {
+    if (setupStep !== 4 || typeof window === "undefined") return;
+    if (window.sessionStorage.getItem(JUST_FINISHED_ONBOARDING_KEY) !== "1") return;
+    window.sessionStorage.removeItem(JUST_FINISHED_ONBOARDING_KEY);
+    triggerQuickAction("bills", "add-bills");
   }, [setupStep]);
 
   const totalMonthlyBills = bills.reduce((sum, b) => sum + (b.amount || 0), 0);
@@ -439,13 +448,29 @@ function HomeDashboardContent() {
     () => calculateLargeCostImpact(largeCosts, generalProtectedSavings, dashboard.dailyLimitTillPayday || 0, dashboard.daysTillPayday || 0, todayIso),
     [dashboard.dailyLimitTillPayday, dashboard.daysTillPayday, largeCosts, generalProtectedSavings, todayIso],
   );
-  const bigCostsDueBeforePayday = useMemo(() => {
-    if (!dashboard.paydayDate) return 0;
-    return largeCostImpact.costs.reduce((total, cost) => {
-      if (!cost.nextDueDate || cost.nextDueDate >= dashboard.paydayDate) return total;
-      return total + (Number(cost.currentAccountAmount) || 0);
-    }, 0);
-  }, [dashboard.paydayDate, largeCostImpact.costs]);
+  const largeCostPlans = useMemo(() => calculateLargeCostAffordabilityPlans({
+    todayIso,
+    paydayDate: dashboard.paydayDate,
+    currentBalance: hasBalanceSnapshot ? dashboard.currentBalance : 0,
+    incomeAmount: hasIncomeAmount ? Number(displayIncome.amount) : 0,
+    additionalIncomeEvents: incomeEvents,
+    bills: [...dashboard.beforePayday, ...dashboard.afterPayday],
+    largeCosts: largeCostImpact.costs,
+    savingsAvailable: largeCostImpact.totalProtectedSavings,
+  }), [
+    dashboard.afterPayday,
+    dashboard.beforePayday,
+    dashboard.currentBalance,
+    dashboard.paydayDate,
+    displayIncome?.amount,
+    hasBalanceSnapshot,
+    hasIncomeAmount,
+    incomeEvents,
+    largeCostImpact.costs,
+    largeCostImpact.totalProtectedSavings,
+    todayIso,
+  ]);
+  const bigCostsDueBeforePayday = largeCostPlans.summary.currentPeriodProtected;
   const unassignedCostsBeforePayday = useMemo(() => {
     if (!dashboard.paydayDate) return 0;
     return largeCostImpact.costs.reduce((total, cost) => {
@@ -455,12 +480,29 @@ function HomeDashboardContent() {
     }, 0);
   }, [dashboard.paydayDate, largeCostImpact.costs]);
   const totalProtectedSavings = largeCostImpact.totalProtectedSavings;
-  const spendingRoomUntilPayday = hasBalanceSnapshot
-    ? dashboard.currentBalance - dashboard.totalBeforePayday - bigCostsDueBeforePayday
-    : null;
-  const dailySpendingRoom = hasPayday && dashboard.daysTillPayday && spendingRoomUntilPayday !== null
-    ? spendingRoomUntilPayday / dashboard.daysTillPayday
-    : null;
+  const safeSpendingPlan = useMemo(() => (
+    hasBalanceSnapshot && hasPayday && dashboard.paydayDate
+      ? calculateSafeSpendingPlan({
+        todayIso,
+        horizonDate: dashboard.paydayDate,
+        currentBalance: dashboard.currentBalance,
+        bills: dashboard.beforePayday,
+        largeCostAllocations: largeCostPlans.chartAllocations,
+        additionalIncomeEvents: incomeEvents,
+      })
+      : null
+  ), [
+    dashboard.beforePayday,
+    dashboard.currentBalance,
+    dashboard.paydayDate,
+    hasBalanceSnapshot,
+    hasPayday,
+    incomeEvents,
+    largeCostPlans.chartAllocations,
+    todayIso,
+  ]);
+  const spendingRoomUntilPayday = safeSpendingPlan?.spendingRoom ?? null;
+  const dailySpendingRoom = safeSpendingPlan?.safeDailyAmount ?? null;
   const clearTillStatus = (() => {
     if (!hasBalanceSnapshot || !hasPayday || spendingRoomUntilPayday === null) return "";
     if (spendingRoomUntilPayday < 0) return "negative";
@@ -481,8 +523,71 @@ function HomeDashboardContent() {
     return formatCurrency(Math.round(spendingRoomUntilPayday), displayCurrency);
   })();
 
+  const toDisclosureItems = (items, fallbackName, type) => (items || []).map((item, index) => ({
+    id: item.id || `${type}-${index}`,
+    name: item.name || fallbackName,
+    date: item.nextDueDate || item.date,
+    amount: Number(item.currentAccountAmount ?? item.amount) || 0,
+    type,
+  })).filter((item) => item.date && item.amount > 0);
+  const beforePaydayBillItems = toDisclosureItems(dashboard.beforePayday, "Bill", "bill");
+  const beforePaydayLargeCostItems = toDisclosureItems(
+    largeCostPlans.chartAllocations.filter((item) => (item.nextDueDate || item.date) < dashboard.paydayDate),
+    "Large-cost funding",
+    "large_cost",
+  );
+
+  const nextPaydayDate = useMemo(() => {
+    if (!dashboard.paydayDate) return null;
+    const date = new Date(`${dashboard.paydayDate}T12:00:00.000Z`);
+    const day = date.getUTCDate();
+    const nextMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 2, 0, 12));
+    return `${nextMonth.getUTCFullYear()}-${String(nextMonth.getUTCMonth() + 1).padStart(2, "0")}-${String(Math.min(day, nextMonth.getUTCDate())).padStart(2, "0")}`;
+  }, [dashboard.paydayDate]);
+  const nextPeriodBills = useMemo(() => {
+    if (!dashboard.paydayDate || !nextPaydayDate) return [];
+    return bills.filter((bill) => bill?.active !== false && Number(bill?.amount) > 0).map((bill, index) => {
+      const dueDay = Math.min(31, Math.max(1, Number(bill.dueDay) || 1));
+      const start = new Date(`${dashboard.paydayDate}T12:00:00.000Z`);
+      for (let monthOffset = 0; monthOffset <= 1; monthOffset += 1) {
+        const last = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + monthOffset + 1, 0, 12));
+        const date = `${last.getUTCFullYear()}-${String(last.getUTCMonth() + 1).padStart(2, "0")}-${String(Math.min(dueDay, last.getUTCDate())).padStart(2, "0")}`;
+        if (date >= dashboard.paydayDate && date < nextPaydayDate) {
+          return { id: bill.id || `bill-${index}`, name: bill.name || "Bill", date, amount: Number(bill.amount), type: "bill" };
+        }
+      }
+      return null;
+    }).filter(Boolean);
+  }, [bills, dashboard.paydayDate, nextPaydayDate]);
+  const nextPeriodLargeCosts = toDisclosureItems(
+    largeCostPlans.chartAllocations.filter((item) => item.periodIndex === 1),
+    "Large-cost funding",
+    "large_cost",
+  );
+  const scheduledIncomeOccurrences = dashboard.paydayDate && nextPaydayDate
+    ? expandIncomeEvents(incomeEvents, todayIso, nextPaydayDate).filter((item) => item.date < nextPaydayDate)
+    : [];
+  const upcomingIncome = [
+    ...(hasIncomeAmount && dashboard.paydayDate ? [{ id: "primary-pay", name: "Monthly pay", date: dashboard.paydayDate, amount: Number(displayIncome.amount), type: "income" }] : []),
+    ...scheduledIncomeOccurrences.map((item) => ({ ...item, id: item.occurrenceId, type: "income" })),
+  ].filter((item) => item.date >= todayIso)
+    .sort((a, b) => a.date.localeCompare(b.date) || String(a.name).localeCompare(String(b.name)));
+  const sumItemAmounts = (items) => items.reduce((total, item) => total + item.amount, 0);
+  const currentPeriodIncome = upcomingIncome.filter((item) => item.date < dashboard.paydayDate);
+  const currentIncomeTotal = sumItemAmounts(currentPeriodIncome);
+  const nextPeriodIncome = [
+    ...upcomingIncome.filter((item) => item.date >= dashboard.paydayDate && item.date < nextPaydayDate),
+  ];
+  const nextIncomeTotal = sumItemAmounts(nextPeriodIncome);
+  const nextBillTotal = sumItemAmounts(nextPeriodBills);
+  const nextLargeCostTotal = sumItemAmounts(nextPeriodLargeCosts);
+  const nextFreeCash = nextIncomeTotal - nextBillTotal - nextLargeCostTotal;
+  const nextPeriodDays = dashboard.paydayDate && nextPaydayDate ? Math.max(1, diffDays(dashboard.paydayDate, nextPaydayDate)) : 1;
+
   const largeCostsWithStatus = useMemo(
-    () => [...largeCostImpact.costs]
+    () => {
+      const plansById = new Map(largeCostPlans.plans.map((plan) => [plan.costId, plan]));
+      return [...largeCostImpact.costs]
       .sort((a, b) => {
         if (a.status === "due_now" && b.status !== "due_now") return -1;
         if (a.status !== "due_now" && b.status === "due_now") return 1;
@@ -491,22 +596,16 @@ function HomeDashboardContent() {
       })
       .map((cost) => ({
         ...cost,
+        affordabilityPlan: plansById.get(cost.id) || null,
         fundingMeta: {
           unassigned: { label: "Unassigned", note: "Choose how this will be paid." },
-          current_account: { label: "Current account", note: "Hits current account. Reduces daily spending room." },
+          current_account: { label: "Current balance", note: "Uses this pay cycle or a future pay period. Only the planned amount reduces daily spending room." },
           savings: { label: "Savings", note: "Covered by savings. Not counted as daily spending money." },
           split: { label: "Split", note: "Partly covered by savings. Only the remaining amount affects daily spending room." },
         }[cost.fundingStatus] || { label: "Unassigned", note: "Choose how this will be paid." },
-      })),
-    [largeCostImpact],
-  );
-  const dueBeforePaydayLargeCosts = useMemo(
-    () => largeCostsWithStatus.filter((cost) => cost.nextDueDate && dashboard.paydayDate && cost.nextDueDate < dashboard.paydayDate),
-    [dashboard.paydayDate, largeCostsWithStatus],
-  );
-  const balanceSnapshotLabel = useMemo(
-    () => formatBalanceSnapshotLabel(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt),
-    [displayAccount?.snapshotEnteredAt, displayAccount?.updatedAt],
+      }));
+    },
+    [largeCostImpact.costs, largeCostPlans.plans],
   );
   const daysSinceBalanceSnapshot = useMemo(() => {
     const snapshotDate = toDateMaybe(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt);
@@ -539,9 +638,9 @@ function HomeDashboardContent() {
   const billsSummaryValue = !hasBills
     ? "No bills yet"
     : `${formatCurrency(totalMonthlyBills, displayCurrency)}/mo${nextDueBill ? ` · next ${formatDisplayDate(nextDueBill.nextDueDate)}` : ""}`;
-  const largeCostsSummaryValue = dueBeforePaydayLargeCosts.length
-    ? `${dueBeforePaydayLargeCosts.length} before payday`
-    : "None before payday";
+  const largeCostsSummaryValue = largeCostPlans.plans.length
+    ? `${largeCostPlans.plans.length} planned${largeCostPlans.summary.closestDueDate ? ` · next ${formatDisplayDate(largeCostPlans.summary.closestDueDate)}` : ""}`
+    : "None planned";
   const trackerChecks = useMemo(() => buildTrackerChecks(bills), [bills]);
   const utilitiesSummaryValue = `${trackerChecks.filter((c) => c.found).length} of ${trackerChecks.length}`;
 
@@ -659,23 +758,6 @@ function HomeDashboardContent() {
       setAuthError(friendlyAuthError(emailError));
     } finally {
       setSigningIn(false);
-    }
-  }
-
-  async function handleSkipBalance() {
-    setBalanceError("");
-    setPageNotice("You can add your current available money later for a more accurate forecast.");
-    setOptimisticBalance(null);
-    setBalanceInput("");
-
-    try {
-      await postDashboardSettingsAction("save_balance", {
-        currentBalance: null,
-        currency: "GBP",
-        snapshotEntered: false,
-      });
-    } catch (saveError) {
-      safeError("[dashboard-settings-balance-skip] failed", { code: saveError?.code });
     }
   }
 
@@ -813,7 +895,11 @@ function HomeDashboardContent() {
 
   function handleAddMissingUtility(check) {
     if (!check) return;
-    triggerQuickAction("bills", "add-bills", { name: check.label, category: "household" });
+    triggerQuickAction("bills", "add-bills", {
+      name: check.label,
+      category: "household",
+      subCategory: check.key,
+    });
   }
 
   function openBalanceEditor(withFocusPayday) {
@@ -1001,13 +1087,11 @@ function HomeDashboardContent() {
         setupStep={setupStep}
         hasBalanceSnapshot={hasBalanceSnapshot}
         currentBalance={dashboard.currentBalance}
-        balanceSnapshotLabel={balanceSnapshotLabel}
         balanceInput={balanceInput}
         onBalanceInputChange={setBalanceInput}
         balanceError={balanceError}
         savingBalance={savingBalance}
         onSubmitBalance={handleBalanceSave}
-        onSkipBalance={handleSkipBalance}
         income={displayIncome}
         hasPayday={hasPayday}
         hasIncomeAmount={hasIncomeAmount}
@@ -1021,11 +1105,16 @@ function HomeDashboardContent() {
         savingEdit={savingEdit}
         editError={editError}
         onSubmitIncome={handleIncomeSave}
+        incomeEvents={incomeEvents}
+        onIncomeEventsChange={setIncomeEvents}
+        todayIso={todayIso}
+        onNotice={setPageNotice}
         displayCurrency={displayCurrency}
         onCurrencySelect={handleCurrencySave}
         bills={bills}
         onBillsChange={setBills}
         hasIncome={Boolean(displayIncome)}
+        onFinishBillsStep={handleFinishBillsStep}
       />
     );
   }
@@ -1080,10 +1169,44 @@ function HomeDashboardContent() {
           hasPayday,
           totalBeforePayday: dashboard.totalBeforePayday,
           bigCostsDueBeforePayday,
+          additionalIncomeBeforePayday: safeSpendingPlan?.confirmedAdditionalIncome || 0,
           spendingRoomValue,
           displayCurrency,
+          billItems: beforePaydayBillItems,
+          largeCostItems: beforePaydayLargeCostItems,
+          incomeItems: currentPeriodIncome,
         }}
       />
+
+      {dashboard.paydayDate && nextPaydayDate ? (
+          <PayPeriodCards
+            displayCurrency={displayCurrency}
+            current={{
+              endDate: dashboard.paydayDate,
+              startingBalance: dashboard.currentBalance,
+              incomeTotal: currentIncomeTotal,
+              income: currentPeriodIncome,
+              billTotal: dashboard.totalBeforePayday,
+              bills: beforePaydayBillItems,
+              largeCostTotal: bigCostsDueBeforePayday,
+              largeCosts: beforePaydayLargeCostItems,
+              freeCash: Math.max(0, spendingRoomUntilPayday || 0),
+              dailyAllowance: Math.max(0, dailySpendingRoom || 0),
+            }}
+            next={{
+              startDate: dashboard.paydayDate,
+              endDate: nextPaydayDate,
+              incomeTotal: nextIncomeTotal,
+              income: nextPeriodIncome,
+              billTotal: nextBillTotal,
+              bills: nextPeriodBills,
+              largeCostTotal: nextLargeCostTotal,
+              largeCosts: nextPeriodLargeCosts,
+              freeCash: Math.max(0, nextFreeCash),
+              dailyAllowance: Math.max(0, nextFreeCash / nextPeriodDays),
+            }}
+          />
+      ) : null}
 
       <BalanceEditor
         open={balanceEditorOpen}
@@ -1092,13 +1215,11 @@ function HomeDashboardContent() {
         onRequestClose={() => setBalanceEditorOpen(false)}
         hasBalanceSnapshot={hasBalanceSnapshot}
         currentBalance={dashboard.currentBalance}
-        balanceSnapshotLabel={balanceSnapshotLabel}
         balanceInput={balanceInput}
         onBalanceInputChange={setBalanceInput}
         balanceError={balanceError}
         savingBalance={savingBalance}
         onSubmitBalance={handleBalanceSave}
-        onSkipBalance={handleSkipBalance}
         income={displayIncome}
         hasPayday={hasPayday}
         hasIncomeAmount={hasIncomeAmount}
@@ -1112,6 +1233,10 @@ function HomeDashboardContent() {
         savingEdit={savingEdit}
         editError={editError}
         onSubmitIncome={handleIncomeSave}
+        incomeEvents={incomeEvents}
+        onIncomeEventsChange={setIncomeEvents}
+        todayIso={todayIso}
+        onNotice={setPageNotice}
         displayCurrency={displayCurrency}
         onCurrencySelect={handleCurrencySave}
       />
@@ -1124,15 +1249,18 @@ function HomeDashboardContent() {
         staleBalanceDays={staleBalanceDaysForStrip}
       />
 
-      <CollapsibleSection title="Next 4 weeks" defaultCollapsed={false} storageKey="chart">
+      <CollapsibleSection title="Four-week cash forecast" defaultCollapsed={false} storageKey="chart">
         <FourWeekChart
           dashboard={dashboard}
-          dueBeforePaydayLargeCosts={dueBeforePaydayLargeCosts}
+          dueBeforePaydayLargeCosts={largeCostPlans.chartAllocations}
           dailySpendingRoom={dailySpendingRoom}
+          spendingRoomUntilPayday={spendingRoomUntilPayday}
+          minimumProjectedBalance={safeSpendingPlan?.minimumProjectedBalance}
           hasBalanceSnapshot={hasBalanceSnapshot}
           todayIso={todayIso}
           displayCurrency={displayCurrency}
           incomeAmount={hasIncomeAmount ? Number(displayIncome.amount) : 0}
+          additionalIncomeEvents={incomeEvents}
         />
       </CollapsibleSection>
 
@@ -1165,8 +1293,18 @@ function HomeDashboardContent() {
           hasPayday={hasPayday}
           todayIso={todayIso}
           costsWithStatus={largeCostsWithStatus}
-          dueBeforePaydayCosts={dueBeforePaydayLargeCosts}
+          plannedCosts={largeCostsWithStatus}
           unassignedAmount={unassignedCostsBeforePayday}
+          planSummary={largeCostPlans.summary}
+          planningContext={{
+            currentBalance: hasBalanceSnapshot ? dashboard.currentBalance : 0,
+            incomeAmount: hasIncomeAmount ? Number(displayIncome.amount) : 0,
+            additionalIncomeEvents: incomeEvents,
+            paydayDate: dashboard.paydayDate,
+            savingsAvailable: generalProtectedSavings,
+            bills: [...dashboard.beforePayday, ...dashboard.afterPayday],
+          }}
+          onSavingsChange={setSavings}
           onNotice={setPageNotice}
         />
       </CollapsibleSection>

@@ -4,6 +4,7 @@ import TrustShield from "@/components/TrustShield";
 
 export const metadata = {
   title: "Privacy Policy | ClearTill",
+  alternates: { canonical: "/privacy" },
 };
 
 export default function PrivacyPage() {

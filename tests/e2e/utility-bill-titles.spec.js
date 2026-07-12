@@ -164,6 +164,11 @@ test("utility bill titles stay clean in review and after save", async ({ page })
   const composer = page.locator("form.chat-form textarea");
 
   for (const billCase of CASES) {
+    const billsSection = composer.locator("xpath=ancestor::section[contains(@class,'collapsible-section')][1]");
+    if (await billsSection.count()) {
+      const toggle = billsSection.locator(".collapsible-section-header");
+      if (await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+    }
     await composer.fill(billCase.input);
     await page.getByRole("button", { name: "Review bill" }).click();
 

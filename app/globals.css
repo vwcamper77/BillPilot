@@ -1062,6 +1062,200 @@ h1 {
   margin-top: 18px;
 }
 
+.large-cost-dashboard-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 14px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.large-cost-dashboard-summary > span {
+  display: inline;
+}
+
+.large-cost-dashboard-summary > span + span::before {
+  content: "·";
+  margin-right: 5px;
+}
+
+.split-funding-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.split-funding-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.funding-use-remaining,
+.affordability-action {
+  width: fit-content;
+  border: 0;
+  background: none;
+  color: var(--accent-dark);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.funding-remaining-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.field-error {
+  margin: 4px 0 0;
+  color: #8a4438;
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.split-funding-totals {
+  display: grid;
+  gap: 5px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.split-funding-totals span,
+.affordability-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.large-cost-confirmation {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  border-radius: 12px;
+  background: rgba(232, 243, 239, 0.58);
+}
+
+.affordability-plan {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.affordability-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.affordability-plan h4,
+.affordability-copy,
+.affordability-ai-copy {
+  margin: 0;
+}
+
+.affordability-state {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(232, 243, 239, 0.9);
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.affordability-state-unaffordable_by_due_date {
+  background: rgba(249, 236, 231, 0.94);
+  color: #7a4638;
+}
+
+.affordability-copy {
+  color: #4f514d;
+  line-height: 1.5;
+}
+
+.affordability-ai-copy {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.affordability-breakdown {
+  display: grid;
+  gap: 6px;
+}
+
+.affordability-row {
+  color: #655e56;
+  font-size: 0.88rem;
+}
+
+.affordability-total {
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.affordability-shortfall {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(249, 236, 231, 0.94);
+  color: #7a4638;
+  font-weight: 700;
+}
+
+.affordability-calculation {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.affordability-calculation summary {
+  width: fit-content;
+  color: var(--accent-dark);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.affordability-calculation-body {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.affordability-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+@media (max-width: 640px) {
+  .split-funding-inputs {
+    grid-template-columns: 1fr;
+  }
+
+  .affordability-plan-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .forecast-compact-list {
   list-style: none;
   margin: 10px 0 0;
@@ -1177,10 +1371,11 @@ h1 {
 }
 
 .forecast-cost-actions {
-  display: grid;
-  justify-items: start;
-  gap: 10px;
-  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 12px;
 }
 
 .forecast-secondary-actions {
@@ -1195,10 +1390,13 @@ h1 {
 
 .forecast-funding-editor {
   margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(229, 218, 200, 0.78);
+  width: min(100%, 760px);
+  padding: 16px;
+  border: 1px solid rgba(221, 213, 200, 0.88);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .forecast-funding-editor h4 {
@@ -1208,6 +1406,11 @@ h1 {
 
 .forecast-funding-editor .edit-actions {
   margin-top: 2px;
+}
+
+.forecast-funding-editor .split-funding-fields {
+  margin-top: 2px;
+  background: rgba(255, 253, 248, 0.88);
 }
 
 .improve-accuracy-panel {
@@ -1352,6 +1555,22 @@ h1 {
   font-weight: 700;
 }
 
+.date-input-full-click {
+  position: relative;
+  cursor: pointer;
+}
+
+.date-input-full-click::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .chat-form textarea,
 .chat-form input,
 .edit-form input {
@@ -1456,6 +1675,66 @@ h1 {
 
 .large-cost-form {
   margin-top: 14px;
+}
+
+.large-cost-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  background: rgba(20, 31, 28, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.large-cost-modal-panel {
+  width: min(100%, 620px);
+  max-height: min(90vh, 760px);
+  overflow: auto;
+  padding: 20px;
+  border: 1px solid rgba(221, 213, 200, 0.96);
+  border-radius: 16px;
+  background: var(--paper, #fffdf8);
+  box-shadow: 0 24px 70px rgba(20, 31, 28, 0.22);
+}
+
+.large-cost-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.large-cost-modal-head h3,
+.large-cost-modal-head p {
+  margin: 0;
+}
+
+.large-cost-modal-head p {
+  margin-top: 4px;
+}
+
+.large-cost-modal-panel .large-cost-form {
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+@media (max-width: 640px) {
+  .large-cost-modal-backdrop {
+    align-items: flex-end;
+    padding: 12px;
+  }
+
+  .large-cost-modal-panel {
+    max-height: 92dvh;
+    padding: 16px;
+    border-radius: 16px 16px 10px 10px;
+  }
 }
 
 .large-cost-list {
@@ -2722,6 +3001,129 @@ h1 {
   border-color: rgba(214, 205, 191, 0.92);
 }
 
+.hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.additional-income-editor {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+}
+
+.additional-income-toggle {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.additional-income-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--line);
+}
+
+.additional-income-body > .helper-text:first-child {
+  margin: 12px 0 0;
+}
+
+.additional-income-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.additional-income-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.additional-income-list li > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.additional-income-list span,
+.additional-income-list small {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.additional-income-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.additional-income-form {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.88);
+}
+
+.additional-income-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.forecast-income-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.payday-week-bridge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 640px) {
+  .additional-income-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .additional-income-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .hero-trust {
   margin-top: 14px;
   max-width: 38rem;
@@ -3347,6 +3749,331 @@ h1 {
   height: auto;
   display: block;
   overflow: visible;
+}
+
+.weekly-spend-grid {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  scrollbar-color: var(--accent) var(--soft);
+  scrollbar-width: thin;
+  padding-bottom: 8px;
+}
+
+.weekly-spend-card {
+  flex: 0 0 min(280px, calc(100% - 12px));
+  scroll-snap-align: start;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+}
+
+.weekly-spend-card-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.weekly-spend-week-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.weekly-spend-payday-badge {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--accent-dark);
+}
+
+.weekly-spend-bar-track {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--soft);
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.weekly-spend-bar-segment {
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+.weekly-spend-bar-segment.is-post {
+  background: var(--accent-dark);
+}
+
+.weekly-spend-bar-segment.is-negative {
+  background: var(--warn);
+}
+
+.weekly-spend-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.weekly-spend-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--ink);
+}
+
+.weekly-spend-row.muted {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.weekly-safe-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.weekly-safe-info-button {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent-dark);
+  font: 700 0.68rem/1 Georgia, serif;
+  cursor: pointer;
+}
+
+.weekly-safe-info-button:hover,
+.weekly-safe-info-button:focus-visible {
+  background: var(--accent);
+  color: white;
+  outline: none;
+}
+
+.weekly-safe-info-button:focus-visible {
+  box-shadow: 0 0 0 3px rgba(20, 107, 99, 0.2);
+}
+
+.weekly-safe-info-popup {
+  display: grid;
+  gap: 4px;
+  margin: 3px 0 6px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  box-shadow: 0 8px 20px rgba(62, 45, 24, 0.1);
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.weekly-safe-info-popup strong {
+  font-size: 0.74rem;
+}
+
+.weekly-spend-row.secondary {
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
+.income-schedule-card {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fffdf9, #fffaf2);
+  box-shadow: 0 10px 26px rgba(62, 45, 24, .04);
+}
+.income-schedule-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.income-schedule-kicker { color: var(--accent-dark); font-size: .7rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.income-schedule-header h2 { margin: 4px 0 4px; font-size: 1.22rem; }
+.income-schedule-header p { max-width: 570px; margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.45; }
+.regular-pay-summary { margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.regular-pay-summary > div:not(.regular-pay-forecast) { padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: white; display: flex; flex-direction: column; gap: 3px; }
+.regular-pay-summary span { color: var(--muted); font-size: .74rem; }
+.regular-pay-summary strong { color: var(--ink); font-size: .92rem; }
+.regular-pay-forecast { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 2px 2px 0; }
+.income-schedule-form { margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.income-schedule-form .edit-actions { grid-column: 1 / -1; }
+.income-schedule-form .field-help { margin: 5px 0 0; color: var(--muted); font-size: .72rem; line-height: 1.35; }
+.income-schedule-card .additional-income-editor { margin-top: 18px; background: white; }
+.additional-income-toggle > span:first-child { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.additional-income-toggle small { color: var(--muted); font-weight: 400; }
+
+.pay-period-card > p {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.pay-period-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.pay-period-card {
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.weekly-spend-slider-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.weekly-spend-slider-button {
+  min-height: 40px;
+  width: fit-content;
+}
+
+.weekly-spend-slider-button:last-child {
+  justify-self: end;
+}
+
+.weekly-spend-slider-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.weekly-spend-slider-status {
+  color: var(--muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
+.pay-period-card h2 { margin: 0; font-size: 1rem; }
+.pay-period-card > p { margin: 2px 0 12px; }
+.pay-period-row,
+.financial-disclosure-static {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+  padding: 9px 0;
+  font-size: 0.84rem;
+}
+
+.hero-calculation { max-width: 720px; margin: 18px 0 10px; border-top: 1px solid rgba(0,0,0,.09); }
+.hero-calculation-total { border-top: 1px solid rgba(0,0,0,.09); font-weight: 700; }
+.financial-disclosure { min-width: 0; border-top: 1px solid var(--line); }
+.hero-calculation .financial-disclosure { border-top-color: rgba(0,0,0,.09); }
+.financial-disclosure-button {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.financial-disclosure-copy { min-width: 0; display: flex; flex-direction: column; }
+.financial-disclosure-label { overflow-wrap: anywhere; font-size: .82rem; }
+.financial-disclosure-action { color: var(--muted); font-size: .7rem; }
+.financial-chevron { transition: transform 170ms ease; font-size: 1.1rem; }
+.financial-chevron.is-open { transform: rotate(180deg); }
+.financial-disclosure-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 170ms ease; }
+.financial-disclosure-panel.is-open { grid-template-rows: 1fr; }
+.financial-disclosure-panel-inner { min-height: 0; overflow: hidden; }
+.financial-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 0 7px 12px;
+  font-size: .76rem;
+}
+.financial-detail-row span:first-child { overflow-wrap: anywhere; }
+.financial-detail-row time { color: var(--muted); white-space: nowrap; }
+.financial-detail-row.total { border-top: 1px solid var(--line); font-weight: 700; }
+.weekly-spend-rows .financial-disclosure { margin-top: 3px; }
+.weekly-balance-details { border-top: 1px solid var(--line); margin-top: 3px; padding-top: 5px; }
+.weekly-balance-details summary { cursor: pointer; color: var(--muted); font-size: .72rem; min-height: 30px; display: flex; align-items: center; }
+
+@media (max-width: 680px) {
+  .spend-curve-card { padding: 14px; }
+  .weekly-spend-card { flex-basis: calc(100% - 18px); }
+  .weekly-spend-slider-button { padding-inline: 10px; font-size: 0.75rem; }
+  .pay-period-grid { grid-template-columns: 1fr; }
+  .financial-detail-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .financial-detail-row time { grid-column: 1; grid-row: 2; }
+  .financial-detail-row strong { grid-column: 2; grid-row: 1 / span 2; }
+  .income-schedule-header { flex-direction: column; }
+  .regular-pay-summary, .income-schedule-form { grid-template-columns: 1fr; }
+  .income-schedule-form .edit-actions { grid-column: auto; }
+}
+
+/* Four-week safe-spending forecast */
+.forecast-heading-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.forecast-heading-row .spend-curve-title { margin-bottom: 3px; font-size: 1.08rem; }
+.forecast-heading-row p { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.4; }
+.forecast-tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 14px; border-radius: 10px; background: #efe8dc; }
+.forecast-tabs button { flex: 1; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-weight: 700; cursor: pointer; }
+.forecast-tabs button[aria-selected="true"] { background: white; color: var(--accent-dark); box-shadow: 0 2px 8px rgba(62,45,24,.08); }
+.weekly-spend-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; overflow: visible; padding: 0; }
+.weekly-spend-card { display: flex; flex-direction: column; min-width: 0; padding: 12px; cursor: pointer; transition: border-color 150ms ease, transform 150ms ease; }
+.weekly-spend-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.weekly-spend-card.is-current { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+.weekly-spend-card.is-short { border-color: #d98b83; background: #fff5f3; }
+.weekly-today-badge { padding: 2px 6px; border-radius: 999px; background: var(--accent); color: white; font-size: .62rem; font-weight: 800; }
+.weekly-payday-marker-slot { display: flex; align-items: center; min-height: 25px; }
+.weekly-spend-payday-badge { display: inline-block; margin: 0; padding: 3px 6px; border-radius: 999px; background: #e5f3ef; white-space: normal; }
+.weekly-spend-value { min-height: 48px; color: var(--ink); font-size: clamp(1.05rem, 1.65vw, 1.42rem); font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+.weekly-spend-card.is-short .weekly-spend-value { color: var(--warn); }
+.weekly-spend-rate { display: grid; gap: 1px; min-height: 38px; margin-top: 3px; font-size: .76rem; font-weight: 700; }
+.weekly-spend-rate span { color: var(--muted); font-size: .68rem; font-weight: 500; }
+.weekly-bar-area { display: grid; place-items: end center; height: 132px; margin: 9px 0; border-bottom: 1px solid var(--line); background: repeating-linear-gradient(to top, transparent 0, transparent 32px, rgba(62,45,24,.06) 33px); }
+.weekly-bar-scale { display: flex; align-items: flex-end; justify-content: center; width: 54px; height: 100%; }
+.weekly-cash-bar { width: 100%; min-height: 2px; border-radius: 7px 7px 0 0; background: linear-gradient(180deg, var(--accent), var(--accent-dark)); }
+.weekly-shortfall-marker { display: grid; place-items: center; width: 44px; height: 44px; margin-bottom: 5px; border: 2px solid var(--warn); border-radius: 50%; color: var(--warn); font-size: 1.25rem; font-weight: 900; }
+.weekly-payday-split { display: grid; gap: 5px; min-height: 68px; margin: 7px 0; padding: 7px; border-left: 3px solid var(--accent); background: #f1f8f5; font-size: .66rem; }
+.weekly-payday-split span { display: grid; gap: 1px; }
+.weekly-payday-split strong { color: var(--ink); font-size: .7rem; overflow-wrap: anywhere; }
+.weekly-summary-line { min-height: 34px; margin: auto 0 3px; padding-top: 7px; color: var(--muted); font-size: .68rem; line-height: 1.35; overflow-wrap: anywhere; }
+.weekly-view-breakdown { min-height: 34px; padding: 0; border: 0; background: transparent; color: var(--accent-dark); font-size: .7rem; font-weight: 800; cursor: pointer; text-align: left; }
+.weekly-spend-slider-controls { display: none; }
+.cashflow-details { max-width: 720px; margin-inline: auto; }
+.cashflow-details-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0 12px; }
+.cashflow-details-heading span:first-child { color: var(--muted); font-size: .68rem; }
+.cashflow-details-heading h3 { margin: 2px 0 0; font-size: 1rem; }
+.cashflow-detail-list { border-block: 1px solid var(--line); }
+.cashflow-detail-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; min-width: 0; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: .84rem; }
+.cashflow-detail-row strong { text-align: right; overflow-wrap: anywhere; }
+.cashflow-detail-row.is-primary { color: var(--accent-dark); font-size: .92rem; }
+.cashflow-details-nav { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; }
+
+@media (max-width: 680px) {
+  .forecast-heading-row { display: block; }
+  .weekly-spend-grid { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-inline: contain; }
+  .weekly-spend-card { flex: 0 0 100%; scroll-snap-align: start; }
+  .weekly-spend-slider-controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+  .weekly-spend-slider-controls button:last-child { justify-self: end; }
+  .weekly-bar-area { height: 150px; }
 }
 
 .csv-edit-form input,
@@ -4818,4 +5545,33 @@ h1 {
 .setup-wizard h1 {
   margin: 4px 0 0;
   font-size: 1.5rem;
+}
+
+.setup-wizard-bills-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.setup-wizard-bills-tally {
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
+.setup-wizard-bills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-wizard-bills-list li {
+  font-size: 0.9rem;
+  color: var(--ink);
 }

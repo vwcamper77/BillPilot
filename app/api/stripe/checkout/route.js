@@ -8,6 +8,7 @@ export const runtime = "nodejs";
 export async function POST(request) {
   try {
     const decodedToken = await verifyCheckoutRequest(request);
+    const body = await request.json().catch(() => ({}));
     const origin = request.nextUrl.origin;
     const stripe = getStripeServerClient();
     const priceId = process.env.STRIPE_PRICE_ID;
@@ -43,8 +44,13 @@ export async function POST(request) {
           ],
       metadata: {
         userId: decodedToken.uid,
+        firebase_uid: decodedToken.uid,
         userEmail: decodedToken.email || "",
         plan: FOUNDING_PLAN,
+        planKey: "founding_member",
+        accessDurationDays: "90",
+        offer: "founding_member_2026",
+        gaClientId: sanitizeClientId(body?.gaClientId),
       },
     });
 
@@ -52,7 +58,7 @@ export async function POST(request) {
       throw new Error("Stripe Checkout did not return a session URL.");
     }
 
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: session.url, sessionId: session.id });
   } catch (error) {
     if (
       error?.code === "auth/missing-id-token"
@@ -73,6 +79,11 @@ export async function POST(request) {
       { status: 500 }
     );
   }
+}
+
+function sanitizeClientId(value) {
+  const normalized = String(value || "").trim();
+  return /^\d+\.\d+$/.test(normalized) ? normalized.slice(0, 64) : "";
 }
 
 async function verifyCheckoutRequest(request) {

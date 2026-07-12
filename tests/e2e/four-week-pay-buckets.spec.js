@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { getFourWeekPayBuckets, buildFourWeekCashflowWaterfall } from "../../lib/billMath.js";
+import { getFourWeekPayBuckets, buildFourWeekCashflowWaterfall, buildWeeklySafeSpendingPlan } from "../../lib/billMath.js";
 
 // Reference calendar: Mon 2026-07-06, Mon 2026-07-13, Mon 2026-07-20, Mon 2026-07-27, Thu 2026-07-09.
 
@@ -139,6 +139,23 @@ test.describe("buildFourWeekCashflowWaterfall", () => {
     expect(points[0].closingBalance).toBe(300);
   });
 
+  test("a £500 large cost is classified once and is not also reported as a bill", () => {
+    const points = buildWeeklySafeSpendingPlan(
+      "2026-07-06",
+      "2026-07-20",
+      1000,
+      [],
+      [{ id: "holiday", name: "Holiday", nextDueDate: "2026-07-09", currentAccountAmount: 500 }],
+      0,
+    );
+
+    expect(points[0].billsDue).toBe(0);
+    expect(points[0].largeCostAllocations).toBe(500);
+    expect(points[0].weeklyOutflow).toBe(500);
+    expect(points[0].closingBalance).toBe(500);
+    expect(points[0].steps.filter((step) => step.type === "large_cost")).toHaveLength(1);
+  });
+
   test("pay date label on the waterfall point reads 'Pay date DD Mon'", () => {
     const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-20", 1000, [], []);
     const payDatePoint = points.find((point) => point.containsPayDate);
@@ -168,10 +185,50 @@ test.describe("buildFourWeekCashflowWaterfall", () => {
     expect(points[3].isAfterPayCycle).toBe(true);
   });
 
+  test("a bill due after payday in the same week is deducted from the payday balance", () => {
+    const bills = [{ nextDueDate: "2026-07-26", amount: 1100 }];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-20", 500, bills, [], 4500);
+
+    expect(points[2].containsPayDate).toBe(true);
+    expect(points[2].openingBalance).toBe(500);
+    expect(points[2].incomeReceived).toBe(4500);
+    expect(points[2].weeklyOutflow).toBe(1100);
+    expect(points[2].closingBalance).toBe(3900);
+  });
+
   test("with no income amount set, closing balance is unaffected", () => {
     const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-22", 1500, [], [], 0);
     const payDatePoint = points.find((point) => point.containsPayDate);
     expect(payDatePoint.incomeReceived).toBe(0);
     expect(payDatePoint.closingBalance).toBe(payDatePoint.openingBalance);
+  });
+
+  test("allocations beyond the four-week window are not duplicated into week four", () => {
+    const largeCosts = [{ nextDueDate: "2026-09-01", currentAccountAmount: 600 }];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-20", 1000, [], largeCosts, 2000);
+    expect(points.map((point) => point.weeklyOutflow)).toEqual([0, 0, 0, 0]);
+  });
+
+  test("an extended forecast repeats monthly pay and bills into future cards", () => {
+    const bills = [{ name: "Rent", nextDueDate: "2026-07-08", amount: 900, frequency: "monthly" }];
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-20", 1000, bills, [], 2500, [], 8);
+
+    expect(points).toHaveLength(8);
+    expect(points[0].weeklyOutflow).toBe(900);
+    expect(points[4].weeklyOutflow).toBe(900);
+    expect(points[2].incomeReceived).toBe(2500);
+    expect(points[6].incomeReceived).toBe(2500);
+    expect(points[6].containsPayDate).toBe(true);
+    expect(points[6].payDateLabel).toBe("Pay date 20 Aug");
+    expect(points[7].closingBalance).toBe(4200);
+  });
+
+  test("a recurring pay date is labelled on its future week card", () => {
+    const points = buildFourWeekCashflowWaterfall("2026-07-06", "2026-07-24", 500, [], [], 4000, [], 8);
+    const futurePayWeek = points.find((point) => point.weekStart === "2026-08-24");
+
+    expect(futurePayWeek.incomeReceived).toBe(4000);
+    expect(futurePayWeek.containsPayDate).toBe(true);
+    expect(futurePayWeek.payDateLabel).toBe("Pay date 24 Aug");
   });
 });

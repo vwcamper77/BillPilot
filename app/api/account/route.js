@@ -2,8 +2,25 @@ import { NextResponse } from "next/server";
 import { deleteUserAccount, deleteUserData, exportUserData, resetUserData } from "@/lib/accountData";
 import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { logSecurityEvent, SECURITY_ACTIONS } from "@/lib/security/auditLog";
+import { resolveEntitlementForUid } from "@/lib/entitlementResolver.server";
 
 export const runtime = "nodejs";
+
+export async function GET(request) {
+  try {
+    const decodedToken = await verifyAccountRequest(request);
+    const resolved = await resolveEntitlementForUid(decodedToken.uid, {
+      accountEmail: decodedToken.email || null,
+    });
+    return NextResponse.json({ ok: true, billing: resolved.response });
+  } catch (error) {
+    if (error?.code?.startsWith("auth/")) {
+      return NextResponse.json({ ok: false, error: "Please sign in again." }, { status: 401 });
+    }
+    console.error("[account] billing read failed", error);
+    return NextResponse.json({ ok: false, error: "Could not load billing access." }, { status: 500 });
+  }
+}
 
 export async function POST(request) {
   try {

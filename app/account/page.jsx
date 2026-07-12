@@ -3,13 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import AdminFoundingAccessForm from "@/components/AdminFoundingAccessForm";
-import { auth, authPersistenceReady, db, isFirebaseClientConfigured } from "@/lib/firebase";
-import { formatBillingExpiry, hasActiveBillingAccess } from "@/lib/billingAccess";
+import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";
 import { trackEvent } from "@/lib/analytics/track";
 
 const ACCOUNT_DIALOGS = {
@@ -79,14 +77,23 @@ export default function AccountPage() {
   }, []);
 
   useEffect(() => {
-    if (!user || !db) {
+    if (!user) {
       setBilling(null);
       return undefined;
     }
 
-    return onSnapshot(doc(db, "users", user.uid, "settings", "billing"), (snapshot) => {
-      setBilling(snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null);
+    let cancelled = false;
+    user.getIdToken().then((idToken) => fetch("/api/account", {
+      headers: { Authorization: `Bearer ${idToken}` },
+    })).then(async (response) => {
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Could not load billing access.");
+      if (!cancelled) setBilling(payload.billing || null);
+    }).catch((error) => {
+      if (!cancelled) setFeedback({ type: "error", message: error.message });
     });
+
+    return () => { cancelled = true; };
   }, [user]);
 
   useEffect(() => {
@@ -145,14 +152,14 @@ export default function AccountPage() {
     if (user.isAnonymous) return "Guest session";
     return user.email || user.displayName || "Signed in";
   }, [user]);
-  const billingStatusLabel = hasActiveBillingAccess(billing)
-    ? `Active through ${formatBillingExpiry(billing)}`
-    : "No active paid access";
-  const amountPaidLabel = Number.isFinite(Number(billing?.amountPaid))
+  const billingStatusLabel = billing?.status === "active"
+    ? `Access active through ${formatDate(billing.accessExpiresAt)}`
+    : billing?.status === "none" ? "No access recorded" : `Access ${billing?.status || "unavailable"}`;
+  const amountPaidLabel = Number.isFinite(Number(billing?.amountPaidMinor))
     ? new Intl.NumberFormat("en-GB", {
         style: "currency",
         currency: String(billing?.currency || "gbp").toUpperCase(),
-      }).format(Number(billing.amountPaid) / 100)
+      }).format(Number(billing.amountPaidMinor) / 100)
     : "No payment recorded";
 
   async function handleExportData() {
@@ -329,7 +336,6 @@ export default function AccountPage() {
         </div>
         <div className="topbar-actions">
           <Link className="secondary-button" href="/dashboard">Back to dashboard</Link>
-          <Link className="secondary-button" href="/big-costs">Big costs</Link>
         </div>
       </header>
 
@@ -359,19 +365,19 @@ export default function AccountPage() {
             <div className="account-row">
               <div>
                 <strong>Plan</strong>
-                <span>{billing?.plan || "No plan recorded"}</span>
+                <span>{billing?.planName || "No plan recorded"}</span>
               </div>
             </div>
             <div className="account-row">
               <div>
-                <strong>Paid access</strong>
-                <span>{billing?.paid ? "Yes" : "No"}</span>
+                <strong>Access</strong>
+                <span>{friendlyStatus(billing?.status)}</span>
               </div>
             </div>
             <div className="account-row">
               <div>
-                <strong>Access expires</strong>
-                <span>{billing?.accessExpiresAt ? formatBillingExpiry(billing) : "No expiry set"}</span>
+                <strong>Access type</strong>
+                <span>{["promotional", "free"].includes(billing?.accessType) ? "Promotional access" : billing?.accessType === "paid" ? "Paid purchase" : "Not recorded"}</span>
               </div>
             </div>
             <div className="account-row">
@@ -380,6 +386,23 @@ export default function AccountPage() {
                 <span>{amountPaidLabel}</span>
               </div>
             </div>
+            <div className="account-row">
+              <div>
+                <strong>Access started</strong>
+                <span>{formatDate(billing?.accessStartsAt)}</span>
+              </div>
+            </div>
+            <div className="account-row">
+              <div>
+                <strong>Access expires</strong>
+                <span>{formatDate(billing?.accessExpiresAt)}</span>
+              </div>
+            </div>
+            {billing?.promotionLabel ? (
+              <div className="account-row"><div><strong>Promotion</strong><span>{billing.promotionLabel}</span></div></div>
+            ) : null}
+            <div className="account-row"><div><strong>Billing email</strong><span>{billing?.billingEmail || "Not recorded"}</span></div></div>
+            <div className="account-row"><div><strong>Account email</strong><span>{billing?.accountEmail || user.email || "Not recorded"}</span></div></div>
           </div>
         </section>
 
@@ -535,4 +558,15 @@ export default function AccountPage() {
       ) : null}
     </main>
   );
+}
+
+function formatDate(value) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(date);
+}
+
+function friendlyStatus(status) {
+  return ({ active: "Active", expired: "Expired", refunded: "Refunded", revoked: "Revoked", pending_claim: "Awaiting account confirmation", none: "No access recorded" })[status] || "Not recorded";
 }

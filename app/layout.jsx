@@ -10,10 +10,29 @@ const isTestAuthBridgeEnabled = process.env.NODE_ENV !== "production";
 const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const gtmContainerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID;
 
+const SITE_URL = "https://www.cleartill.money";
+const OG_TITLE = "ClearTill — Know what you can safely spend until payday";
+const OG_DESCRIPTION = "Balance. Bills. One clear answer.";
+
+// Shared by the root layout and every page that needs to restate metadata
+// (a page-level `metadata` export replaces openGraph/twitter wholesale
+// rather than merging with the root's — see CLAUDE.md notes on this file
+// for the per-page pages that must spread this back in).
+export const SOCIAL_IMAGE = {
+  url: "/social/cleartill-og-v2.png",
+  secureUrl: `${SITE_URL}/social/cleartill-og-v2.png`,
+  width: 1200,
+  height: 630,
+  type: "image/png",
+  alt: OG_TITLE,
+};
+
 export const metadata = {
-  title: "ClearTill",
-  description: "Know you're clear till you're paid.",
+  metadataBase: new URL(SITE_URL),
+  title: OG_TITLE,
+  description: OG_DESCRIPTION,
   manifest: "/site.webmanifest",
+  alternates: { canonical: "/" },
   icons: {
     icon: [
       { url: "/favicon/favicon.svg", type: "image/svg+xml" },
@@ -24,9 +43,18 @@ export const metadata = {
     apple: "/app-icons/apple-touch-icon-180x180.png",
   },
   openGraph: {
-    title: "ClearTill",
-    description: "Know you're clear till you're paid.",
+    type: "website",
     siteName: "ClearTill",
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+    url: SITE_URL,
+    images: [SOCIAL_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: OG_TITLE,
+    description: OG_DESCRIPTION,
+    images: [SOCIAL_IMAGE.url],
   },
 };
 
@@ -61,19 +89,32 @@ export default function RootLayout({ children }) {
         {isTestAuthBridgeEnabled ? <TestAuthBridge /> : null}
         {gaMeasurementId ? (
           <>
+            {/* A plain synchronous <script> (not next/script) — even
+                strategy="beforeInteractive" defers execution to Next's runtime
+                bootstrap via a __next_s queue, which still lands after
+                DOMContentLoaded. The stub defining window.gtag must run while
+                the browser is still parsing the HTML, or a trackGa4Event() call
+                fired immediately on a fresh page load (e.g. an auth attempt
+                right after landing on /billing) finds window.gtag undefined and
+                is silently lost. Only the actual library fetch needs to stay
+                async; it drains the queued dataLayer commands (js/config, then
+                any events) once it loads. */}
+            <script
+              id="google-analytics"
+              dangerouslySetInnerHTML={{
+                __html: `
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '${gaMeasurementId}');
+              `,
+              }}
+            />
             <Script
               async
               src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
               strategy="afterInteractive"
             />
-            <Script id="google-analytics" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${gaMeasurementId}');
-              `}
-            </Script>
           </>
         ) : null}
         <div className="app-frame">

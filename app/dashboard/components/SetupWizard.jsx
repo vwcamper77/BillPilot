@@ -14,7 +14,7 @@ function getSetupChipState(stepNumber, setupStep) {
 const STEP_META = {
   1: {
     title: "Add your current available money",
-    detail: "ClearTill works best when you start with your current available money, even if you want to skip it for now.",
+    detail: "Start with your current available money so ClearTill can calculate today’s cash runway.",
   },
   2: {
     title: "When do you get paid?",
@@ -30,13 +30,11 @@ export default function SetupWizard({
   setupStep,
   hasBalanceSnapshot,
   currentBalance,
-  balanceSnapshotLabel,
   balanceInput,
   onBalanceInputChange,
   balanceError,
   savingBalance,
   onSubmitBalance,
-  onSkipBalance,
   income,
   hasPayday,
   hasIncomeAmount,
@@ -50,13 +48,19 @@ export default function SetupWizard({
   savingEdit,
   editError,
   onSubmitIncome,
+  incomeEvents,
+  onIncomeEventsChange,
+  todayIso,
+  onNotice,
   displayCurrency,
   onCurrencySelect,
   bills,
   onBillsChange,
   hasIncome,
+  onFinishBillsStep,
 }) {
   const meta = STEP_META[setupStep] || STEP_META[3];
+  const billCount = bills?.length || 0;
 
   return (
     <main className="dashboard-shell setup-wizard-shell">
@@ -77,13 +81,11 @@ export default function SetupWizard({
             focusPayday={setupStep === 2}
             hasBalanceSnapshot={hasBalanceSnapshot}
             currentBalance={currentBalance}
-            balanceSnapshotLabel={balanceSnapshotLabel}
             balanceInput={balanceInput}
             onBalanceInputChange={onBalanceInputChange}
             balanceError={balanceError}
             savingBalance={savingBalance}
             onSubmitBalance={onSubmitBalance}
-            onSkipBalance={onSkipBalance}
             income={income}
             hasPayday={hasPayday}
             hasIncomeAmount={hasIncomeAmount}
@@ -97,19 +99,41 @@ export default function SetupWizard({
             savingEdit={savingEdit}
             editError={editError}
             onSubmitIncome={onSubmitIncome}
+            incomeEvents={incomeEvents}
+            onIncomeEventsChange={onIncomeEventsChange}
+            todayIso={todayIso}
+            onNotice={onNotice}
             displayCurrency={displayCurrency}
             onCurrencySelect={onCurrencySelect}
           />
         ) : (
-          <AddBills
-            bills={bills}
-            onBillsChange={onBillsChange}
-            hasIncome={hasIncome}
-            hasBalanceSnapshot={hasBalanceSnapshot}
-            hasPayday={hasPayday}
-            displayCurrency={displayCurrency}
-            autoFocusOnMount
-          />
+          <>
+            <AddBills
+              bills={bills}
+              onBillsChange={onBillsChange}
+              hasIncome={hasIncome}
+              hasBalanceSnapshot={hasBalanceSnapshot}
+              hasPayday={hasPayday}
+              displayCurrency={displayCurrency}
+              autoFocusOnMount
+            />
+            {billCount > 0 ? (
+              <div className="setup-wizard-bills-progress">
+                <p className="helper-text setup-wizard-bills-tally">
+                  {billCount} bill{billCount === 1 ? "" : "s"} added
+                  {billCount === 1 ? " — add another, or continue when you're ready." : "."}
+                </p>
+                <ul className="setup-wizard-bills-list">
+                  {bills.map((bill) => (
+                    <li key={bill.id}>{bill.name}</li>
+                  ))}
+                </ul>
+                <button className="primary-button" type="button" onClick={onFinishBillsStep}>
+                  Continue to dashboard
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
     </main>

@@ -5,21 +5,38 @@ import FoundingFeedbackForm from "./FoundingFeedbackForm";
 import RepairAccessButton from "./RepairAccessButton";
 import RememberCheckoutSession from "./RememberCheckoutSession";
 import PurchasePixel from "./PurchasePixel";
+import DashboardLink from "./DashboardLink";
+import AccessStatus from "./AccessStatus";
 import { grantFoundingAccessFromCheckoutSessionId } from "@/lib/billingAccess.server";
 import { formatBillingExpiry } from "@/lib/billingAccess";
+import {
+  createPendingEntitlementFromCheckoutSession,
+  getExpandedCheckoutSession,
+  getPendingEntitlementBySessionId,
+} from "@/lib/entitlements.server";
 import { getFirebaseProjectId } from "@/lib/firebaseAdmin";
+import { isPublicCheckoutEnabled } from "@/lib/checkoutFlags";
 
 export const metadata = {
   title: "Payment received | ClearTill",
+  alternates: { canonical: "/billing/success" },
 };
 
 export default async function BillingSuccessPage({ searchParams }) {
   const resolvedSearchParams = await searchParams;
   const sessionId = String(resolvedSearchParams?.session_id || "").trim();
+
+  return isPublicCheckoutEnabled()
+    ? renderPublicFlow(sessionId)
+    : renderLegacyFlow(sessionId);
+}
+
+async function renderLegacyFlow(sessionId) {
   let accessMessage = "";
   let accessError = "";
   let purchaseAmount = 5;
   let purchaseCurrency = "GBP";
+  let isQaPurchase = false;
 
   if (sessionId) {
     try {
@@ -29,6 +46,7 @@ export default async function BillingSuccessPage({ searchParams }) {
         ? Number(billingRecord.amountPaid) / 100
         : 5;
       purchaseCurrency = String(billingRecord?.currency || "gbp").toUpperCase();
+      isQaPurchase = String(billingRecord?.coupon || "").toUpperCase() === "CLEAR100";
     } catch (error) {
       // The underlying SDK error (Stripe/Firestore/Auth) is for logs only —
       // never surface raw error text to the user.
@@ -49,19 +67,10 @@ export default async function BillingSuccessPage({ searchParams }) {
   }
 
   return (
-    <main className="billing-shell billing-shell-success">
-      {sessionId ? <RememberCheckoutSession sessionId={sessionId} /> : null}
-      {accessMessage && !accessError ? (
+    <SuccessShell sessionId={sessionId}>
+      {sessionId && accessMessage && !accessError && !isQaPurchase && purchaseAmount > 0 ? (
         <PurchasePixel sessionId={sessionId} amount={purchaseAmount} currency={purchaseCurrency} />
       ) : null}
-      <header className="topbar">
-        <div>
-          <Link className="brand-link" href="/" aria-label="ClearTill home">
-            <Logo className="eyebrow-logo" />
-          </Link>
-          <h1 className="brand billing-success-eyebrow">Payment received</h1>
-        </div>
-      </header>
 
       <section className="billing-panel billing-status-panel">
         <p className="billing-status-kicker">Founding member confirmed</p>
@@ -94,9 +103,87 @@ export default async function BillingSuccessPage({ searchParams }) {
       </section>
 
       <div className="billing-success-actions">
-        <Link className="primary-link billing-success-primary" href="/dashboard">Go to dashboard</Link>
+        <DashboardLink />
         <Link className="quiet-link billing-success-account" href="/account">Account</Link>
       </div>
+    </SuccessShell>
+  );
+}
+
+async function renderPublicFlow(sessionId) {
+  let maskedEmail = "";
+  let accessError = "";
+  let purchaseAmount = 5;
+  let purchaseCurrency = "GBP";
+  let isQaPurchase = false;
+
+  if (sessionId) {
+    try {
+      // The query param is a lookup key only — the session is re-verified
+      // against Stripe directly (with discounts expanded, so CLEAR100
+      // detection matches the webhook exactly) before anything is trusted.
+      const session = await getExpandedCheckoutSession(sessionId);
+      await createPendingEntitlementFromCheckoutSession(session);
+
+      const entitlement = await getPendingEntitlementBySessionId(sessionId);
+      maskedEmail = entitlement?.maskedEmail || "";
+      isQaPurchase = Boolean(entitlement?.isQaPurchase);
+      purchaseAmount = Number.isFinite(Number(entitlement?.amountPaid)) ? Number(entitlement.amountPaid) / 100 : 5;
+      purchaseCurrency = String(entitlement?.currency || "gbp").toUpperCase();
+    } catch (error) {
+      console.error("Failed to fulfil checkout session on the success page", {
+        stripeSessionId: sessionId,
+        firebaseProjectId: error?.context?.firebaseProjectId || getFirebaseProjectId(),
+      }, error);
+      accessError = "Payment received, but we could not confirm it automatically. Please contact hello@cleartill.money.";
+    }
+  } else {
+    console.error("Billing success page loaded without a checkout session id.");
+    accessError = "We couldn't confirm this checkout automatically. Get in touch and we'll unlock your access directly.";
+  }
+
+  return (
+    <SuccessShell sessionId={sessionId}>
+      {sessionId && !accessError && !isQaPurchase && purchaseAmount > 0 ? (
+        <PurchasePixel sessionId={sessionId} amount={purchaseAmount} currency={purchaseCurrency} />
+      ) : null}
+
+      <section className="billing-panel billing-status-panel">
+        <p className="billing-status-kicker">Founding member confirmed</p>
+        <h2 className="billing-status-headline">Payment received — your ClearTill access is ready</h2>
+        {accessError ? (
+          <p className="helper-text billing-error">{accessError}</p>
+        ) : (
+          <AccessStatus sessionId={sessionId} maskedEmail={maskedEmail} />
+        )}
+      </section>
+
+      <TrustShield className="page-trust-banner billing-trust-banner" compact />
+
+      <section className="billing-panel billing-feedback-panel">
+        <FoundingFeedbackForm />
+      </section>
+
+      <div className="billing-success-actions">
+        <Link className="quiet-link billing-success-account" href="mailto:hello@cleartill.money">Contact support</Link>
+      </div>
+    </SuccessShell>
+  );
+}
+
+function SuccessShell({ sessionId, children }) {
+  return (
+    <main className="billing-shell billing-shell-success">
+      {sessionId ? <RememberCheckoutSession sessionId={sessionId} /> : null}
+      <header className="topbar">
+        <div>
+          <Link className="brand-link" href="/" aria-label="ClearTill home">
+            <Logo className="eyebrow-logo" />
+          </Link>
+          <h1 className="brand billing-success-eyebrow">Payment received</h1>
+        </div>
+      </header>
+      {children}
     </main>
   );
 }

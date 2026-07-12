@@ -98,6 +98,13 @@ export async function postDashboardLargeCostAction(action, payload = {}) {
   });
 }
 
+export async function postDashboardIncomeEventAction(action, payload = {}) {
+  return postDashboardRequest("/api/dashboard/income-events", action, payload, {
+    unauthenticatedMessage: "Please sign in again before saving that income.",
+    fallbackError: "Could not save that income.",
+  });
+}
+
 export async function postDashboardBillAction(action, payload = {}) {
   return postDashboardRequest("/api/dashboard/bills", action, payload, {
     unauthenticatedMessage: "Please sign in again before saving that bill.",

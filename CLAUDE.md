@@ -47,7 +47,6 @@ Copy `.env.example` to `.env.local`. Two sets of Firebase credentials are needed
 |---|---|---|
 | `/` | `app/page.jsx` | Static landing page |
 | `/dashboard` | `app/dashboard/page.jsx` | Main app (~3 000+ lines, single component) |
-| `/big-costs` | `app/big-costs/page.jsx` | Standalone large-cost planner |
 
 ### The dashboard component (`app/dashboard/page.jsx`)
 

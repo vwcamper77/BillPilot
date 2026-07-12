@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatCurrency, formatDisplayDate } from "@/lib/billMath";
-import ExplainBreakdown from "./ExplainBreakdown";
+import FinancialDisclosure from "./FinancialDisclosure";
 
 export default function HeroCard({
   status,
@@ -55,53 +55,45 @@ export default function HeroCard({
       ) : null}
       {contextLine ? <p className="hero-context">{contextLine}</p> : null}
 
-      {hasBalanceSnapshot && hasPayday ? (
-        <div className="forecast-breakdown-list">
-          {Number(breakdownProps.currentBalance) !== 0 ? (
-            <div className="forecast-breakdown-row">
-              <span>In your account now</span>
-              <strong>{formatWholeCurrency(breakdownProps.currentBalance)}</strong>
-            </div>
-          ) : null}
-          {Number(breakdownProps.totalBeforePayday) !== 0 ? (
-            <div className="forecast-breakdown-row">
-              <span>Bills due before you're paid</span>
-              <strong>{formatWholeCurrency(breakdownProps.totalBeforePayday)}</strong>
-            </div>
-          ) : null}
-          {Number(daysTillPayday) !== 0 ? (
-            <div className="forecast-breakdown-row">
-              <span>Days to stretch it</span>
-              <strong>{daysTillPayday}</strong>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>
-        Update balance
-      </button>
-
       {canExplain ? (
-        <div className="hero-disclosure">
-          <button
-            className="hero-disclosure-toggle"
-            type="button"
-            aria-expanded={showBreakdown}
-            onClick={() => setShowBreakdown((current) => !current)}
-          >
-            How it's worked out
-          </button>
-          {showBreakdown ? (
-            <div className="hero-disclosure-body">
-              <ExplainBreakdown {...breakdownProps} />
-              <button className="secondary-button small-button" type="button" onClick={onEditPaydaySettings}>
-                Edit payday settings
-              </button>
-            </div>
-          ) : null}
-        </div>
+        <>
+          <div className="forecast-breakdown-list" aria-label="Paid-date summary">
+            {Number(breakdownProps.currentBalance) !== 0 ? (
+              <div className="forecast-breakdown-row"><span>In your account now</span><strong>{formatWholeCurrency(breakdownProps.currentBalance)}</strong></div>
+            ) : null}
+            {Number(breakdownProps.totalBeforePayday) !== 0 ? (
+              <div className="forecast-breakdown-row"><span>Bills due before you're paid</span><strong>{formatWholeCurrency(breakdownProps.totalBeforePayday)}</strong></div>
+            ) : null}
+            {Number(daysTillPayday) !== 0 ? (
+              <div className="forecast-breakdown-row"><span>Days to stretch it</span><strong>{daysTillPayday}</strong></div>
+            ) : null}
+          </div>
+          <div className="hero-disclosure">
+            <button className="hero-disclosure-toggle" type="button" aria-expanded={showBreakdown} onClick={() => setShowBreakdown((current) => !current)}>
+              How it's worked out
+            </button>
+            {showBreakdown ? (
+              <div className="hero-calculation hero-disclosure-body" aria-label="Today's calculation">
+                <div className="financial-disclosure-static"><span>In your account now</span><strong>{formatWholeCurrency(breakdownProps.currentBalance)}</strong></div>
+                <FinancialDisclosure label="Income arriving before you're paid" amount={breakdownProps.additionalIncomeBeforePayday} items={breakdownProps.incomeItems} displayCurrency={displayCurrency} sign="+" testId="hero-income" />
+                <FinancialDisclosure label="Bills due before you're paid" amount={breakdownProps.totalBeforePayday} items={breakdownProps.billItems} displayCurrency={displayCurrency} testId="hero-bills" />
+                <FinancialDisclosure label="Large costs due before you're paid" amount={breakdownProps.bigCostsDueBeforePayday} items={breakdownProps.largeCostItems} displayCurrency={displayCurrency} testId="hero-large-costs" />
+                <div className="financial-disclosure-static hero-calculation-total"><span>Clear to spend before you're paid</span><strong>{formatWholeCurrency(Math.max(0, spendingRoomUntilPayday))}</strong></div>
+              </div>
+            ) : null}
+          </div>
+        </>
       ) : null}
+
+      <div className="hero-actions">
+        <button className="secondary-button hero-action" type="button" onClick={onUpdateBalance}>
+          Update balance
+        </button>
+        <button className="secondary-button hero-action" type="button" onClick={onEditPaydaySettings}>
+          Update pay or income
+        </button>
+      </div>
+
     </div>
   );
 }
