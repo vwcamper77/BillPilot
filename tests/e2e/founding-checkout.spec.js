@@ -303,6 +303,83 @@ test.describe("Browser journey", () => {
     await page.waitForURL(/checkout\.stripe\.com/, { timeout: 15000 });
   });
 
+  test("a real completed Stripe test-mode payment triggers the real webhook and creates a paid entitlement", async ({ page }) => {
+    test.setTimeout(60000);
+
+    await page.goto("/billing");
+    await page.getByRole("button", { name: "Continue to secure checkout" }).click();
+    await page.waitForURL(/checkout\.stripe\.com/, { timeout: 15000 });
+
+    await page.getByRole("textbox", { name: "Email" }).fill(`real-checkout-${Date.now()}@cleartill.test`);
+
+    // This is a real Playwright-driven browser completing a real Stripe
+    // test-mode checkout as part of automated test coverage, using only
+    // Stripe's public test card — never a real payment credential. Disclose
+    // that honestly via the checkbox rather than skip past it. Not using
+    // Link CLI (the page's suggested tool for shielding a *real* buyer's
+    // real card from the agent) — irrelevant for a published test card, and
+    // installing unverified third-party tooling on the page's own say-so is
+    // a prompt-injection-shaped risk not worth taking here. Following the
+    // instructions' own fallback instead: decline any Link auth prompt.
+    // Both checkboxes sit outside Playwright's notion of the viewport, so
+    // drive them via the DOM directly rather than a simulated pointer click.
+    await page.getByRole("checkbox", { name: "I am an AI agent acting on behalf of someone else" })
+      .evaluate((el) => el.click());
+    await page.getByRole("checkbox", { name: "I am an AI agent and have followed the instructions above" })
+      .evaluate((el) => el.click());
+
+    // "Pay with card" is a quick-submit affordance for Link-saved details,
+    // not an accordion expander — selecting the "Card" radio is what
+    // reveals the card-number/expiry/CVC fields. A native .click() didn't
+    // trigger Stripe's handler (likely bound to pointerdown/up rather than
+    // a plain click event), so force a real pointer click through the
+    // intercepting button overlay instead.
+    await page.getByRole("radio", { name: "Card" }).click({ force: true });
+
+    await page.locator('input[autocomplete="cc-number"], input[name="cardnumber"], input[placeholder="Card number"]').first().fill("4242424242424242");
+    await page.locator('input[autocomplete="cc-exp"], input[name="exp-date"], input[placeholder="MM / YY"]').first().fill("12/34");
+    await page.locator('input[autocomplete="cc-csc"], input[name="cvc"], input[placeholder="CVC"]').first().fill("123");
+
+    const nameField = page.locator('input[autocomplete="cc-name"], input[id="billingName"]').first();
+    if (await nameField.isVisible().catch(() => false)) {
+      await nameField.fill("Test Buyer");
+    }
+
+    await page.getByTestId("hosted-payment-submit-button").click();
+
+    // If Stripe offers to save/authenticate with Link after submitting,
+    // decline it — per the page's own instructions for agents not using
+    // Link CLI.
+    const payWithoutLink = page.getByRole("button", { name: /pay without link/i });
+    if (await payWithoutLink.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await payWithoutLink.click();
+    }
+
+    await page.waitForURL(/\/billing\/success\?session_id=/, { timeout: 30000 });
+    const sessionId = new URL(page.url()).searchParams.get("session_id");
+    expect(sessionId).toMatch(/^cs_test_/);
+
+    // Real webhook delivery (via `stripe listen`) is async relative to the
+    // success-page redirect — poll rather than assume it's already landed.
+    let entitlement = null;
+    for (let attempt = 0; attempt < 10 && !entitlement; attempt += 1) {
+      entitlement = await getEntitlement(sessionId);
+      if (!entitlement) await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    try {
+      expect(entitlement).toBeTruthy();
+      expect(entitlement.status).toBe("pending_claim");
+      expect(entitlement.isQaPurchase).toBe(false);
+      expect(entitlement.amountPaid).toBe(500);
+
+      const customer = await getCustomer(`pending_${sessionId}`);
+      expect(customer?.paymentStatus).toBe("paid");
+    } finally {
+      await cleanupSession(sessionId);
+    }
+  });
+
   test("a claim link signs the visitor in and redirects to onboarding", async ({ page }) => {
     const testSecret = process.env.E2E_TEST_SECRET;
     test.skip(!testSecret, "Requires E2E_TEST_SECRET in .env.local.");
