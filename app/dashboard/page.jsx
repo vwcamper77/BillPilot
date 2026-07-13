@@ -150,22 +150,11 @@ export default function DashboardPage() {
   const [csvError, setCsvError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
   const [authMode, setAuthMode] = useState("signin");
-  const [entryAuthMode] = useState(() => {
-    if (typeof window === "undefined") {
-      return "";
-    }
-
-    const requestedMode = String(new URLSearchParams(window.location.search).get("auth") || "").toLowerCase();
-    return requestedMode === "signup" || requestedMode === "signin" ? requestedMode : "";
-  });
-  const [entryIntent] = useState(() => {
-    if (typeof window === "undefined") {
-      return "";
-    }
-
-    return String(new URLSearchParams(window.location.search).get("intent") || "").toLowerCase();
-  });
-  const shouldUseDirectAuthEntry = entryAuthMode === "signup" || entryAuthMode === "signin";
+  const [entryAuthMode, setEntryAuthMode] = useState("");
+  const [entryIntent, setEntryIntent] = useState("");
+  const [entryParamsReady, setEntryParamsReady] = useState(false);
+  const shouldUseDirectAuthEntry = entryIntent !== "trial"
+    && (entryAuthMode === "signup" || entryAuthMode === "signin");
   const shouldShowDirectAuth = shouldUseDirectAuthEntry && (!user || user.isAnonymous);
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
   const [optimisticBalance, setOptimisticBalance] = useState(null);
@@ -221,6 +210,20 @@ export default function DashboardPage() {
   const checkoutStartedRef = useRef(false);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedMode = String(params.get("auth") || "").toLowerCase();
+    const requestedIntent = String(params.get("intent") || "").toLowerCase();
+
+    setEntryAuthMode(
+      requestedMode === "signup" || requestedMode === "signin"
+        ? requestedMode
+        : "",
+    );
+    setEntryIntent(requestedIntent);
+    setEntryParamsReady(true);
+  }, []);
+
+  useEffect(() => {
     if (!auth) {
       setAuthReady(true);
       return undefined;
@@ -248,7 +251,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!authReady || user || !auth) {
+    if (!entryParamsReady || !authReady || user || !auth) {
       return;
     }
 
@@ -277,11 +280,12 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, shouldUseDirectAuthEntry, user]);
+  }, [authReady, entryParamsReady, shouldUseDirectAuthEntry, user]);
 
   useEffect(() => {
     if (
       entryIntent !== "trial" ||
+      !entryParamsReady ||
       !authReady ||
       !user ||
       checkoutStartedRef.current
@@ -290,16 +294,16 @@ export default function DashboardPage() {
     }
 
     void startTrialCheckoutForUser(user);
-  }, [authReady, entryIntent, user]);
+  }, [authReady, entryIntent, entryParamsReady, user]);
 
   useEffect(() => {
-    if (!shouldUseDirectAuthEntry) {
+    if (!entryParamsReady || !shouldUseDirectAuthEntry) {
       return;
     }
 
     setShowGuestAuthFallback(true);
     setAuthMode(entryAuthMode);
-  }, [entryAuthMode, shouldUseDirectAuthEntry]);
+  }, [entryAuthMode, entryParamsReady, shouldUseDirectAuthEntry]);
 
   useEffect(() => {
     billsRef.current = bills;
@@ -416,7 +420,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!user || !db || entryIntent === "trial" || (shouldUseDirectAuthEntry && user.isAnonymous)) {
+    if (!entryParamsReady || !user || !db || entryIntent === "trial" || (shouldUseDirectAuthEntry && user.isAnonymous)) {
       setBills([]);
       setLargeCosts([]);
       setSavings(null);
@@ -490,7 +494,7 @@ export default function DashboardPage() {
       unsubscribeReminders();
       unsubscribePreferences();
     };
-  }, [entryIntent, shouldUseDirectAuthEntry, user]);
+  }, [entryIntent, entryParamsReady, shouldUseDirectAuthEntry, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2613,6 +2617,17 @@ export default function DashboardPage() {
       setCurrentImportJobId(null);
       setCurrentImportStep("idle");
     }
+  }
+
+  if (!entryParamsReady) {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>Preparing your secure ClearTill session…</h1>
+        </section>
+      </main>
+    );
   }
 
   if (entryIntent === "trial") {

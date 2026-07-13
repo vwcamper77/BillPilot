@@ -15,13 +15,39 @@ test("homepage trial CTAs enter the card-first trial flow without requesting sig
   assert.doesNotMatch(`${interactiveCta}\n${homepage}`, /auth=signup/);
 });
 
-test("trial intent silently creates or reuses a Firebase user and starts checkout automatically", () => {
+test("dashboard URL state is hydration-stable and parsed only after mount", () => {
   const source = read("app/dashboard/page.jsx");
-  assert.match(source, /if \(!authReady \|\| user \|\| !auth\)/);
+  const stateSection = source.slice(
+    source.indexOf('const [entryAuthMode'),
+    source.indexOf('const [emailForm'),
+  );
+  assert.match(stateSection, /const \[entryAuthMode, setEntryAuthMode\] = useState\(""\)/);
+  assert.match(stateSection, /const \[entryIntent, setEntryIntent\] = useState\(""\)/);
+  assert.match(stateSection, /const \[entryParamsReady, setEntryParamsReady\] = useState\(false\)/);
+  assert.doesNotMatch(stateSection, /typeof window|window\.location/);
+
+  const parseEffect = source.slice(
+    source.indexOf("const params = new URLSearchParams(window.location.search)"),
+    source.indexOf("}, []);", source.indexOf("const params = new URLSearchParams(window.location.search)")) + 7,
+  );
+  assert.match(parseEffect, /setEntryAuthMode/);
+  assert.match(parseEffect, /setEntryIntent\(requestedIntent\)/);
+  assert.match(parseEffect, /setEntryParamsReady\(true\)/);
+
+  const stableRender = source.indexOf("if (!entryParamsReady)");
+  const trialRender = source.indexOf('if (entryIntent === "trial")', stableRender);
+  assert.ok(stableRender > -1 && trialRender > stableRender);
+  assert.match(source.slice(stableRender, trialRender), /Preparing your secure ClearTill session…/);
+});
+
+test("trial intent overrides legacy signup and silently starts anonymous card-first checkout", () => {
+  const source = read("app/dashboard/page.jsx");
+  assert.match(source, /const shouldUseDirectAuthEntry = entryIntent !== "trial"\s*&& \(entryAuthMode === "signup" \|\| entryAuthMode === "signin"\)/);
+  assert.match(source, /if \(!entryParamsReady \|\| !authReady \|\| user \|\| !auth\)/);
   assert.match(source, /signInAnonymously\(auth\)/);
-  assert.match(source, /entryIntent !== "trial"[\s\S]*?!authReady[\s\S]*?!user[\s\S]*?checkoutStartedRef\.current/);
+  assert.match(source, /entryIntent !== "trial"[\s\S]*?!entryParamsReady[\s\S]*?!authReady[\s\S]*?!user[\s\S]*?checkoutStartedRef\.current/);
   assert.match(source, /void startTrialCheckoutForUser\(user\)/);
-  assert.match(source, /\}, \[authReady, entryIntent, user\]\);/);
+  assert.match(source, /\}, \[authReady, entryIntent, entryParamsReady, user\]\);/);
 });
 
 test("anonymous users are accepted by the guarded checkout helper exactly once", () => {
@@ -52,18 +78,18 @@ test("trial transition hides the dashboard and offers retry without falling thro
 
 test("trial transition prevents Firestore dashboard snapshot listeners", () => {
   const source = read("app/dashboard/page.jsx");
-  const guard = source.indexOf('if (!user || !db || entryIntent === "trial"');
+  const guard = source.indexOf('if (!entryParamsReady || !user || !db || entryIntent === "trial"');
   const firstSnapshot = source.indexOf("const unsubscribeBills = onSnapshot", guard);
   assert.ok(guard > -1 && firstSnapshot > guard);
   assert.match(source.slice(guard, firstSnapshot), /setBills\(\[\]\)/);
-  assert.match(source, /\}, \[entryIntent, shouldUseDirectAuthEntry, user\]\);/);
+  assert.match(source, /\}, \[entryIntent, entryParamsReady, shouldUseDirectAuthEntry, user\]\);/);
 });
 
 test("plain dashboard visits retain normal anonymous guest access", () => {
   const source = read("app/dashboard/page.jsx");
   const anonymousEffect = source.slice(
-    source.indexOf("if (!authReady || user || !auth)"),
-    source.indexOf("}, [authReady, shouldUseDirectAuthEntry, user]") + 49,
+    source.indexOf("if (!entryParamsReady || !authReady || user || !auth)"),
+    source.indexOf("}, [authReady, entryParamsReady, shouldUseDirectAuthEntry, user]") + 67,
   );
   assert.match(anonymousEffect, /signInAnonymously\(auth\)/);
   assert.match(source, /Guest session/);
