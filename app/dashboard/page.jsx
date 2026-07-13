@@ -157,6 +157,10 @@ export default function DashboardPage() {
     && (entryAuthMode === "signup" || entryAuthMode === "signin");
   const shouldShowDirectAuth = shouldUseDirectAuthEntry && (!user || user.isAnonymous);
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
+  const [accountLinking, setAccountLinking] = useState(false);
+  const [accountSecured, setAccountSecured] = useState(false);
+  const [emailMismatchWarning, setEmailMismatchWarning] = useState("");
+  const [confirmedMismatchEmail, setConfirmedMismatchEmail] = useState("");
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
   const [displayCurrency, setDisplayCurrency] = useState("GBP");
@@ -515,6 +519,14 @@ export default function DashboardPage() {
         setBillingConfig(payload.config || billingConfig);
         setBillingSubscription(payload.subscription || null);
         setBillingEntitlement(payload.entitlement || null);
+        const stripeCustomerEmail = String(payload.subscription?.customerEmail || "").trim();
+        if (user?.isAnonymous && stripeCustomerEmail) {
+          setEmailForm((current) => (
+            current.email.trim()
+              ? current
+              : { ...current, email: stripeCustomerEmail }
+          ));
+        }
       } catch (error) {
         if (!cancelled) {
           setBillingError(error?.message || "Could not load billing status.");
@@ -776,14 +788,23 @@ export default function DashboardPage() {
       return;
     }
 
-    setSigningIn(true);
+    const linkingAnonymousAccount = Boolean(auth.currentUser?.isAnonymous);
+    if (linkingAnonymousAccount) {
+      setAccountLinking(true);
+      setEmailMismatchWarning("");
+      setConfirmedMismatchEmail("");
+    } else {
+      setSigningIn(true);
+    }
     setAuthError("");
 
     try {
       await authPersistenceReady;
 
       if (auth.currentUser?.isAnonymous) {
+        const anonymousUid = auth.currentUser.uid;
         const credential = await linkWithPopup(auth.currentUser, googleProvider);
+        completeAnonymousAccountLink(credential.user, anonymousUid);
         if (entryIntent === "trial") {
           await startTrialCheckoutForUser(credential.user);
         }
@@ -797,7 +818,12 @@ export default function DashboardPage() {
       }
     } catch (signInError) {
       setAuthError(friendlyGoogleAuthError(signInError));
-      setSigningIn(false);
+    } finally {
+      if (linkingAnonymousAccount) {
+        setAccountLinking(false);
+      } else {
+        setSigningIn(false);
+      }
     }
   }
 
@@ -809,7 +835,8 @@ export default function DashboardPage() {
       return;
     }
 
-    const { email, password } = emailForm;
+    const email = emailForm.email.trim();
+    const { password } = emailForm;
 
     if (!email || !email.includes("@")) {
       setAuthError("Enter a valid email address.");
@@ -821,7 +848,28 @@ export default function DashboardPage() {
       return;
     }
 
-    setSigningIn(true);
+    const linkingAnonymousAccount = Boolean(auth.currentUser?.isAnonymous);
+    const normalisedEmail = email.toLowerCase();
+    const stripeCustomerEmail = String(billingSubscription?.customerEmail || "").trim();
+    if (
+      linkingAnonymousAccount
+      && stripeCustomerEmail
+      && normalisedEmail !== stripeCustomerEmail.toLowerCase()
+      && confirmedMismatchEmail !== normalisedEmail
+    ) {
+      setAuthError("");
+      setEmailMismatchWarning(
+        `Stripe confirmed ${stripeCustomerEmail} for billing, but you entered ${email}. Your Stripe billing email will remain ${stripeCustomerEmail}. Select “Secure my account” again to confirm this different sign-in email.`,
+      );
+      setConfirmedMismatchEmail(normalisedEmail);
+      return;
+    }
+
+    if (linkingAnonymousAccount) {
+      setAccountLinking(true);
+    } else {
+      setSigningIn(true);
+    }
     setAuthError("");
 
     try {
@@ -829,9 +877,11 @@ export default function DashboardPage() {
 
       let credential;
       if (auth.currentUser?.isAnonymous) {
+        const anonymousUid = auth.currentUser.uid;
         const emailCredential = EmailAuthProvider.credential(email, password);
         const linkedCredential = await linkWithCredential(auth.currentUser, emailCredential);
         credential = linkedCredential;
+        completeAnonymousAccountLink(linkedCredential.user, anonymousUid);
       } else if (authMode === "signup") {
         credential = await createUserWithEmailAndPassword(auth, email, password);
       } else {
@@ -844,8 +894,27 @@ export default function DashboardPage() {
     } catch (emailError) {
       setAuthError(friendlyAuthError(emailError));
     } finally {
-      setSigningIn(false);
+      if (linkingAnonymousAccount) {
+        setAccountLinking(false);
+      } else {
+        setSigningIn(false);
+      }
     }
+  }
+
+  function completeAnonymousAccountLink(linkedUser, anonymousUid) {
+    if (!linkedUser || linkedUser.uid !== anonymousUid) {
+      const uidError = new Error("ClearTill could not preserve your account. Please try again.");
+      uidError.code = "auth/uid-mismatch";
+      throw uidError;
+    }
+
+    setAccountSecured(true);
+    setUser(linkedUser);
+    setShowTrialAccountForm(false);
+    setEmailMismatchWarning("");
+    setConfirmedMismatchEmail("");
+    setPageNotice("Your account is secured. You can now sign in on another device.");
   }
 
   async function startTrialCheckoutForUser(accountUser) {
@@ -2841,8 +2910,8 @@ export default function DashboardPage() {
               ? "Guest session"
               : user?.displayName || user?.email || "Signed in"}
           </span>
-          {user?.isAnonymous && !showTrialAccountForm ? (
-            <button className="secondary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
+          {user?.isAnonymous && !showTrialAccountForm && !accountSecured ? (
+            <button className="secondary-button" type="button" onClick={handleGoogleSignIn} disabled={accountLinking}>
               Save with Google
             </button>
           ) : null}
@@ -2861,41 +2930,51 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {user?.isAnonymous ? (
+      {user?.isAnonymous && !accountSecured ? (
         <section className="setup-card" id="save-access" aria-labelledby="save-access-title">
           <div className="setup-progress">
             <div>
               <p className="eyebrow">Keep your ClearTill access</p>
-              <h2 id="save-access-title">Save your access so you can return on another device.</h2>
-              <p className="helper-text">Your current data and subscription stay on this same ClearTill profile.</p>
+              <h2 id="save-access-title">Secure your ClearTill account</h2>
+              <p className="helper-text">
+                {billingSubscription?.customerEmail
+                  ? `Stripe has confirmed your email as ${billingSubscription.customerEmail}. Create a password or continue with Google so you can sign in on another device.`
+                  : "Create a password or continue with Google so you can sign in on another device."}
+              </p>
             </div>
           </div>
           <div className="auth-panel auth-panel-inline">
-            <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
-              {signingIn ? "Saving…" : "Continue with Google"}
+            <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={accountLinking}>
+              {accountLinking ? "Saving…" : "Continue with Google"}
             </button>
             <div className="auth-divider" aria-hidden="true"><span>or</span></div>
             <form className="auth-email-form" onSubmit={handleEmailAuth}>
               <input
                 type="email"
                 value={emailForm.email}
-                onChange={(event) => setEmailForm((current) => ({ ...current, email: event.target.value }))}
+                onChange={(event) => {
+                  setEmailForm((current) => ({ ...current, email: event.target.value }));
+                  setAuthError("");
+                  setEmailMismatchWarning("");
+                  setConfirmedMismatchEmail("");
+                }}
                 placeholder="Email"
                 autoComplete="email"
-                disabled={signingIn}
+                disabled={accountLinking}
               />
               <input
                 type="password"
                 value={emailForm.password}
                 onChange={(event) => setEmailForm((current) => ({ ...current, password: event.target.value }))}
-                placeholder="Create a password"
+                placeholder="Create a ClearTill password"
                 autoComplete="new-password"
-                disabled={signingIn}
+                disabled={accountLinking}
               />
-              <button className="secondary-button" type="submit" disabled={signingIn}>
-                {signingIn ? "Saving…" : "Create email account"}
+              <button className="secondary-button" type="submit" disabled={accountLinking}>
+                {accountLinking ? "Saving…" : "Secure my account"}
               </button>
             </form>
+            {emailMismatchWarning ? <p className="page-notice is-error" role="alert">{emailMismatchWarning}</p> : null}
             {authError ? <p className="error">{authError}</p> : null}
           </div>
         </section>
@@ -2996,8 +3075,8 @@ export default function DashboardPage() {
           {showTrialAccountForm ? (
             <div className="auth-panel" style={{ marginTop: "16px" }}>
               <p>Save this result with Google or email first, then we&apos;ll send you to Stripe Checkout to start the 7-day free trial and confirm £1.99 after that, then monthly.</p>
-              <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn || billingBusy}>
-                {signingIn ? "Saving..." : "Save with Google"}
+              <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={accountLinking || billingBusy}>
+                {accountLinking ? "Saving..." : "Save with Google"}
               </button>
               <div className="auth-divider" aria-hidden="true"><span>or</span></div>
               <form className="auth-email-form" onSubmit={handleEmailAuth}>
@@ -3007,7 +3086,7 @@ export default function DashboardPage() {
                   onChange={(e) => setEmailForm((f) => ({ ...f, email: e.target.value }))}
                   placeholder="Email"
                   autoComplete="email"
-                  disabled={signingIn || billingBusy}
+                  disabled={accountLinking || billingBusy}
                 />
                 <input
                   type="password"
@@ -3015,11 +3094,11 @@ export default function DashboardPage() {
                   onChange={(e) => setEmailForm((f) => ({ ...f, password: e.target.value }))}
                   placeholder="Password"
                   autoComplete="new-password"
-                  disabled={signingIn || billingBusy}
+                  disabled={accountLinking || billingBusy}
                 />
                 <div className="auth-button-row">
-                  <button className="primary-button" type="submit" disabled={signingIn || billingBusy}>
-                    Save my result
+                  <button className="primary-button" type="submit" disabled={accountLinking || billingBusy}>
+                    {accountLinking ? "Saving..." : "Save my result"}
                   </button>
                 </div>
               </form>
@@ -5806,6 +5885,7 @@ function sleep(ms) {
 function friendlyAuthError(error) {
   const code = error?.code || "";
 
+  if (code === "auth/uid-mismatch") return error.message;
   if (code === "auth/invalid-email") return "Enter a valid email address.";
   if (
     code === "auth/user-not-found" ||

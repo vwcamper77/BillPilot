@@ -156,7 +156,7 @@ test("post-checkout access can be opened immediately or saved by linking credent
   const source = read("app/dashboard/page.jsx");
   assert.match(activation, />Open ClearTill</);
   assert.match(activation, />Save my access</);
-  assert.match(source, /Save your access so you can return on another device\./);
+  assert.match(source, /Secure your ClearTill account/);
   assert.match(source, /Continue with Google/);
   const googleStart = source.indexOf("async function handleGoogleSignIn");
   const googleEnd = source.indexOf("async function handleEmailAuth", googleStart);
@@ -176,4 +176,69 @@ test("post-checkout access can be opened immediately or saved by linking credent
   );
   assert.match(emailAnonymousBranch, /linkWithCredential\(auth\.currentUser, emailCredential\)/);
   assert.doesNotMatch(emailAnonymousBranch, /createUserWithEmailAndPassword|signInWithEmailAndPassword|signOut\(|delete\(/);
+});
+
+test("Stripe customer email pre-populates only an untouched account form", () => {
+  const source = read("app/dashboard/page.jsx");
+  const billingLoad = source.slice(
+    source.indexOf("async function loadBillingStatus"),
+    source.indexOf("const displayIncome", source.indexOf("async function loadBillingStatus")),
+  );
+  assert.match(billingLoad, /payload\.subscription\?\.customerEmail/);
+  assert.match(billingLoad, /if \(user\?\.isAnonymous && stripeCustomerEmail\)/);
+  assert.match(billingLoad, /setEmailForm\(\(current\) =>/);
+  assert.match(billingLoad, /current\.email\.trim\(\)\s*\? current\s*:\s*\{ \.\.\.current, email: stripeCustomerEmail \}/);
+  assert.match(source, /Stripe has confirmed your email as \$\{billingSubscription\.customerEmail\}/);
+  assert.match(source, /placeholder="Create a ClearTill password"/);
+  assert.match(source, /accountLinking \? "Saving…" : "Secure my account"/);
+});
+
+test("manual email mismatch requires confirmation and does not move Stripe billing", () => {
+  const source = read("app/dashboard/page.jsx");
+  const emailHandler = source.slice(
+    source.indexOf("async function handleEmailAuth"),
+    source.indexOf("function completeAnonymousAccountLink"),
+  );
+  assert.match(emailHandler, /billingSubscription\?\.customerEmail/);
+  assert.match(emailHandler, /normalisedEmail !== stripeCustomerEmail\.toLowerCase\(\)/);
+  assert.match(emailHandler, /confirmedMismatchEmail !== normalisedEmail/);
+  assert.match(emailHandler, /Your Stripe billing email will remain \$\{stripeCustomerEmail\}/);
+  assert.ok(emailHandler.indexOf("setEmailMismatchWarning") < emailHandler.indexOf("linkWithCredential"));
+  assert.doesNotMatch(emailHandler, /setBillingSubscription|syncSubscription|stripeCustomerId/);
+});
+
+test("account linking preserves UID and subscription state, then hides the panel", () => {
+  const source = read("app/dashboard/page.jsx");
+  const googleHandler = source.slice(
+    source.indexOf("async function handleGoogleSignIn"),
+    source.indexOf("async function handleEmailAuth"),
+  );
+  const emailHandler = source.slice(
+    source.indexOf("async function handleEmailAuth"),
+    source.indexOf("async function startTrialCheckoutForUser"),
+  );
+  const completion = source.slice(
+    source.indexOf("function completeAnonymousAccountLink"),
+    source.indexOf("async function startTrialCheckoutForUser"),
+  );
+  assert.match(googleHandler, /const anonymousUid = auth\.currentUser\.uid/);
+  assert.match(googleHandler, /completeAnonymousAccountLink\(credential\.user, anonymousUid\)/);
+  assert.match(emailHandler, /completeAnonymousAccountLink\(linkedCredential\.user, anonymousUid\)/);
+  assert.match(completion, /linkedUser\.uid !== anonymousUid/);
+  assert.match(completion, /setAccountSecured\(true\)/);
+  assert.match(completion, /setUser\(linkedUser\)/);
+  assert.match(completion, /Your account is secured\. You can now sign in on another device\./);
+  assert.doesNotMatch(`${googleHandler}\n${emailHandler}\n${completion}`, /setBillingSubscription|setBillingEntitlement/);
+  assert.match(source, /user\?\.isAnonymous && !accountSecured/);
+});
+
+test("save-access loading labels only follow account-link operations", () => {
+  const source = read("app/dashboard/page.jsx");
+  const panel = source.slice(
+    source.indexOf('<section className="setup-card" id="save-access"'),
+    source.indexOf("{showSetupCard ?", source.indexOf('<section className="setup-card" id="save-access"')),
+  );
+  assert.equal((panel.match(/accountLinking \? "Saving…"/g) || []).length, 2);
+  assert.doesNotMatch(panel, /signingIn \? "Saving…"/);
+  assert.match(source, /if \(linkingAnonymousAccount\) \{\s*setAccountLinking\(true\)/);
 });
