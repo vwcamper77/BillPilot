@@ -26,7 +26,6 @@ import {
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
-  signOut,
 } from "firebase/auth";
 import {
   app as firebaseApp,
@@ -167,6 +166,7 @@ export default function DashboardPage() {
     return String(new URLSearchParams(window.location.search).get("intent") || "").toLowerCase();
   });
   const shouldUseDirectAuthEntry = entryAuthMode === "signup" || entryAuthMode === "signin";
+  const shouldShowDirectAuth = shouldUseDirectAuthEntry && (!user || user.isAnonymous);
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
@@ -403,7 +403,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!user || !db) {
+    if (!user || !db || (shouldUseDirectAuthEntry && user.isAnonymous)) {
       setBills([]);
       setLargeCosts([]);
       setSavings(null);
@@ -477,7 +477,7 @@ export default function DashboardPage() {
       unsubscribeReminders();
       unsubscribePreferences();
     };
-  }, [user]);
+  }, [shouldUseDirectAuthEntry, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -779,23 +779,6 @@ export default function DashboardPage() {
         await startTrialCheckoutForUser(credential.user);
       }
     } catch (signInError) {
-      if (
-        signInError?.code === "auth/credential-already-in-use"
-        && auth.currentUser?.isAnonymous
-      ) {
-        try {
-          await auth.currentUser.delete().catch(() => signOut(auth));
-          const credential = await signInWithPopup(auth, googleProvider);
-          if (entryIntent === "trial") {
-            await startTrialCheckoutForUser(credential.user);
-          }
-          return;
-        } catch (retryError) {
-          setAuthError(friendlyGoogleAuthError(retryError));
-          setSigningIn(false);
-          return;
-        }
-      }
       setAuthError(friendlyGoogleAuthError(signInError));
       setSigningIn(false);
     }
@@ -2646,7 +2629,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (!user) {
+  if (!user || shouldShowDirectAuth) {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">

@@ -64,6 +64,61 @@ test("trial signup continues directly from account creation to Stripe", () => {
   assert.match(source, /billing\/subscribe\/success\?session_id=\{CHECKOUT_SESSION_ID\}/);
 });
 
+test("existing anonymous users see direct signup instead of the dashboard", () => {
+  const source = read("app/dashboard/page.jsx");
+  assert.match(source, /const shouldShowDirectAuth = shouldUseDirectAuthEntry && \(!user \|\| user\.isAnonymous\)/);
+  assert.match(source, /if \(!user \|\| shouldShowDirectAuth\)/);
+  assert.match(source, /Create your ClearTill account/);
+  assert.match(source, /Continue with Google/);
+  assert.match(source, /You pay £0 today, then £1\.99 after 7 days and monthly after that/);
+});
+
+test("direct-auth anonymous users do not start Firestore snapshot listeners", () => {
+  const source = read("app/dashboard/page.jsx");
+  const guard = source.indexOf("if (!user || !db || (shouldUseDirectAuthEntry && user.isAnonymous))");
+  const firstSnapshot = source.indexOf("const unsubscribeBills = onSnapshot", guard);
+  assert.ok(guard > -1 && firstSnapshot > guard);
+  assert.match(source.slice(guard, firstSnapshot), /setBills\(\[\]\)/);
+  assert.match(source.slice(guard, firstSnapshot), /setIncome\(null\)/);
+  assert.match(source.slice(guard, firstSnapshot), /setAccount\(null\)/);
+  assert.match(source, /\}, \[shouldUseDirectAuthEntry, user\]\);/);
+});
+
+test("linking Google starts trial checkout once through the guarded helper", () => {
+  const source = read("app/dashboard/page.jsx");
+  const googleStart = source.indexOf("async function handleGoogleSignIn");
+  const googleEnd = source.indexOf("async function handleEmailAuth", googleStart);
+  const googleHandler = source.slice(googleStart, googleEnd);
+  const anonymousBranch = googleHandler.slice(
+    googleHandler.indexOf("if (auth.currentUser?.isAnonymous)"),
+    googleHandler.indexOf("const credential = await signInWithPopup"),
+  );
+  assert.match(googleHandler, /linkWithPopup\(auth\.currentUser, googleProvider\)/);
+  assert.equal((anonymousBranch.match(/startTrialCheckoutForUser\(credential\.user\)/g) || []).length, 1);
+  assert.doesNotMatch(googleHandler, /signOut\(|auth\.currentUser\.delete/);
+  assert.match(source, /if \(checkoutStartedRef\.current\) \{\s*return;\s*\}/);
+  assert.match(source, /checkoutStartedRef\.current = true/);
+});
+
+test("linking email starts trial checkout once through the guarded helper", () => {
+  const source = read("app/dashboard/page.jsx");
+  const emailStart = source.indexOf("async function handleEmailAuth");
+  const emailEnd = source.indexOf("async function startTrialCheckoutForUser", emailStart);
+  const emailHandler = source.slice(emailStart, emailEnd);
+  assert.match(emailHandler, /linkWithCredential\(auth\.currentUser, emailCredential\)/);
+  assert.equal((emailHandler.match(/startTrialCheckoutForUser\(credential\.user\)/g) || []).length, 1);
+});
+
+test("plain dashboard visits retain anonymous guest access", () => {
+  const source = read("app/dashboard/page.jsx");
+  const guestEffect = source.slice(
+    source.indexOf("if (!authReady || user || !auth)"),
+    source.indexOf("if (!shouldUseDirectAuthEntry)", source.indexOf("if (!authReady || user || !auth)")),
+  );
+  assert.match(guestEffect, /if \(shouldUseDirectAuthEntry\) \{\s*return;\s*\}/);
+  assert.match(guestEffect, /signInAnonymously\(auth\)/);
+});
+
 test("subscription success securely confirms Stripe ownership and activates access", () => {
   const source = read("app/api/stripe/confirm-subscription/route.js");
   assert.match(source, /verifyRequestUser/);
