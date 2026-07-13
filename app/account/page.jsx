@@ -416,7 +416,7 @@ export default function AccountPage() {
             <Link className="account-row" href="/billing">
               <div>
                 <strong>Billing &amp; payments</strong>
-                <span>Future subscription and payment history will appear here.</span>
+                <span>Manage your subscription, payment method, invoices and cancellation in Stripe.</span>
               </div>
               <span aria-hidden="true">→</span>
             </Link>

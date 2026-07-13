@@ -1,7 +1,6 @@
 node_modules
 .next
-.next-dev-*
-.next-codex-e2e/
+.next.bad.*
 .env
 .env.local
 .env*.local
@@ -11,13 +10,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .playwright-mcp
-.playwright-cli
 *-firebase-adminsdk-*.json
 
 .vercel
 .env*
-.tmp-dev-err.log
-.tmp-dev-out.log
-test-results
-playwright-report
-tmp-ga4-verify/
+output/playwright

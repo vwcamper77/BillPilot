@@ -1,35 +1,45 @@
 import { NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
-import { checkRateLimit, RateLimitedError } from "@/lib/security/rateLimit.server";
-import { getStripeServerClient } from "@/lib/stripe";
-import { isSubscriptionTrialEnabled } from "@/lib/subscriptionFlags";
+import { getBillingRuntimeConfig } from "@/lib/billing/config";
+import { getSubscriptionState } from "@/lib/billing/store";
+import { getStripeClient } from "@/lib/billing/stripe";
+import { verifyRequestUser } from "@/lib/serverAuth";
 
 export const runtime = "nodejs";
 
 export async function POST(request) {
-  if (!isSubscriptionTrialEnabled()) return NextResponse.json({ error: "Not found." }, { status: 404 });
   try {
-    const origin = request.nextUrl.origin;
-    const requestOrigin = request.headers.get("origin");
-    if (requestOrigin && requestOrigin !== origin) return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
-    const token = (request.headers.get("authorization") || "").match(/^Bearer\s+(.+)$/i)?.[1];
-    if (!token) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
-    const user = await getAdminAuth().verifyIdToken(token);
-    if (!user.uid || user.firebase?.sign_in_provider === "anonymous") return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
-    await checkRateLimit("stripe_portal", user.uid, { max: 5, windowSeconds: 60 });
+    const decodedToken = await verifyRequestUser(request);
+    const runtime = getBillingRuntimeConfig();
 
-    const snapshot = await getAdminDb().collection("customers").doc(user.uid).get();
-    const customerId = snapshot.exists ? String(snapshot.data()?.stripeCustomerId || "").trim() : "";
-    if (!customerId || snapshot.data()?.billingMode !== "subscription") {
-      return NextResponse.json({ error: "No subscription is available to manage." }, { status: 404 });
+    if (!runtime.ok) {
+      return NextResponse.json(
+        { ok: false, error: runtime.message, code: runtime.code },
+        { status: 503 },
+      );
     }
-    const session = await getStripeServerClient().billingPortal.sessions.create({ customer: customerId, return_url: `${origin}/account` });
-    return NextResponse.json({ url: session.url });
+
+    const { subscription } = await getSubscriptionState(decodedToken.uid);
+    const customerId = subscription?.stripeCustomerId || "";
+
+    if (!customerId) {
+      return NextResponse.json(
+        { ok: false, error: "No subscription owner was found for this account." },
+        { status: 404 },
+      );
+    }
+
+    const stripe = getStripeClient();
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${runtime.config.baseUrl}/billing`,
+    });
+
+    return NextResponse.json({ ok: true, url: session.url });
   } catch (error) {
-    if (error instanceof RateLimitedError) return NextResponse.json({ error: error.message }, { status: 429 });
-    if (String(error?.code || "").startsWith("auth/")) return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
-    console.error("[stripe-portal] failed", { code: error?.code || "unknown" });
-    return NextResponse.json({ error: "Could not open subscription management right now." }, { status: 500 });
+    const status = error?.code?.startsWith?.("auth/") ? 401 : 500;
+    return NextResponse.json(
+      { ok: false, error: error?.message || "Could not open the subscription portal." },
+      { status },
+    );
   }
 }
-

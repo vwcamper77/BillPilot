@@ -1,78 +1,153 @@
 import { NextResponse } from "next/server";
-import { claimPendingEntitlement, createPendingEntitlementFromCheckoutSession, getExpandedCheckoutSession } from "@/lib/entitlements.server";
-import { getAdminAuth, getAdminDb, getFirebaseProjectId } from "@/lib/firebaseAdmin";
-import { getStripeServerClient } from "@/lib/stripe";
-import { recordAnalyticsEvent } from "@/lib/customerProfile.server";
-import { isSubscriptionTrialEnabled } from "@/lib/subscriptionFlags";
-import { processSubscriptionCheckout, processSubscriptionLifecycle } from "@/lib/subscriptionEntitlements.server";
+import { getStripeClient } from "@/lib/billing/stripe";
+import { getBillingRuntimeConfig } from "@/lib/billing/config";
+import { markStripeEventProcessed, syncSubscriptionState } from "@/lib/billing/store";
+import { syncStripeSubscriptionToFirestore } from "@/lib/billing/subscriptionSync";
+import { trackServerAnalyticsEvent } from "@/lib/analytics";
+import { safeError, safeInfo } from "@/lib/security/safeLog";
 
 export const runtime = "nodejs";
 
 export async function POST(request) {
+  const runtime = getBillingRuntimeConfig();
+  if (!runtime.ok) {
+    return NextResponse.json({ ok: false, error: runtime.message }, { status: 503 });
+  }
+
   const signature = request.headers.get("stripe-signature");
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!signature || !webhookSecret) {
-    return NextResponse.json({ error: "Stripe webhook secret is not configured." }, { status: 400 });
+  if (!signature) {
+    return NextResponse.json({ ok: false, error: "Missing Stripe signature." }, { status: 400 });
   }
 
-  let payload = "";
+  const body = await request.text();
+
   try {
-    payload = await request.text();
-    const event = getStripeServerClient().webhooks.constructEvent(payload, signature, webhookSecret);
+    const stripe = getStripeClient();
+    const event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET,
+    );
+    const wasInserted = await markStripeEventProcessed(event.id, {
+      type: event.type,
+      created: event.created || 0,
+    });
 
-    if (event.type === "checkout.session.completed") {
-      const rawSession = event.data.object;
-      const session = await getExpandedCheckoutSession(rawSession.id);
-      if (session.mode === "subscription") {
-        if (!isSubscriptionTrialEnabled()) {
-          throw new Error("Subscription trial webhook received while the feature is disabled.");
-        }
-        await processSubscriptionCheckout(session, event.id);
-        return NextResponse.json({ received: true });
-      }
-      const created = await createPendingEntitlementFromCheckoutSession(session, { webhookEventId: event.id });
-      const trustedUid = String(session.metadata?.firebase_uid || session.metadata?.userId || session.client_reference_id || "").trim();
-
-      if (trustedUid) {
-        const firebaseUser = await getAdminAuth().getUser(trustedUid);
-        const checkoutEmail = String(session.customer_details?.email || session.customer_email || "").trim().toLowerCase();
-        const firebaseEmail = String(firebaseUser.email || "").trim().toLowerCase();
-        if (!firebaseUser.emailVerified || !firebaseEmail || firebaseEmail !== checkoutEmail) {
-          throw new Error("Signed-in checkout identity could not be verified against the Stripe checkout email.");
-        }
-        await claimPendingEntitlement({ sessionId: session.id, uid: trustedUid, verifiedEmail: firebaseEmail });
-      }
-
-      if (created?.isNewSession) {
-        await recordAnalyticsEvent({ eventName: "checkout_completed", uid: trustedUid || null }).catch((error) => {
-          console.error("[stripe-webhook] failed to record checkout_completed analytics event", error);
-        });
-      }
+    if (!wasInserted) {
+      return NextResponse.json({ ok: true, duplicate: true });
     }
 
-    if (["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted", "invoice.paid", "invoice.payment_failed"].includes(event.type)) {
-      if (isSubscriptionTrialEnabled()) await processSubscriptionLifecycle(event);
-    }
-
-    if (["charge.refunded", "payment_intent.payment_failed"].includes(event.type)) {
-      await handlePaymentStateEvent(event);
-    }
-
-    return NextResponse.json({ received: true });
+    await handleStripeEvent(stripe, event);
+    return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("[stripe-webhook] handling failed", { firebaseProjectId: getFirebaseProjectId() }, error);
-    return NextResponse.json({ error: error?.message || "Stripe webhook handling failed." }, { status: payload ? 500 : 400 });
+    safeError("[stripe-webhook] failed", { type: "webhook_error" });
+    return NextResponse.json(
+      { ok: false, error: error?.message || "Webhook processing failed." },
+      { status: 500 },
+    );
   }
 }
 
-async function handlePaymentStateEvent(event) {
-  const object = event.data.object;
-  const paymentIntentId = String(object?.payment_intent || object?.id || "").trim();
-  if (!paymentIntentId) return;
-  const matches = await getAdminDb().collection("pendingEntitlements").where("stripePaymentIntentId", "==", paymentIntentId).limit(10).get();
-  const status = event.type === "charge.refunded" ? "refunded" : "revoked";
-  const batch = getAdminDb().batch();
-  for (const doc of matches.docs) batch.set(doc.ref, { status, webhookEventId: event.id, updatedAt: new Date() }, { merge: true });
-  await batch.commit();
+async function handleStripeEvent(stripe, event) {
+  const object = event.data?.object || {};
+  const eventCreated = Number(event.created || 0) * 1000;
+
+  switch (event.type) {
+    case "checkout.session.completed": {
+      const uid = object.metadata?.firebaseUid;
+      if (!uid) return;
+      await syncSubscriptionState(uid, {
+        stripeCustomerId: object.customer || "",
+        stripeSubscriptionId: object.subscription || "",
+        checkoutCompletedAt: eventCreated || Date.now(),
+        lastStripeEventAt: eventCreated || Date.now(),
+        lastStripeEventId: event.id,
+        customerEmail: object.customer_details?.email || "",
+      }, { force: true });
+      await trackServerAnalyticsEvent("trial_checkout_completed", { uid, source: "stripe_webhook" });
+      return;
+    }
+
+    case "customer.subscription.created":
+    case "customer.subscription.updated":
+    case "customer.subscription.deleted": {
+      const subscription = typeof object.id === "string"
+        ? await stripe.subscriptions.retrieve(object.id, {
+          expand: ["latest_invoice"],
+        })
+        : object;
+      const uid = subscription.metadata?.firebaseUid;
+      if (!uid) return;
+      await syncStripeSubscriptionToFirestore({
+        uid,
+        subscription,
+        customerEmail: subscription.metadata?.customerEmail || "",
+        extras: {
+          lastStripeEventAt: eventCreated || Date.now(),
+          lastStripeEventId: event.id,
+        },
+      });
+      if (event.type === "customer.subscription.deleted") {
+        await trackServerAnalyticsEvent("subscription_cancelled", { uid, source: "stripe_webhook" });
+      }
+      return;
+    }
+
+    case "invoice.paid": {
+      const uid = object.subscription_details?.metadata?.firebaseUid
+        || object.lines?.data?.[0]?.subscription_item_details?.subscription_item
+        || "";
+      const subscriptionId = object.subscription;
+      if (!subscriptionId) return;
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["latest_invoice"],
+      });
+      const firebaseUid = subscription.metadata?.firebaseUid || uid;
+      if (!firebaseUid) return;
+      await syncStripeSubscriptionToFirestore({
+        uid: firebaseUid,
+        subscription,
+        extras: {
+          lastStripeEventAt: eventCreated || Date.now(),
+          lastStripeEventId: event.id,
+          latestInvoiceStatus: object.status || "",
+          firstSuccessfulPaymentAt: object.billing_reason === "subscription_create" || object.attempt_count === 1
+            ? eventCreated || Date.now()
+            : null,
+        },
+      });
+      await trackServerAnalyticsEvent(
+        object.attempt_count > 1 ? "second_invoice_paid" : "first_invoice_paid",
+        { uid: firebaseUid, source: "stripe_webhook" },
+      );
+      if (subscription.status === "active") {
+        await trackServerAnalyticsEvent("trial_converted", { uid: firebaseUid, source: "stripe_webhook" });
+      }
+      return;
+    }
+
+    case "invoice.payment_failed": {
+      const subscriptionId = object.subscription;
+      if (!subscriptionId) return;
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ["latest_invoice"],
+      });
+      const uid = subscription.metadata?.firebaseUid;
+      if (!uid) return;
+      await syncStripeSubscriptionToFirestore({
+        uid,
+        subscription,
+        extras: {
+          lastStripeEventAt: eventCreated || Date.now(),
+          lastStripeEventId: event.id,
+          latestInvoiceStatus: object.status || "payment_failed",
+        },
+      });
+      await trackServerAnalyticsEvent("invoice_payment_failed", { uid, source: "stripe_webhook" });
+      return;
+    }
+
+    default:
+      safeInfo("[stripe-webhook] ignored", { type: event.type });
+  }
 }
-// Subscription lifecycle writes are isolated in subscriptionEntitlements.server.js.
