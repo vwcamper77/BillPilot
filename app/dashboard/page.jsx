@@ -183,6 +183,7 @@ export default function DashboardPage() {
   const [billingError, setBillingError] = useState("");
   const [billingClaim, setBillingClaim] = useState(null);
   const [claimResendState, setClaimResendState] = useState({ busy: false, sent: false, error: "" });
+  const [trialClaimBannerState, setTrialClaimBannerState] = useState({ checkedId: "", dismissedId: "" });
   const [showTrialAccountForm, setShowTrialAccountForm] = useState(false);
   const [showGuestAuthFallback, setShowGuestAuthFallback] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
@@ -534,6 +535,27 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [user]);
+
+  useEffect(() => {
+    const checkoutIntentId = billingClaim?.claimStatus === "pending"
+      ? billingClaim.checkoutIntentId
+      : "";
+    if (!checkoutIntentId) {
+      setTrialClaimBannerState({ checkedId: "", dismissedId: "" });
+      return;
+    }
+
+    let dismissed = false;
+    try {
+      dismissed = window.sessionStorage.getItem(`cleartill:trial-claim-banner:${checkoutIntentId}`) === "dismissed";
+    } catch {
+      // The banner remains available when session storage is unavailable.
+    }
+    setTrialClaimBannerState({
+      checkedId: checkoutIntentId,
+      dismissedId: dismissed ? checkoutIntentId : "",
+    });
+  }, [billingClaim?.checkoutIntentId, billingClaim?.claimStatus]);
 
   const displayIncome = useMemo(() => (
     optimisticIncome === null
@@ -1004,6 +1026,17 @@ export default function DashboardPage() {
     } catch (error) {
       setClaimResendState({ busy: false, sent: false, error: error?.message || "Could not resend the secure link." });
     }
+  }
+
+  function handleDismissTrialClaimBanner() {
+    const checkoutIntentId = billingClaim?.checkoutIntentId;
+    if (!checkoutIntentId) return;
+    try {
+      window.sessionStorage.setItem(`cleartill:trial-claim-banner:${checkoutIntentId}`, "dismissed");
+    } catch {
+      // In-memory dismissal still keeps this non-blocking for the current view.
+    }
+    setTrialClaimBannerState({ checkedId: checkoutIntentId, dismissedId: checkoutIntentId });
   }
 
   async function handleManageSubscription() {
@@ -3000,24 +3033,48 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {user?.isAnonymous && hasActiveSubscription && billingClaim?.claimStatus === "pending" ? (
-        <section className="setup-card" id="secure-access" aria-labelledby="secure-access-title">
-          <div className="setup-progress">
-            <div>
-              <p className="eyebrow">Trial active</p>
-              <h2 id="secure-access-title">Secure access on another device</h2>
-              <p className="helper-text">We sent a sign-in link to {billingClaim.maskedEmail}.</p>
-            </div>
-          </div>
-          <div className="setup-cta-row">
-            <button className="secondary-button" type="button" onClick={handleResendTrialClaim} disabled={claimResendState.busy}>
-              {claimResendState.busy ? "Resending…" : "Resend secure link"}
+      {user?.isAnonymous
+        && hasActiveSubscription
+        && billingClaim?.claimStatus === "pending"
+        && trialClaimBannerState.checkedId === billingClaim.checkoutIntentId
+        && trialClaimBannerState.dismissedId !== billingClaim.checkoutIntentId ? (
+          <section
+            className="page-notice"
+            id="secure-access"
+            aria-labelledby="secure-access-title"
+            style={{ display: "grid", gap: "10px", fontWeight: 400, position: "relative" }}
+          >
+            <button
+              type="button"
+              aria-label="Dismiss trial email notice"
+              onClick={handleDismissTrialClaimBanner}
+              style={{ position: "absolute", top: "8px", right: "10px", border: 0, background: "none", color: "inherit", cursor: "pointer", fontSize: "1.15rem" }}
+            >
+              ×
             </button>
-          </div>
-          {claimResendState.sent ? <p className="helper-text billing-success">Secure link sent.</p> : null}
-          {claimResendState.error ? <p className="error">{claimResendState.error}</p> : null}
-        </section>
-      ) : null}
+            <div style={{ paddingRight: "28px" }}>
+              <strong id="secure-access-title">Your trial is active</strong>
+              <p className="helper-text" style={{ marginTop: "4px" }}>
+                We emailed a secure sign-in link to {billingClaim.maskedEmail} so you can access ClearTill on another device. You can continue setting up now.
+              </p>
+            </div>
+            <div className="setup-cta-row" style={{ alignItems: "center" }}>
+              <button className="primary-button" type="button" onClick={focusBalanceSnapshotForm}>
+                Continue setup
+              </button>
+              <button
+                type="button"
+                onClick={handleResendTrialClaim}
+                disabled={claimResendState.busy}
+                style={{ border: 0, background: "none", color: "var(--accent-dark)", cursor: claimResendState.busy ? "wait" : "pointer", padding: "4px 0", textDecoration: "underline" }}
+              >
+                {claimResendState.busy ? "Resending…" : "Didn’t receive it? Resend"}
+              </button>
+            </div>
+            {claimResendState.sent ? <p className="helper-text billing-success">Secure link sent.</p> : null}
+            {claimResendState.error ? <p className="error">{claimResendState.error}</p> : null}
+          </section>
+        ) : null}
 
       {user?.isAnonymous && billingStatusReady && !hasActiveSubscription && !accountSecured ? (
         <section className="setup-card" id="save-access" aria-labelledby="save-access-title">

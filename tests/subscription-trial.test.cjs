@@ -182,18 +182,46 @@ test("subscription ownership and later Stripe events move to the permanent UID",
   assert.match(claims, /audit: \{\s*anonymousUid,\s*permanentUid: authenticatedUid,\s*stripeSubscriptionId/);
 });
 
-test("trialing anonymous customers see Trial active and a masked secure-link banner", () => {
+test("trialing anonymous customers see a compact, non-blocking secure-link banner", () => {
   const source = read("app/dashboard/page.jsx");
   assert.match(source, /!billingStatusReady \? "Checking access…" : hasActiveSubscription \? "Trial active" : "Guest session"/);
-  assert.match(source, /Secure access on another device/);
-  assert.match(source, /We sent a sign-in link to \{billingClaim\.maskedEmail\}/);
-  assert.match(source, /Resend secure link/);
+  assert.match(source, /className="page-notice"[\s\S]*?Your trial is active/);
+  assert.match(source, /We emailed a secure sign-in link to \{billingClaim\.maskedEmail\}[\s\S]*?You can continue setting up now/);
+  assert.match(source, /Didn’t receive it\? Resend/);
   assert.match(source, /user\?\.isAnonymous && billingStatusReady && !hasActiveSubscription && !accountSecured/);
-  const subscribedBanner = between(source, "user?.isAnonymous && hasActiveSubscription", "user?.isAnonymous && billingStatusReady");
+  const subscribedBanner = between(source, 'id="secure-access"', "user?.isAnonymous && billingStatusReady");
   assert.doesNotMatch(subscribedBanner, /password|Google/i);
   const resendRoute = read("app/api/trial-claim/resend/route.js");
   assert.match(resendRoute, /checkRateLimit\("trial-claim-resend"/);
   assert.match(resendRoute, /anonymousUid: authenticatedUser\.uid/);
+});
+
+test("pending claim banner keeps onboarding dominant and Continue setup focuses Step 1", () => {
+  const source = read("app/dashboard/page.jsx");
+  const banner = between(source, 'className="page-notice"', "user?.isAnonymous && billingStatusReady");
+  assert.match(banner, /className="primary-button"[\s\S]*?onClick=\{focusBalanceSnapshotForm\}[\s\S]*?Continue setup/);
+  assert.match(source, /function focusBalanceSnapshotForm\(\) \{[\s\S]*?balanceSectionRef\.current\?\.scrollIntoView[\s\S]*?balanceInputRef\.current\?\.focus\(\)/);
+  assert.match(source, /\{showSetupCard \? \([\s\S]*?Step 1/);
+  assert.doesNotMatch(source, /billingClaim\?\.claimStatus === "pending"[\s\S]{0,300}return \(/);
+});
+
+test("claim banner dismissal is session-only and never changes claim status", () => {
+  const source = read("app/dashboard/page.jsx");
+  const dismissHandler = between(source, "function handleDismissTrialClaimBanner", "async function handleManageSubscription");
+  assert.match(dismissHandler, /window\.sessionStorage\.setItem/);
+  assert.match(dismissHandler, /setTrialClaimBannerState/);
+  assert.doesNotMatch(dismissHandler, /setBillingClaim|fetch\(|claimStatus/);
+  assert.match(source, /billingClaim\?\.claimStatus === "pending"/);
+  assert.match(source, /trialClaimBannerState\.dismissedId !== billingClaim\.checkoutIntentId/);
+  assert.doesNotMatch(source, /claimStatus === "claimed"[\s\S]{0,200}id="secure-access"/);
+});
+
+test("trial access and subscription management remain independent of claim-banner state", () => {
+  const source = read("app/dashboard/page.jsx");
+  assert.match(source, /const hasActiveSubscription = subscriptionStatus === "trialing" \|\| subscriptionStatus === "active"/);
+  assert.match(source, /const hasPremiumAccess = !trialEnabled \|\| Boolean\(billingEntitlement\?\.hasFullAccess\)/);
+  assert.match(source, /billingEntitlement\?\.canManageSubscription[\s\S]*?Manage subscription/);
+  assert.doesNotMatch(source, /hasPremiumAccess\s*=.*trialClaimBannerState/);
 });
 
 test("founding-member entitlement flow stays isolated and email enumeration copy is removed", () => {
