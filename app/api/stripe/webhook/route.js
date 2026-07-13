@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getStripeClient } from "@/lib/billing/stripe";
 import { getBillingRuntimeConfig } from "@/lib/billing/config";
-import { markStripeEventProcessed, syncSubscriptionState } from "@/lib/billing/store";
+import { markStripeEventProcessed, syncSubscriptionState, upsertUserProfile } from "@/lib/billing/store";
 import { syncStripeSubscriptionToFirestore } from "@/lib/billing/subscriptionSync";
 import { trackServerAnalyticsEvent } from "@/lib/analytics";
 import { safeError, safeInfo } from "@/lib/security/safeLog";
@@ -56,13 +56,19 @@ async function handleStripeEvent(stripe, event) {
     case "checkout.session.completed": {
       const uid = object.metadata?.firebaseUid;
       if (!uid) return;
+      const stripeCustomerId = typeof object.customer === "string" ? object.customer : object.customer?.id || "";
+      const customerEmail = object.customer_details?.email || "";
+      await upsertUserProfile(uid, {
+        ...(stripeCustomerId ? { stripeCustomerId } : {}),
+        ...(customerEmail ? { email: customerEmail } : {}),
+      });
       await syncSubscriptionState(uid, {
-        stripeCustomerId: object.customer || "",
+        stripeCustomerId,
         stripeSubscriptionId: object.subscription || "",
         checkoutCompletedAt: eventCreated || Date.now(),
         lastStripeEventAt: eventCreated || Date.now(),
         lastStripeEventId: event.id,
-        customerEmail: object.customer_details?.email || "",
+        customerEmail,
       }, { force: true });
       await trackServerAnalyticsEvent("trial_checkout_completed", { uid, source: "stripe_webhook" });
       return;

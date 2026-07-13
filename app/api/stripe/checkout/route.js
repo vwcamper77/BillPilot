@@ -40,29 +40,24 @@ export async function POST(request) {
       );
     }
 
-    let stripeCustomerId = subscription?.stripeCustomerId || "";
+    const stripeCustomerId = subscription?.stripeCustomerId || "";
     const email = decodedToken.email || subscription?.customerEmail || "";
 
-    if (!stripeCustomerId) {
-      const customer = await stripe.customers.create({
-        email: email || undefined,
-        metadata: {
-          firebaseUid: decodedToken.uid,
-        },
-      });
-      stripeCustomerId = customer.id;
-    } else if (email) {
+    if (stripeCustomerId && email) {
       await stripe.customers.update(stripeCustomerId, { email });
     }
 
-    await upsertUserProfile(decodedToken.uid, {
-      email,
-      stripeCustomerId,
-    });
+    if (email) {
+      await upsertUserProfile(decodedToken.uid, { email });
+    }
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      customer: stripeCustomerId,
+      ...(stripeCustomerId
+        ? { customer: stripeCustomerId }
+        : email
+          ? { customer_email: email }
+          : {}),
       success_url: `${runtime.config.baseUrl}${successPath}`,
       cancel_url: `${runtime.config.baseUrl}${cancelPath}`,
       payment_method_collection: "always",
@@ -86,11 +81,11 @@ export async function POST(request) {
     });
 
     await syncSubscriptionState(decodedToken.uid, {
-      stripeCustomerId,
+      ...(stripeCustomerId ? { stripeCustomerId } : {}),
       stripePriceId: process.env.STRIPE_MONTHLY_PRICE_ID,
       lastCheckoutSessionId: session.id,
       lastStripeEventAt: Date.now(),
-      customerEmail: email,
+      ...(email ? { customerEmail: email } : {}),
     }, { force: true });
     await trackServerAnalyticsEvent("trial_checkout_started", { uid: decodedToken.uid, source: "dashboard" });
 

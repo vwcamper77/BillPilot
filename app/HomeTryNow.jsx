@@ -5,7 +5,7 @@ import { trackClientAnalyticsEvent } from "@/lib/clientAnalytics";
 import { formatCurrency, getTodayIso } from "@/lib/billMath";
 
 const GBP = "GBP";
-const TRIAL_SIGNUP_PATH = "/dashboard?auth=signup&intent=trial";
+const TRIAL_CHECKOUT_PATH = "/dashboard?intent=trial";
 
 export default function HomeTryNow() {
   const panelRef = useRef(null);
@@ -91,7 +91,7 @@ export default function HomeTryNow() {
 
   function startTrial() {
     void trackClientAnalyticsEvent("trial_checkout_started", { source: "sample_demo" });
-    window.location.href = TRIAL_SIGNUP_PATH;
+    window.location.href = TRIAL_CHECKOUT_PATH;
   }
 
   return (

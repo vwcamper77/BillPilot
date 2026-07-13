@@ -3,7 +3,7 @@ import Logo from "@/components/Logo";
 import HomeAuthLink from "@/components/HomeAuthLink";
 import HomeTryNow from "@/app/HomeTryNow";
 
-const TRIAL_SIGNUP_HREF = "/dashboard?auth=signup&intent=trial";
+const TRIAL_CHECKOUT_HREF = "/dashboard?intent=trial";
 
 const SIMPLE_VIEW_ITEMS = [
   "what is in your account now",
@@ -65,7 +65,7 @@ export default function HomePage() {
             </div>
             <div className="home-cta-row">
               <HomeTryNow />
-              <Link className="secondary-button home-price-button" href={TRIAL_SIGNUP_HREF}>
+              <Link className="secondary-button home-price-button" href={TRIAL_CHECKOUT_HREF}>
                 7 days free, then £1.99*
               </Link>
             </div>
@@ -239,7 +239,7 @@ export default function HomePage() {
               Try ClearTill free for 7 days. See what bills are due before you&apos;re
               paid and know what money is really clear to spend.
             </p>
-            <Link className="primary-button home-offer-button" href={TRIAL_SIGNUP_HREF}>
+            <Link className="primary-button home-offer-button" href={TRIAL_CHECKOUT_HREF}>
               Start 7-day free trial
             </Link>
           </aside>

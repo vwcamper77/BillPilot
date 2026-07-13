@@ -280,6 +280,19 @@ export default function DashboardPage() {
   }, [authReady, shouldUseDirectAuthEntry, user]);
 
   useEffect(() => {
+    if (
+      entryIntent !== "trial" ||
+      !authReady ||
+      !user ||
+      checkoutStartedRef.current
+    ) {
+      return;
+    }
+
+    void startTrialCheckoutForUser(user);
+  }, [authReady, entryIntent, user]);
+
+  useEffect(() => {
     if (!shouldUseDirectAuthEntry) {
       return;
     }
@@ -403,7 +416,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!user || !db || (shouldUseDirectAuthEntry && user.isAnonymous)) {
+    if (!user || !db || entryIntent === "trial" || (shouldUseDirectAuthEntry && user.isAnonymous)) {
       setBills([]);
       setLargeCosts([]);
       setSavings(null);
@@ -477,7 +490,7 @@ export default function DashboardPage() {
       unsubscribeReminders();
       unsubscribePreferences();
     };
-  }, [shouldUseDirectAuthEntry, user]);
+  }, [entryIntent, shouldUseDirectAuthEntry, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -837,12 +850,6 @@ export default function DashboardPage() {
       return;
     }
 
-    if (accountUser.isAnonymous) {
-      setShowTrialAccountForm(true);
-      setBillingError("Save your result with Google or email before starting the 7-day free trial.");
-      return;
-    }
-
     if (checkoutStartedRef.current) {
       return;
     }
@@ -881,6 +888,15 @@ export default function DashboardPage() {
 
   async function handleStartTrialCheckout() {
     await startTrialCheckoutForUser(auth?.currentUser);
+  }
+
+  async function handleRetryTrialCheckout() {
+    checkoutStartedRef.current = false;
+    if (!auth?.currentUser) {
+      await handleSignIn();
+      return;
+    }
+    await startTrialCheckoutForUser(auth.currentUser);
   }
 
   async function handleManageSubscription() {
@@ -2599,6 +2615,32 @@ export default function DashboardPage() {
     }
   }
 
+  if (entryIntent === "trial") {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>Opening your secure 7-day free trial…</h1>
+          {billingError || authError ? (
+            <>
+              <p className="error" aria-live="polite">{billingError || authError}</p>
+              <div className="auth-button-row">
+                <button className="primary-button" type="button" onClick={handleRetryTrialCheckout} disabled={billingBusy || signingIn}>
+                  {billingBusy ? "Opening checkout…" : "Try opening checkout again"}
+                </button>
+                <Link className="secondary-button" href="/">Return to homepage</Link>
+              </div>
+            </>
+          ) : (
+            <p className="helper-text" aria-live="polite">
+              {authError || "Stripe will securely collect your email and card details. £0 is charged today."}
+            </p>
+          )}
+        </section>
+      </main>
+    );
+  }
+
   if (!authReady) {
     return (
       <main className="dashboard-shell">
@@ -2801,6 +2843,46 @@ export default function DashboardPage() {
       {pageNotice ? (
         <section className="page-notice" aria-live="polite">
           {pageNotice}
+        </section>
+      ) : null}
+
+      {user?.isAnonymous ? (
+        <section className="setup-card" id="save-access" aria-labelledby="save-access-title">
+          <div className="setup-progress">
+            <div>
+              <p className="eyebrow">Keep your ClearTill access</p>
+              <h2 id="save-access-title">Save your access so you can return on another device.</h2>
+              <p className="helper-text">Your current data and subscription stay on this same ClearTill profile.</p>
+            </div>
+          </div>
+          <div className="auth-panel auth-panel-inline">
+            <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
+              {signingIn ? "Saving…" : "Continue with Google"}
+            </button>
+            <div className="auth-divider" aria-hidden="true"><span>or</span></div>
+            <form className="auth-email-form" onSubmit={handleEmailAuth}>
+              <input
+                type="email"
+                value={emailForm.email}
+                onChange={(event) => setEmailForm((current) => ({ ...current, email: event.target.value }))}
+                placeholder="Email"
+                autoComplete="email"
+                disabled={signingIn}
+              />
+              <input
+                type="password"
+                value={emailForm.password}
+                onChange={(event) => setEmailForm((current) => ({ ...current, password: event.target.value }))}
+                placeholder="Create a password"
+                autoComplete="new-password"
+                disabled={signingIn}
+              />
+              <button className="secondary-button" type="submit" disabled={signingIn}>
+                {signingIn ? "Saving…" : "Create email account"}
+              </button>
+            </form>
+            {authError ? <p className="error">{authError}</p> : null}
+          </div>
         </section>
       ) : null}
 
