@@ -224,6 +224,47 @@ test("trial access and subscription management remain independent of claim-banne
   assert.doesNotMatch(source, /hasPremiumAccess\s*=.*trialClaimBannerState/);
 });
 
+test("Account page reads current billing status and keeps account actions POST-only", () => {
+  const source = read("app/account/page.jsx");
+  assert.match(source, /fetch\("\/api\/billing\/status", \{\s*headers: \{ Authorization: `Bearer \$\{idToken\}` \}/);
+  assert.doesNotMatch(source, /fetch\("\/api\/account", \{\s*headers:/);
+  assert.equal((source.match(/fetch\("\/api\/account"/g) || []).length, 2);
+  assert.equal((source.match(/fetch\("\/api\/account", \{\s*method: "POST"/g) || []).length, 2);
+  assert.match(source, /setSubscription\(payload\.subscription \|\| null\)/);
+  assert.match(source, /setEntitlement\(payload\.entitlement \|\| null\)/);
+  assert.match(source, /setClaim\(payload\.claim \|\| null\)/);
+  assert.match(source, /const billingReady = Boolean\(user && billingResolvedUid === user\.uid\)/);
+  assert.match(source, /!billingReady \|\| billingLoading[\s\S]*?Loading billing status…/);
+});
+
+test("Account page presents an anonymous Stripe trial as active with security pending", () => {
+  const source = read("app/account/page.jsx");
+  assert.match(source, /if \(user\.isAnonymous\) return "Temporary guest profile"/);
+  assert.match(source, />Trial active<\/p>/);
+  assert.match(source, /Account security pending/);
+  assert.match(source, /Your trial and current-browser access are active/);
+  assert.match(source, /secure link sent to \{claim\.maskedEmail\}/);
+  assert.match(source, /href="\/dashboard#secure-access"/);
+  assert.match(source, /subscriptionStatus === "trialing" \? "7-day trial active"/);
+  assert.match(source, /ClearTill monthly — £1\.99/);
+  assert.match(source, /Amount charged today[\s\S]*?£0\.00/);
+  assert.match(source, /First payment[\s\S]*?£1\.99 on \{formatDate\(subscription\?\.trialEnd\)\}/);
+  assert.match(source, /Billing email[\s\S]*?subscription\?\.customerEmail/);
+  assert.match(source, /entitlement\?\.canManageSubscription[\s\S]*?<ManageSubscriptionButton/);
+  assert.doesNotMatch(source, /Could not load billing access|No plan recorded|Access unavailable|Not recorded/);
+});
+
+test("Account page shows secured identity after claim and active subscription renewal", () => {
+  const source = read("app/account/page.jsx");
+  assert.match(source, /claim\?\.claimStatus === "claimed"/);
+  assert.match(source, /isAccountSecured[\s\S]*?"Account secured"/);
+  assert.match(source, /Verified Firebase email: \$\{user\.email/);
+  assert.match(source, /subscriptionStatus === "active" \? "Subscription active"/);
+  assert.match(source, /subscription\?\.cancelAtPeriodEnd \? "Current period ends" : "Next renewal"/);
+  assert.match(source, /formatDate\(subscription\?\.currentPeriodEnd\)/);
+  assert.match(source, /const hasPendingClaim = Boolean\(user\?\.isAnonymous && claim\?\.claimStatus === "pending"\)/);
+});
+
 test("founding-member entitlement flow stays isolated and email enumeration copy is removed", () => {
   const claims = read("lib/billing/trialClaims.server.js");
   assert.match(claims, /pendingTrialClaims/);

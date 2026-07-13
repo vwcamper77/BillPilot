@@ -49,7 +49,12 @@ export default function AccountPage() {
   const [dialogAction, setDialogAction] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [feedback, setFeedback] = useState({ type: "", message: "" });
-  const [billing, setBilling] = useState(null);
+  const [subscription, setSubscription] = useState(null);
+  const [entitlement, setEntitlement] = useState(null);
+  const [claim, setClaim] = useState(null);
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingResolvedUid, setBillingResolvedUid] = useState("");
+  const [billingError, setBillingError] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAnalyticsAdmin, setIsAnalyticsAdmin] = useState(false);
 
@@ -79,19 +84,36 @@ export default function AccountPage() {
 
   useEffect(() => {
     if (!user) {
-      setBilling(null);
+      setSubscription(null);
+      setEntitlement(null);
+      setClaim(null);
+      setBillingLoading(false);
+      setBillingResolvedUid("");
+      setBillingError("");
       return undefined;
     }
 
     let cancelled = false;
-    user.getIdToken().then((idToken) => fetch("/api/account", {
+    setBillingLoading(true);
+    setBillingResolvedUid("");
+    setBillingError("");
+    user.getIdToken().then((idToken) => fetch("/api/billing/status", {
       headers: { Authorization: `Bearer ${idToken}` },
     })).then(async (response) => {
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error || "Could not load billing access.");
-      if (!cancelled) setBilling(payload.billing || null);
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Billing status could not be loaded.");
+      if (!cancelled) {
+        setSubscription(payload.subscription || null);
+        setEntitlement(payload.entitlement || null);
+        setClaim(payload.claim || null);
+      }
     }).catch((error) => {
-      if (!cancelled) setFeedback({ type: "error", message: error.message });
+      if (!cancelled) setBillingError(error?.message || "Billing status could not be loaded.");
+    }).finally(() => {
+      if (!cancelled) {
+        setBillingLoading(false);
+        setBillingResolvedUid(user.uid);
+      }
     });
 
     return () => { cancelled = true; };
@@ -150,18 +172,21 @@ export default function AccountPage() {
   const dialogConfig = dialogAction ? ACCOUNT_DIALOGS[dialogAction] : null;
   const signedInLabel = useMemo(() => {
     if (!user) return "";
-    if (user.isAnonymous) return "Guest session";
+    if (user.isAnonymous) return "Temporary guest profile";
     return user.email || user.displayName || "Signed in";
   }, [user]);
-  const billingStatusLabel = billing?.status === "active"
-    ? `Access active through ${formatDate(billing.accessExpiresAt)}`
-    : billing?.status === "none" ? "No access recorded" : `Access ${billing?.status || "unavailable"}`;
-  const amountPaidLabel = Number.isFinite(Number(billing?.amountPaidMinor))
-    ? new Intl.NumberFormat("en-GB", {
-        style: "currency",
-        currency: String(billing?.currency || "gbp").toUpperCase(),
-      }).format(Number(billing.amountPaidMinor) / 100)
-    : "No payment recorded";
+  const subscriptionStatus = subscription?.subscriptionStatus || entitlement?.subscriptionStatus || "";
+  const billingReady = Boolean(user && billingResolvedUid === user.uid);
+  const hasCurrentBillingAccess = ["trialing", "active"].includes(subscriptionStatus) || Boolean(entitlement?.hasFullAccess);
+  const hasPendingClaim = Boolean(user?.isAnonymous && claim?.claimStatus === "pending");
+  const isAccountSecured = Boolean(!user?.isAnonymous || claim?.claimStatus === "claimed");
+  const accountAccessLabel = !billingReady
+    ? "Checking account security…"
+    : isAccountSecured
+    ? "Account secured"
+    : hasPendingClaim
+    ? "Not yet secured for another device"
+    : "Current browser only";
 
   async function handleExportData() {
     if (!auth?.currentUser) {
@@ -353,61 +378,73 @@ export default function AccountPage() {
           <p className="account-section-label">Account</p>
           <h2 className="account-heading">Signed in as</h2>
           <p className="account-identity">{signedInLabel}</p>
-          <p className="helper-text">
-            Manage your ClearTill data, account access, and privacy controls here.
-          </p>
-          <p className="helper-text">{billingStatusLabel}</p>
+          <p className="account-section-label" style={{ marginTop: "18px" }}>Account access</p>
+          <p className="account-identity">{accountAccessLabel}</p>
+          {hasPendingClaim ? (
+            <div className="page-notice" style={{ marginTop: "12px", marginBottom: 0, fontWeight: 400 }}>
+              <p className="account-section-label">Trial active</p>
+              <strong>Account security pending</strong>
+              <p className="helper-text">
+                Your trial and current-browser access are active. Open the secure link sent to {claim.maskedEmail} to sign in on another device. You can continue onboarding in this browser.
+              </p>
+              <Link className="secondary-button" href="/dashboard#secure-access">Return to secure-access notice</Link>
+            </div>
+          ) : (
+            <p className="helper-text">
+              {!isAccountSecured
+                ? "Your ClearTill data is available in this browser."
+                : `Verified Firebase email: ${user.email || "Signed-in account"}.`}
+            </p>
+          )}
           <p className="legal-company-note">ClearTill is a product from GMBF Ventures Ltd.</p>
         </section>
 
         <section className="account-panel">
           <p className="account-section-label">Billing access</p>
-          <div className="account-action-list">
-            <div className="account-row">
-              <div>
-                <strong>Plan</strong>
-                <span>{billing?.planName || "No plan recorded"}</span>
+          {!billingReady || billingLoading ? <p className="helper-text" role="status">Loading billing status…</p> : null}
+          {billingReady && !billingLoading && billingError ? <p className="error" role="alert">{billingError}</p> : null}
+          {billingReady && !billingLoading && !billingError ? (
+            <div className="account-action-list">
+              <div className="account-row">
+                <div>
+                  <strong>Plan</strong>
+                  <span>{hasCurrentBillingAccess ? "ClearTill monthly — £1.99" : "No active subscription"}</span>
+                </div>
               </div>
-            </div>
-            <div className="account-row">
-              <div>
-                <strong>Access</strong>
-                <span>{friendlyStatus(billing?.status)}</span>
+              <div className="account-row">
+                <div>
+                  <strong>Status</strong>
+                  <span>{subscriptionStatus === "trialing" ? "7-day trial active" : subscriptionStatus === "active" ? "Subscription active" : entitlement?.hasFullAccess ? "Access active" : "Subscription inactive"}</span>
+                </div>
               </div>
+              {subscriptionStatus === "trialing" ? (
+                <>
+                  <div className="account-row"><div><strong>Amount charged today</strong><span>£0.00</span></div></div>
+                  <div className="account-row"><div><strong>First payment</strong><span>£1.99 on {formatDate(subscription?.trialEnd)}</span></div></div>
+                </>
+              ) : null}
+              {subscriptionStatus === "active" ? (
+                <div className="account-row">
+                  <div>
+                    <strong>{subscription?.cancelAtPeriodEnd ? "Current period ends" : "Next renewal"}</strong>
+                    <span>{formatDate(subscription?.currentPeriodEnd)}</span>
+                  </div>
+                </div>
+              ) : null}
+              {hasCurrentBillingAccess ? (
+                <>
+                  <div className="account-row"><div><strong>Billing email</strong><span>{subscription?.customerEmail || user.email || "—"}</span></div></div>
+                  {subscription?.latestInvoiceStatus ? (
+                    <div className="account-row"><div><strong>Latest invoice</strong><span>{friendlyInvoiceStatus(subscription.latestInvoiceStatus)}</span></div></div>
+                  ) : null}
+                  <div className="account-row"><div><strong>Access source</strong><span>{entitlement?.accessSource === "stripe" ? "Stripe subscription" : "ClearTill entitlement"}</span></div></div>
+                </>
+              ) : null}
+              {entitlement?.canManageSubscription ? (
+                <div className="account-row"><div><strong>Subscription</strong><span>Update payment details, view invoices or cancel in Stripe.</span></div><ManageSubscriptionButton /></div>
+              ) : null}
             </div>
-            <div className="account-row">
-              <div>
-                <strong>Access type</strong>
-                <span>{["promotional", "free"].includes(billing?.accessType) ? "Promotional access" : billing?.accessType === "paid" ? "Paid purchase" : "Not recorded"}</span>
-              </div>
-            </div>
-            <div className="account-row">
-              <div>
-                <strong>Amount paid</strong>
-                <span>{amountPaidLabel}</span>
-              </div>
-            </div>
-            <div className="account-row">
-              <div>
-                <strong>Access started</strong>
-                <span>{formatDate(billing?.accessStartsAt)}</span>
-              </div>
-            </div>
-            <div className="account-row">
-              <div>
-                <strong>Access expires</strong>
-                <span>{formatDate(billing?.accessExpiresAt)}</span>
-              </div>
-            </div>
-            {billing?.promotionLabel ? (
-              <div className="account-row"><div><strong>Promotion</strong><span>{billing.promotionLabel}</span></div></div>
-            ) : null}
-            <div className="account-row"><div><strong>Billing email</strong><span>{billing?.billingEmail || "Not recorded"}</span></div></div>
-            <div className="account-row"><div><strong>Account email</strong><span>{billing?.accountEmail || user.email || "Not recorded"}</span></div></div>
-            {billing?.billingMode === "subscription" ? (
-              <div className="account-row"><div><strong>Subscription</strong><span>Update payment details, view invoices or cancel in Stripe.</span></div><ManageSubscriptionButton /></div>
-            ) : null}
-          </div>
+          ) : null}
         </section>
 
         <section className="account-panel">
@@ -565,12 +602,14 @@ export default function AccountPage() {
 }
 
 function formatDate(value) {
-  if (!value) return "Not recorded";
+  if (!value) return "—";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Not recorded";
+  if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(date);
 }
 
-function friendlyStatus(status) {
-  return ({ active: "Active", expired: "Expired", refunded: "Refunded", revoked: "Revoked", pending_claim: "Awaiting account confirmation", none: "No access recorded" })[status] || "Not recorded";
+function friendlyInvoiceStatus(status) {
+  return String(status || "")
+    .replaceAll("_", " ")
+    .replace(/^./, (character) => character.toUpperCase());
 }
