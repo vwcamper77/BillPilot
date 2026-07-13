@@ -169,6 +169,7 @@ export default function DashboardPage() {
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingError, setBillingError] = useState("");
   const [showTrialAccountForm, setShowTrialAccountForm] = useState(false);
+  const [showGuestAuthFallback, setShowGuestAuthFallback] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedBillIds, setSelectedBillIds] = useState(new Set());
   const [billListPage, setBillListPage] = useState(0);
@@ -243,6 +244,7 @@ export default function DashboardPage() {
       .catch((error) => {
         if (!cancelled) {
           setAuthError(friendlyAuthError(error));
+          setShowGuestAuthFallback(true);
         }
       })
       .finally(() => {
@@ -711,8 +713,10 @@ export default function DashboardPage() {
     try {
       await authPersistenceReady;
       await signInAnonymously(auth);
+      setShowGuestAuthFallback(false);
     } catch (signInError) {
       setAuthError(friendlyAuthError(signInError));
+      setShowGuestAuthFallback(true);
     } finally {
       setSigningIn(false);
     }
@@ -736,6 +740,7 @@ export default function DashboardPage() {
       }
 
       await signInWithPopup(auth, googleProvider);
+      setShowGuestAuthFallback(false);
     } catch (signInError) {
       if (
         signInError?.code === "auth/credential-already-in-use"
@@ -790,6 +795,7 @@ export default function DashboardPage() {
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
+      setShowGuestAuthFallback(false);
     } catch (emailError) {
       setAuthError(friendlyAuthError(emailError));
     } finally {
@@ -2599,6 +2605,56 @@ export default function DashboardPage() {
               <button className="secondary-button" type="button" onClick={handleSignIn} disabled={signingIn}>
                 Try guest access again
               </button>
+              {showGuestAuthFallback ? (
+                <div className="auth-panel auth-panel-inline" style={{ marginTop: "16px" }}>
+                  <p>Guest access is unavailable right now. Continue with Google or email so you can still get your first ClearTill result.</p>
+                  <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
+                    {signingIn ? "Opening Google..." : "Continue with Google"}
+                  </button>
+                  <div className="auth-divider" aria-hidden="true"><span>or</span></div>
+                  <div className="auth-mode-row">
+                    <button
+                      className={`secondary-button${authMode === "signin" ? " is-active" : ""}`}
+                      type="button"
+                      onClick={() => setAuthMode("signin")}
+                      disabled={signingIn}
+                    >
+                      Sign in with email
+                    </button>
+                    <button
+                      className={`secondary-button${authMode === "signup" ? " is-active" : ""}`}
+                      type="button"
+                      onClick={() => setAuthMode("signup")}
+                      disabled={signingIn}
+                    >
+                      Create account
+                    </button>
+                  </div>
+                  <form className="auth-email-form" onSubmit={handleEmailAuth}>
+                    <input
+                      type="email"
+                      value={emailForm.email}
+                      onChange={(e) => setEmailForm((f) => ({ ...f, email: e.target.value }))}
+                      placeholder="Email"
+                      autoComplete="email"
+                      disabled={signingIn}
+                    />
+                    <input
+                      type="password"
+                      value={emailForm.password}
+                      onChange={(e) => setEmailForm((f) => ({ ...f, password: e.target.value }))}
+                      placeholder="Password"
+                      autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                      disabled={signingIn}
+                    />
+                    <div className="auth-button-row">
+                      <button className="primary-button" type="submit" disabled={signingIn}>
+                        {signingIn ? "Continuing..." : authMode === "signup" ? "Create account to continue" : "Continue with email"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : null}
             </>
           ) : (
             <p className="helper-text">{signingIn ? "Starting secure guest access…" : "One moment…"}</p>
