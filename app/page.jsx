@@ -1,30 +1,15 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import HeroFoundingCta from "./HeroFoundingCta";
-import { getFoundingMemberCount } from "@/lib/billingAccess.server";
-import OfferCta from "./OfferCta";
+import HomeTryNow from "@/app/HomeTryNow";
 
-export const revalidate = 30;
-
-export const metadata = {
-  alternates: { canonical: "/" },
-};
-
-const SAFE_POINTS = [
+const SIMPLE_VIEW_ITEMS = [
   "what is in your account now",
   "what bills are due before you're paid",
   "how many days you need to stretch it",
   "what money is actually clear to spend",
 ];
 
-const INPUT_OPTIONS = [
-  "typing them in",
-  "pasting messy notes",
-  "uploading a screenshot",
-  "importing a CSV statement",
-];
-
-const REAL_LIFE_POINTS = [
+const REAL_LIFE_ITEMS = [
   "feel fine when you're paid but tight before the next one",
   "forget which bills are still due",
   "have rent, utilities, council tax and subscriptions",
@@ -33,220 +18,237 @@ const REAL_LIFE_POINTS = [
   "want clarity without handing over bank access",
 ];
 
-const FOUNDING_POINTS = [
-  "90 days early access",
+const INPUT_METHODS = [
+  "typing them in",
+  "pasting messy notes",
+  "uploading a screenshot",
+  "importing a CSV statement",
+];
+
+const FOUNDING_ITEMS = [
+  "7 days free to try ClearTill properly",
+  "founding member pricing at £1.99/month while subscribed",
   "direct input into what gets built next",
-  "early founder pricing if ClearTill launches fully",
-  "your \u00A35 credited against your first paid plan",
+  "early supporter status before wider launch",
 ];
 
-const DUE_BILLS = [
-  { name: "Council tax", due: "11 Jul", amount: "\u00A3186" },
-  { name: "Broadband", due: "14 Jul", amount: "\u00A332" },
-  { name: "Energy", due: "18 Jul", amount: "\u00A394" },
-  { name: "Car insurance", due: "22 Jul", amount: "\u00A361" },
-];
-
-export default async function HomePage() {
-  const foundingCount = await getFoundingMemberCount();
-
+export default function HomePage() {
   return (
-    <main className="landing-shell">
-      <header className="landing-header">
-        <Logo className="landing-logo" height={56} />
-        <Link className="landing-signin-link" href="/dashboard?auth=signin">
+    <main className="home-shell">
+      <section className="home-panel">
+        <Link className="secondary-button home-signin-button" href="/dashboard?auth=signin">
           Sign in
         </Link>
-      </header>
 
-      <section className="landing-hero">
-        <div className="landing-copy">
-          <p className="landing-kicker">Clarity before you're paid without bank access</p>
-          <h1>Will your money last until you're paid?</h1>
-          <p className="landing-lead">
-            ClearTill shows what&rsquo;s actually clear to spend after bills before the
-            next time you&rsquo;re paid &mdash; without connecting your bank.
-          </p>
-          <div className="landing-pill-row" aria-label="No bank login required">
-            <span className="trust-pill">No bank login</span>
-            <span className="trust-pill">No Open Banking</span>
-            <span className="trust-pill">No complicated budget spreadsheets</span>
+        <div className="home-hero">
+          <div className="home-hero-copy">
+            <Logo className="home-brand-logo" height={64} />
+            <p className="eyebrow home-hero-eyebrow">Clarity before you&apos;re paid without bank access</p>
+            <h1>Will your money last until you&apos;re paid?</h1>
+            <p className="home-hero-copy-text">
+              ClearTill shows what&apos;s actually clear to spend after bills before
+              the next time you&apos;re paid, without connecting your bank.
+            </p>
+            <div className="home-trust-stack" aria-label="ClearTill trust">
+              <span className="trust-pill">No bank login</span>
+              <span className="trust-pill">No Open Banking</span>
+              <span className="trust-pill">No complicated budget spreadsheets</span>
+            </div>
+            <div className="home-simple-view">
+              <p className="home-simple-view-title">Just a simple view of:</p>
+              <ul className="home-bullet-list">
+                {SIMPLE_VIEW_ITEMS.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="home-cta-row">
+              <HomeTryNow />
+              <Link className="secondary-button home-price-button" href="/dashboard">
+                7 days free, then £1.99*
+              </Link>
+            </div>
+            <p className="home-price-note">
+              * Founding member monthly price. Early supporters keep this rate while subscribed.
+            </p>
+            <p className="home-founder-line">
+              <strong>29</strong> of <strong>50</strong> founding member places remaining.
+            </p>
+            <p className="home-signin-line">
+              Already joined? <Link href="/dashboard?auth=signin">Sign in</Link>
+            </p>
           </div>
-          <p className="landing-support">Just a simple view of:</p>
-          <ul className="landing-checklist">
-            {SAFE_POINTS.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-          <HeroFoundingCta foundingCount={foundingCount} />
-          <p className="landing-signin-note">
-            Already joined?{" "}
-            <Link href="/dashboard?auth=signin">
-              Sign in
-            </Link>
-          </p>
+
+          <div className="home-feature-panel" aria-label="Paid-date view preview">
+            <div className="home-paid-view">
+              <div className="home-paid-view-top">
+                <p className="eyebrow">Paid-date view</p>
+                <span className="home-paid-badge">12 days until you&apos;re paid</span>
+              </div>
+              <h2>What is actually clear to spend?</h2>
+              <div className="home-paid-hero-card">
+                <p>Clear to spend before you&apos;re paid</p>
+                <strong>£148</strong>
+                <span>After bills due before 31 Jul, that leaves about £12 per day.</span>
+              </div>
+              <div className="home-paid-metrics">
+                <article className="home-paid-metric">
+                  <span>In your account now</span>
+                  <strong>£521</strong>
+                </article>
+                <article className="home-paid-metric">
+                  <span>Due before you&apos;re paid</span>
+                  <strong>£373</strong>
+                </article>
+              </div>
+              <div className="home-paid-list">
+                <div className="home-paid-list-head">Bills still to land before you&apos;re paid</div>
+                <article className="home-paid-list-item">
+                  <div>
+                    <strong>Council tax</strong>
+                    <span>11 Jul</span>
+                  </div>
+                  <strong>£186</strong>
+                </article>
+                <article className="home-paid-list-item">
+                  <div>
+                    <strong>Broadband</strong>
+                    <span>14 Jul</span>
+                  </div>
+                  <strong>£32</strong>
+                </article>
+                <article className="home-paid-list-item">
+                  <div>
+                    <strong>Energy</strong>
+                    <span>18 Jul</span>
+                  </div>
+                  <strong>£94</strong>
+                </article>
+                <article className="home-paid-list-item">
+                  <div>
+                    <strong>Car insurance</strong>
+                    <span>22 Jul</span>
+                  </div>
+                  <strong>£61</strong>
+                </article>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <aside className="landing-hero-card" aria-label="Sample ClearTill paid-date view">
-          <div className="landing-hero-card-top">
-            <div>
-              <p className="landing-card-label">Paid-date view</p>
-              <h2>What is actually clear to spend?</h2>
-            </div>
-            <span className="landing-card-chip">12 days until you're paid</span>
-          </div>
-
-          <div className="landing-amount-panel">
-            <span>Clear to spend before you're paid</span>
-            <strong>{"\u00A3148"}</strong>
-            <p>After bills due before 31 Jul, that leaves about {"\u00A312"} per day.</p>
-          </div>
-
-          <div className="landing-metric-grid">
-            <article>
-              <span>In your account now</span>
-              <strong>{"\u00A3521"}</strong>
-            </article>
-            <article>
-              <span>Due before you're paid</span>
-              <strong>{"\u00A3373"}</strong>
-            </article>
-          </div>
-
-          <div className="landing-bills-preview">
-            <div className="landing-bills-preview-head">
-              <span>Bills still to land before you're paid</span>
-            </div>
-            <ul>
-              {DUE_BILLS.map((bill) => (
-                <li key={bill.name}>
-                  <div>
-                    <strong>{bill.name}</strong>
-                    <span>{bill.due}</span>
-                  </div>
-                  <strong>{bill.amount}</strong>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </aside>
-      </section>
-
-      <section className="landing-section">
-        <div className="landing-section-heading">
+        <section className="home-story-section">
           <p className="eyebrow">The problem</p>
           <h2>Your bank balance lies.</h2>
-        </div>
-        <div className="landing-problem-grid">
-          <div className="landing-panel">
-            <p>You get paid.</p>
-            <p>For a few days, everything feels okay.</p>
-            <p>Then the bills keep landing.</p>
-            <p>
-              Council tax. Energy. Phone. Broadband. Subscriptions. Rent. Car insurance.
-              School costs. Random direct debits you forgot about.
-            </p>
+          <div className="home-story-grid">
+            <article className="home-story-card">
+              <p>You get paid.</p>
+              <p>For a few days, everything feels okay.</p>
+              <p>Then the bills keep landing.</p>
+              <p>
+                Council tax. Energy. Phone. Broadband. Subscriptions. Rent. Car
+                insurance. School costs. Random direct debits you forgot about.
+              </p>
+            </article>
+            <article className="home-story-card">
+              <p>The problem is not always that you are bad with money.</p>
+              <p>The problem is that your bank balance lies.</p>
+              <p>It shows what is there today.</p>
+              <p>It does not clearly show what is already spoken for before you&apos;re paid.</p>
+            </article>
           </div>
-          <div className="landing-panel">
-            <p>The problem is not always that you are bad with money.</p>
-            <p>The problem is that your bank balance lies.</p>
-            <p>It shows what is there today.</p>
-            <p>It does not clearly show what is already spoken for before you're paid.</p>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <section className="landing-section">
-        <div className="landing-section-heading">
+        <section className="home-story-section">
           <p className="eyebrow">ClearTill fixes that</p>
-          <h2>One simple question: am I clear to spend this before you're paid?</h2>
-          <p className="landing-section-copy">
-            You add when you get paid, your current balance and regular bills. ClearTill
-            then shows bills due before you're paid, money left after those bills, daily
-            spending room until you're paid, upcoming large costs and a simple paid-date
-            forecast.
+          <h2>One simple question: am I clear to spend this before you&apos;re paid?</h2>
+          <p className="home-section-copy">
+            You add when you get paid, your current balance and regular bills.
+            ClearTill then shows bills due before you&apos;re paid, money left after
+            those bills, daily spending room until you&apos;re paid, upcoming large
+            costs and a simple paid-date forecast.
           </p>
-        </div>
-        <div className="landing-feature-grid">
-          <article className="landing-feature-card">
-            <span>01</span>
-            <h3>Add the basics</h3>
-            <p>Current balance, when you get paid, and regular bills without linking your bank.</p>
-          </article>
-          <article className="landing-feature-card">
-            <span>02</span>
-            <h3>See what is spoken for</h3>
-            <p>Spot the bills that land before you're paid instead of guessing from your balance.</p>
-          </article>
-          <article className="landing-feature-card">
-            <span>03</span>
-            <h3>Know your real runway</h3>
-            <p>See what is left, what that means per day and whether a big cost still fits.</p>
-          </article>
-        </div>
-      </section>
+          <div className="home-steps-grid">
+            <article className="home-step-card">
+              <span className="home-step-badge">01</span>
+              <h3>Add the basics</h3>
+              <p>Current balance, when you get paid, and regular bills without linking your bank.</p>
+            </article>
+            <article className="home-step-card">
+              <span className="home-step-badge">02</span>
+              <h3>See what is spoken for</h3>
+              <p>Spot the bills that land before you&apos;re paid instead of guessing from your balance.</p>
+            </article>
+            <article className="home-step-card">
+              <span className="home-step-badge">03</span>
+              <h3>Know your real runway</h3>
+              <p>See what is left, what that means per day and whether a big cost still fits.</p>
+            </article>
+          </div>
+        </section>
 
-      <section className="landing-section landing-section-alt">
-        <div className="landing-section-heading">
+        <section className="home-control-panel">
           <p className="eyebrow">No bank login</p>
           <h2>You stay in control.</h2>
-          <p className="landing-section-copy">
-            ClearTill is designed for people who do not want to connect their bank. You can
-            add bills by:
+          <p className="home-section-copy">
+            ClearTill is designed for people who do not want to connect their bank.
+            You can add bills by:
           </p>
-        </div>
-        <div className="landing-input-grid">
-          {INPUT_OPTIONS.map((item) => (
-            <div className="landing-input-card" key={item}>
-              {item}
-            </div>
-          ))}
-        </div>
-        <p className="landing-section-note">
-          ClearTill helps clean it up and turn it into a simple paid-date view.
-        </p>
-      </section>
+          <div className="home-methods-row">
+            {INPUT_METHODS.map((item) => (
+              <span className="home-method-pill" key={item}>{item}</span>
+            ))}
+          </div>
+          <p className="home-section-copy home-control-note">
+            ClearTill helps clean it up and turn it into a simple paid-date view.
+          </p>
+        </section>
 
-      <section className="landing-section">
-        <div className="landing-section-heading">
+        <section className="home-story-section">
           <p className="eyebrow">Built for real life</p>
           <h2>For people who want clarity, not another finance app.</h2>
-        </div>
-        <ul className="landing-audience-list">
-          {REAL_LIFE_POINTS.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      </section>
+          <div className="home-real-life-grid">
+            {REAL_LIFE_ITEMS.map((item) => (
+              <article className="home-real-life-item" key={item}>
+                <span aria-hidden="true">•</span>
+                <p>{item}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-      <section className="landing-section" id="beta-offer">
-        <div className="landing-offer-card">
-          <div className="landing-offer-copy">
-            <p className="eyebrow">Founding beta offer</p>
-            <h2>Get 90 days of ClearTill beta access for {"\u00A35"}.</h2>
-            <p>
-              This is an early version, so founding users get 90 days of ClearTill beta access, direct input
-              into what gets built next, early founder pricing if ClearTill launches fully,
-              and their {"\u00A35"} credited against their first paid plan.
+        <section className="home-offer-panel" id="beta-offer">
+          <div className="home-offer-copy">
+            <p className="eyebrow">Founding member offer</p>
+            <h2>7 days free, then £1.99* to keep your paid-date view up to date.</h2>
+            <p className="home-section-copy">
+              This is an early version, so founding users get the free trial, early
+              founder pricing if ClearTill launches fully, direct input into what
+              gets built next, and early access before the wider launch.
             </p>
-            <ul className="landing-offer-list">
-              {FOUNDING_POINTS.map((item) => (
+            <ul className="home-bullet-list home-bullet-list-wide">
+              {FOUNDING_ITEMS.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           </div>
-          <div className="landing-offer-cta">
-            <p className="landing-offer-price">{"\u00A35"}</p>
-            <p className="landing-offer-caption">90 days early access</p>
-            <p className="landing-offer-body">
-              See what bills are due before you're paid. Know what money is really clear to
-              spend. No bank login.
+          <aside className="home-offer-card">
+            <strong className="home-offer-price">£1.99*</strong>
+            <p className="eyebrow home-offer-subhead">Founding member monthly price</p>
+            <p>
+              Try ClearTill free for 7 days. See what bills are due before you&apos;re
+              paid and know what money is really clear to spend.
             </p>
-            <OfferCta />
-          </div>
-        </div>
+            <Link className="primary-button home-offer-button" href="/dashboard">
+              Start 7-day free trial
+            </Link>
+          </aside>
+        </section>
+
+        <p className="home-disclaimer">
+          * Founding member price while subscribed. ClearTill isn&apos;t financial advice.
+          It&apos;s simple arithmetic on numbers you enter.
+        </p>
       </section>
-      <p className="helper-text">ClearTill isn't financial advice. It's simple arithmetic on numbers you enter.</p>
     </main>
   );
 }
