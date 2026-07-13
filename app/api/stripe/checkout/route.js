@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { getBillingRuntimeConfig } from "@/lib/billing/config";
 import { preventsDuplicateSubscription } from "@/lib/billing/access";
-import { getSubscriptionState, syncSubscriptionState, upsertUserProfile } from "@/lib/billing/store";
+import { getSubscriptionState, syncSubscriptionState } from "@/lib/billing/store";
 import { getStripeClient } from "@/lib/billing/stripe";
 import { trackServerAnalyticsEvent } from "@/lib/analytics";
 import { verifyRequestUser } from "@/lib/serverAuth";
+import {
+  attachCheckoutSession,
+  createTrialCheckoutIntent,
+  normalizeTrialEmail,
+  TrialClaimError,
+} from "@/lib/billing/trialClaims.server";
 
 export const runtime = "nodejs";
 
@@ -28,6 +34,7 @@ export async function POST(request) {
     }
 
     const body = await request.json().catch(() => ({}));
+    const normalizedEmail = normalizeTrialEmail(body?.email);
     const successPath = String(body?.successPath || "/billing/subscribe/success?session_id={CHECKOUT_SESSION_ID}");
     const cancelPath = String(body?.cancelPath || "/dashboard?checkout=cancelled");
     const stripe = getStripeClient();
@@ -41,15 +48,16 @@ export async function POST(request) {
     }
 
     const stripeCustomerId = subscription?.stripeCustomerId || "";
-    const email = decodedToken.email || subscription?.customerEmail || "";
+    const email = normalizedEmail;
 
     if (stripeCustomerId && email) {
       await stripe.customers.update(stripeCustomerId, { email });
     }
 
-    if (email) {
-      await upsertUserProfile(decodedToken.uid, { email });
-    }
+    const checkoutIntent = await createTrialCheckoutIntent({
+      anonymousUid: decodedToken.uid,
+      normalizedEmail: email,
+    });
 
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
@@ -69,21 +77,28 @@ export async function POST(request) {
         trial_period_days: runtime.config.trialLengthDays,
         metadata: {
           firebaseUid: decodedToken.uid,
+          normalizedEmail: checkoutIntent.normalizedEmail,
+          checkoutIntentId: checkoutIntent.checkoutIntentId,
           trialOffer: "cleartill-7-day-trial",
           planCommitment: "gbp-199-monthly",
         },
       },
       metadata: {
         firebaseUid: decodedToken.uid,
+        normalizedEmail: checkoutIntent.normalizedEmail,
+        checkoutIntentId: checkoutIntent.checkoutIntentId,
         planCommitment: "gbp-199-monthly-after-7-day-trial",
       },
       allow_promotion_codes: false,
     });
 
+    await attachCheckoutSession(checkoutIntent.checkoutIntentId, session.id);
+
     await syncSubscriptionState(decodedToken.uid, {
       ...(stripeCustomerId ? { stripeCustomerId } : {}),
       stripePriceId: process.env.STRIPE_MONTHLY_PRICE_ID,
       lastCheckoutSessionId: session.id,
+      checkoutIntentId: checkoutIntent.checkoutIntentId,
       lastStripeEventAt: Date.now(),
       ...(email ? { customerEmail: email } : {}),
     }, { force: true });
@@ -98,7 +113,9 @@ export async function POST(request) {
       checkoutCommitmentCopy: runtime.config.checkoutCommitmentCopy,
     });
   } catch (error) {
-    const status = error?.code?.startsWith?.("auth/") ? 401 : 500;
+    const status = error instanceof TrialClaimError
+      ? 400
+      : error?.code?.startsWith?.("auth/") ? 401 : 500;
     return NextResponse.json(
       { ok: false, error: error?.message || "Could not start Stripe Checkout." },
       { status },

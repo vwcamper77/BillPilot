@@ -5,6 +5,7 @@ import { markStripeEventProcessed, syncSubscriptionState, upsertUserProfile } fr
 import { syncStripeSubscriptionToFirestore } from "@/lib/billing/subscriptionSync";
 import { trackServerAnalyticsEvent } from "@/lib/analytics";
 import { safeError, safeInfo } from "@/lib/security/safeLog";
+import { createPendingTrialClaim } from "@/lib/billing/trialClaims.server";
 
 export const runtime = "nodejs";
 
@@ -56,20 +57,32 @@ async function handleStripeEvent(stripe, event) {
     case "checkout.session.completed": {
       const uid = object.metadata?.firebaseUid;
       if (!uid) return;
+      if (object.mode !== "subscription" || !object.subscription) return;
+      const subscription = typeof object.subscription === "object"
+        ? object.subscription
+        : await stripe.subscriptions.retrieve(object.subscription, { expand: ["latest_invoice"] });
+      await createPendingTrialClaim({
+        session: object,
+        subscription,
+        stripeEventId: event.id,
+      });
       const stripeCustomerId = typeof object.customer === "string" ? object.customer : object.customer?.id || "";
       const customerEmail = object.customer_details?.email || "";
       await upsertUserProfile(uid, {
         ...(stripeCustomerId ? { stripeCustomerId } : {}),
         ...(customerEmail ? { email: customerEmail } : {}),
       });
-      await syncSubscriptionState(uid, {
-        stripeCustomerId,
-        stripeSubscriptionId: object.subscription || "",
-        checkoutCompletedAt: eventCreated || Date.now(),
-        lastStripeEventAt: eventCreated || Date.now(),
-        lastStripeEventId: event.id,
+      await syncStripeSubscriptionToFirestore({
+        uid,
+        subscription,
         customerEmail,
-      }, { force: true });
+        extras: {
+          stripeCustomerId,
+          checkoutCompletedAt: eventCreated || Date.now(),
+          lastStripeEventAt: eventCreated || Date.now(),
+          lastStripeEventId: event.id,
+        },
+      });
       await trackServerAnalyticsEvent("trial_checkout_completed", { uid, source: "stripe_webhook" });
       return;
     }

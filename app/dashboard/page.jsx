@@ -153,6 +153,9 @@ export default function DashboardPage() {
   const [entryAuthMode, setEntryAuthMode] = useState("");
   const [entryIntent, setEntryIntent] = useState("");
   const [entryParamsReady, setEntryParamsReady] = useState(false);
+  const [trialCheckoutEmail, setTrialCheckoutEmail] = useState("");
+  const [trialCheckoutRequested, setTrialCheckoutRequested] = useState(false);
+  const [trialEmailError, setTrialEmailError] = useState("");
   const shouldUseDirectAuthEntry = entryIntent !== "trial"
     && (entryAuthMode === "signup" || entryAuthMode === "signin");
   const shouldShowDirectAuth = shouldUseDirectAuthEntry && (!user || user.isAnonymous);
@@ -175,8 +178,11 @@ export default function DashboardPage() {
   });
   const [billingEntitlement, setBillingEntitlement] = useState(null);
   const [billingSubscription, setBillingSubscription] = useState(null);
+  const [billingStatusReady, setBillingStatusReady] = useState(false);
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingError, setBillingError] = useState("");
+  const [billingClaim, setBillingClaim] = useState(null);
+  const [claimResendState, setClaimResendState] = useState({ busy: false, sent: false, error: "" });
   const [showTrialAccountForm, setShowTrialAccountForm] = useState(false);
   const [showGuestAuthFallback, setShowGuestAuthFallback] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
@@ -287,18 +293,10 @@ export default function DashboardPage() {
   }, [authReady, entryParamsReady, shouldUseDirectAuthEntry, user]);
 
   useEffect(() => {
-    if (
-      entryIntent !== "trial" ||
-      !entryParamsReady ||
-      !authReady ||
-      !user ||
-      checkoutStartedRef.current
-    ) {
-      return;
+    if (entryIntent === "trial" && user?.email && !trialCheckoutEmail) {
+      setTrialCheckoutEmail(user.email);
     }
-
-    void startTrialCheckoutForUser(user);
-  }, [authReady, entryIntent, entryParamsReady, user]);
+  }, [entryIntent, trialCheckoutEmail, user]);
 
   useEffect(() => {
     if (!entryParamsReady || !shouldUseDirectAuthEntry) {
@@ -502,6 +500,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let cancelled = false;
+    setBillingStatusReady(false);
 
     async function loadBillingStatus() {
       try {
@@ -519,17 +518,12 @@ export default function DashboardPage() {
         setBillingConfig(payload.config || billingConfig);
         setBillingSubscription(payload.subscription || null);
         setBillingEntitlement(payload.entitlement || null);
-        const stripeCustomerEmail = String(payload.subscription?.customerEmail || "").trim();
-        if (user?.isAnonymous && stripeCustomerEmail) {
-          setEmailForm((current) => (
-            current.email.trim()
-              ? current
-              : { ...current, email: stripeCustomerEmail }
-          ));
-        }
+        setBillingClaim(payload.claim || null);
+        setBillingStatusReady(true);
       } catch (error) {
         if (!cancelled) {
           setBillingError(error?.message || "Could not load billing status.");
+          setBillingStatusReady(true);
         }
       }
     }
@@ -578,6 +572,8 @@ export default function DashboardPage() {
   const hasBills = bills.length > 0;
   const hasFirstResult = hasBalanceSnapshot && hasPayday && hasBills;
   const trialEnabled = Boolean(billingConfig.enabled);
+  const subscriptionStatus = billingSubscription?.subscriptionStatus || billingEntitlement?.subscriptionStatus || "";
+  const hasActiveSubscription = subscriptionStatus === "trialing" || subscriptionStatus === "active";
   const hasPremiumAccess = !trialEnabled || Boolean(billingEntitlement?.hasFullAccess);
   const shouldShowTrialOffer = trialEnabled && hasFirstResult && !hasPremiumAccess;
   const shouldLockPremiumSections = trialEnabled && hasFirstResult && !hasPremiumAccess;
@@ -806,7 +802,7 @@ export default function DashboardPage() {
         const credential = await linkWithPopup(auth.currentUser, googleProvider);
         completeAnonymousAccountLink(credential.user, anonymousUid);
         if (entryIntent === "trial") {
-          await startTrialCheckoutForUser(credential.user);
+          await startTrialCheckoutForUser(credential.user, trialCheckoutEmail || credential.user.email);
         }
         return;
       }
@@ -814,7 +810,7 @@ export default function DashboardPage() {
       const credential = await signInWithPopup(auth, googleProvider);
       setShowGuestAuthFallback(false);
       if (entryIntent === "trial") {
-        await startTrialCheckoutForUser(credential.user);
+        await startTrialCheckoutForUser(credential.user, trialCheckoutEmail || credential.user.email);
       }
     } catch (signInError) {
       setAuthError(friendlyGoogleAuthError(signInError));
@@ -889,7 +885,7 @@ export default function DashboardPage() {
       }
       setShowGuestAuthFallback(false);
       if (entryIntent === "trial") {
-        await startTrialCheckoutForUser(credential.user);
+        await startTrialCheckoutForUser(credential.user, trialCheckoutEmail || credential.user.email);
       }
     } catch (emailError) {
       setAuthError(friendlyAuthError(emailError));
@@ -917,7 +913,7 @@ export default function DashboardPage() {
     setPageNotice("Your account is secured. You can now sign in on another device.");
   }
 
-  async function startTrialCheckoutForUser(accountUser) {
+  async function startTrialCheckoutForUser(accountUser, checkoutEmail) {
     if (!accountUser) {
       setBillingError("Please wait for ClearTill to finish setting up your session.");
       return;
@@ -939,6 +935,7 @@ export default function DashboardPage() {
           Authorization: `Bearer ${await accountUser.getIdToken()}`,
         },
         body: JSON.stringify({
+          email: checkoutEmail,
           successPath: "/billing/subscribe/success?session_id={CHECKOUT_SESSION_ID}",
           cancelPath: "/dashboard?checkout=cancelled",
         }),
@@ -959,8 +956,8 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleStartTrialCheckout() {
-    await startTrialCheckoutForUser(auth?.currentUser);
+  function handleStartTrialCheckout() {
+    window.location.assign("/dashboard?intent=trial");
   }
 
   async function handleRetryTrialCheckout() {
@@ -969,7 +966,44 @@ export default function DashboardPage() {
       await handleSignIn();
       return;
     }
-    await startTrialCheckoutForUser(auth.currentUser);
+    await startTrialCheckoutForUser(auth.currentUser, trialCheckoutEmail.trim().toLowerCase());
+  }
+
+  async function handleTrialEmailSubmit(event) {
+    event.preventDefault();
+    const normalizedEmail = trialCheckoutEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setTrialEmailError("Enter a valid email address.");
+      return;
+    }
+    if (!auth?.currentUser) {
+      setTrialEmailError("ClearTill is still preparing your secure session. Try again in a moment.");
+      return;
+    }
+    setTrialCheckoutEmail(normalizedEmail);
+    setTrialEmailError("");
+    setTrialCheckoutRequested(true);
+    await startTrialCheckoutForUser(auth.currentUser, normalizedEmail);
+  }
+
+  async function handleResendTrialClaim() {
+    if (!billingClaim?.checkoutIntentId || !auth?.currentUser) return;
+    setClaimResendState({ busy: true, sent: false, error: "" });
+    try {
+      const response = await fetch("/api/trial-claim/resend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${await auth.currentUser.getIdToken()}`,
+        },
+        body: JSON.stringify({ checkoutIntentId: billingClaim.checkoutIntentId }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not resend the secure link.");
+      setClaimResendState({ busy: false, sent: true, error: "" });
+    } catch (error) {
+      setClaimResendState({ busy: false, sent: false, error: error?.message || "Could not resend the secure link." });
+    }
   }
 
   async function handleManageSubscription() {
@@ -2582,6 +2616,7 @@ export default function DashboardPage() {
     const params = new URLSearchParams(window.location.search);
     const focus = params.get("focus");
     const checkout = params.get("checkout");
+    const claim = params.get("claim");
 
     if (focus === "balance") {
       window.setTimeout(() => {
@@ -2596,6 +2631,10 @@ export default function DashboardPage() {
 
     if (checkout === "cancelled") {
       setPageNotice("Your trial has not started yet. Your result is still here when you're ready.");
+    }
+
+    if (claim === "complete") {
+      setPageNotice("Your ClearTill account is secured. You can now sign in on another device.");
     }
   }, []);
 
@@ -2700,6 +2739,37 @@ export default function DashboardPage() {
   }
 
   if (entryIntent === "trial") {
+    if (!trialCheckoutRequested) {
+      return (
+        <main className="dashboard-shell">
+          <section className="auth-panel">
+            <Logo className="eyebrow-logo" />
+            <h1>Start your secure 7-day free trial</h1>
+            <form className="auth-email-form" onSubmit={handleTrialEmailSubmit}>
+              <label htmlFor="trial-checkout-email">Email address</label>
+              <input
+                id="trial-checkout-email"
+                type="email"
+                value={trialCheckoutEmail}
+                onChange={(event) => {
+                  setTrialCheckoutEmail(event.target.value);
+                  setTrialEmailError("");
+                }}
+                autoComplete="email"
+                placeholder="you@example.com"
+                disabled={billingBusy}
+              />
+              <button className="primary-button" type="submit" disabled={billingBusy || signingIn || !user}>
+                Continue to secure checkout
+              </button>
+            </form>
+            <p className="helper-text">£0 today. £1.99 after 7 days, then monthly. We&apos;ll email your secure ClearTill access link.</p>
+            {trialEmailError || authError ? <p className="error" aria-live="polite">{trialEmailError || authError}</p> : null}
+          </section>
+        </main>
+      );
+    }
+
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
@@ -2907,10 +2977,10 @@ export default function DashboardPage() {
         <div className="topbar-actions">
           <span className="user-id">
             {user?.isAnonymous
-              ? "Guest session"
+              ? !billingStatusReady ? "Checking access…" : hasActiveSubscription ? "Trial active" : "Guest session"
               : user?.displayName || user?.email || "Signed in"}
           </span>
-          {user?.isAnonymous && !showTrialAccountForm && !accountSecured ? (
+          {user?.isAnonymous && !hasActiveSubscription && !showTrialAccountForm && !accountSecured ? (
             <button className="secondary-button" type="button" onClick={handleGoogleSignIn} disabled={accountLinking}>
               Save with Google
             </button>
@@ -2930,7 +3000,26 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      {user?.isAnonymous && !accountSecured ? (
+      {user?.isAnonymous && hasActiveSubscription && billingClaim?.claimStatus === "pending" ? (
+        <section className="setup-card" id="secure-access" aria-labelledby="secure-access-title">
+          <div className="setup-progress">
+            <div>
+              <p className="eyebrow">Trial active</p>
+              <h2 id="secure-access-title">Secure access on another device</h2>
+              <p className="helper-text">We sent a sign-in link to {billingClaim.maskedEmail}.</p>
+            </div>
+          </div>
+          <div className="setup-cta-row">
+            <button className="secondary-button" type="button" onClick={handleResendTrialClaim} disabled={claimResendState.busy}>
+              {claimResendState.busy ? "Resending…" : "Resend secure link"}
+            </button>
+          </div>
+          {claimResendState.sent ? <p className="helper-text billing-success">Secure link sent.</p> : null}
+          {claimResendState.error ? <p className="error">{claimResendState.error}</p> : null}
+        </section>
+      ) : null}
+
+      {user?.isAnonymous && billingStatusReady && !hasActiveSubscription && !accountSecured ? (
         <section className="setup-card" id="save-access" aria-labelledby="save-access-title">
           <div className="setup-progress">
             <div>
@@ -5892,7 +5981,7 @@ function friendlyAuthError(error) {
     code === "auth/wrong-password" ||
     code === "auth/invalid-credential"
   ) return "That email or password doesn't look right.";
-  if (code === "auth/email-already-in-use") return "This email is already registered. Try signing in instead.";
+  if (code === "auth/email-already-in-use") return "We could not secure access with that method. Use your secure email link or try Google.";
   if (code === "auth/weak-password") return "Use a password of at least 6 characters.";
   if (code === "auth/too-many-requests") return "Too many attempts. Try again in a few minutes.";
   if (code === "auth/popup-closed-by-user") return "Google sign-in was cancelled. Try again or use email.";

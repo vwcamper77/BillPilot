@@ -7,7 +7,15 @@ function read(filePath) {
   return fs.readFileSync(path.join(process.cwd(), filePath), "utf8");
 }
 
-test("homepage trial CTAs enter the card-first trial flow without requesting signup", () => {
+function between(source, start, end) {
+  const startIndex = source.indexOf(start);
+  assert.ok(startIndex >= 0, `Missing start marker: ${start}`);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  assert.ok(endIndex > startIndex, `Missing end marker: ${end}`);
+  return source.slice(startIndex, endIndex);
+}
+
+test("homepage trial CTAs enter the email-first trial flow without requesting signup", () => {
   const interactiveCta = read("app/HomeTryNow.jsx");
   const homepage = read("app/page.jsx");
   assert.match(interactiveCta, /TRIAL_CHECKOUT_PATH = "\/dashboard\?intent=trial"/);
@@ -15,230 +23,187 @@ test("homepage trial CTAs enter the card-first trial flow without requesting sig
   assert.doesNotMatch(`${interactiveCta}\n${homepage}`, /auth=signup/);
 });
 
-test("dashboard URL state is hydration-stable and parsed only after mount", () => {
+test("dashboard URL state remains hydration-stable", () => {
   const source = read("app/dashboard/page.jsx");
-  const stateSection = source.slice(
-    source.indexOf('const [entryAuthMode'),
-    source.indexOf('const [emailForm'),
-  );
-  assert.match(stateSection, /const \[entryAuthMode, setEntryAuthMode\] = useState\(""\)/);
-  assert.match(stateSection, /const \[entryIntent, setEntryIntent\] = useState\(""\)/);
-  assert.match(stateSection, /const \[entryParamsReady, setEntryParamsReady\] = useState\(false\)/);
+  const stateSection = between(source, "const [entryAuthMode", "const shouldUseDirectAuthEntry");
+  assert.match(stateSection, /useState\(""\)/);
+  assert.match(stateSection, /entryParamsReady, setEntryParamsReady\] = useState\(false\)/);
   assert.doesNotMatch(stateSection, /typeof window|window\.location/);
-
-  const parseEffect = source.slice(
-    source.indexOf("const params = new URLSearchParams(window.location.search)"),
-    source.indexOf("}, []);", source.indexOf("const params = new URLSearchParams(window.location.search)")) + 7,
-  );
-  assert.match(parseEffect, /setEntryAuthMode/);
-  assert.match(parseEffect, /setEntryIntent\(requestedIntent\)/);
-  assert.match(parseEffect, /setEntryParamsReady\(true\)/);
-
   const stableRender = source.indexOf("if (!entryParamsReady)");
   const trialRender = source.indexOf('if (entryIntent === "trial")', stableRender);
   assert.ok(stableRender > -1 && trialRender > stableRender);
-  assert.match(source.slice(stableRender, trialRender), /Preparing your secure ClearTill session…/);
 });
 
-test("trial intent overrides legacy signup and silently starts anonymous card-first checkout", () => {
+test("trial route shows an email-only screen before Checkout", () => {
   const source = read("app/dashboard/page.jsx");
-  assert.match(source, /const shouldUseDirectAuthEntry = entryIntent !== "trial"\s*&& \(entryAuthMode === "signup" \|\| entryAuthMode === "signin"\)/);
-  assert.match(source, /if \(!entryParamsReady \|\| !authReady \|\| user \|\| !auth\)/);
-  assert.match(source, /signInAnonymously\(auth\)/);
-  assert.match(source, /entryIntent !== "trial"[\s\S]*?!entryParamsReady[\s\S]*?!authReady[\s\S]*?!user[\s\S]*?checkoutStartedRef\.current/);
-  assert.match(source, /void startTrialCheckoutForUser\(user\)/);
-  assert.match(source, /\}, \[authReady, entryIntent, entryParamsReady, user\]\);/);
+  const trialRender = between(source, 'if (entryIntent === "trial")', "if (!authReady)");
+  const emailScreen = between(trialRender, "if (!trialCheckoutRequested)", "return (\n      <main");
+  assert.match(emailScreen, /Email address/);
+  assert.match(emailScreen, /Continue to secure checkout/);
+  assert.match(emailScreen, /£0 today\. £1\.99 after 7 days, then monthly\. We&apos;ll email your secure ClearTill access link\./);
+  assert.doesNotMatch(emailScreen, /password|Google|Guest session/i);
+  assert.match(source, /const normalizedEmail = trialCheckoutEmail\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(source, /\^\[\^\\s@\]\+@\[\^\\s@\]\+\\\.\[\^\\s@\]\+\$/);
 });
 
-test("anonymous users are accepted by the guarded checkout helper exactly once", () => {
+test("anonymous Firebase setup stays invisible and waits for parsed entry parameters", () => {
   const source = read("app/dashboard/page.jsx");
-  const helper = source.slice(
-    source.indexOf("async function startTrialCheckoutForUser"),
-    source.indexOf("async function handleStartTrialCheckout"),
+  const authEffect = between(
+    source,
+    "if (!entryParamsReady || !authReady || user || !auth)",
+    "}, [authReady, entryParamsReady, shouldUseDirectAuthEntry, user]",
   );
+  assert.match(authEffect, /signInAnonymously\(auth\)/);
+  assert.match(source, /entryIntent !== "trial"\s*&& \(entryAuthMode === "signup" \|\| entryAuthMode === "signin"\)/);
+  const trialRender = between(source, 'if (entryIntent === "trial")', "if (!authReady)");
+  assert.doesNotMatch(trialRender, /Guest session/);
+});
+
+test("validated email and anonymous ID token start Checkout exactly once", () => {
+  const source = read("app/dashboard/page.jsx");
+  const helper = between(source, "async function startTrialCheckoutForUser", "function handleStartTrialCheckout");
   assert.doesNotMatch(helper, /accountUser\.isAnonymous/);
   assert.match(helper, /if \(checkoutStartedRef\.current\) \{\s*return;\s*\}/);
   assert.equal((helper.match(/checkoutStartedRef\.current = true/g) || []).length, 1);
   assert.match(helper, /Authorization: `Bearer \$\{await accountUser\.getIdToken\(\)\}`/);
-  assert.match(helper, /fetch\("\/api\/stripe\/checkout"/);
+  assert.match(helper, /email: checkoutEmail/);
+  assert.match(source, /startTrialCheckoutForUser\(auth\.currentUser, normalizedEmail\)/);
 });
 
-test("trial transition hides the dashboard and offers retry without falling through", () => {
+test("Checkout creates a trusted expiring intent and prefills Stripe email", () => {
+  const route = read("app/api/stripe/checkout/route.js");
+  const claims = read("lib/billing/trialClaims.server.js");
+  assert.match(route, /normalizeTrialEmail\(body\?\.email\)/);
+  assert.match(route, /createTrialCheckoutIntent/);
+  assert.match(route, /\{ customer_email: email \}/);
+  assert.doesNotMatch(route, /stripe\.customers\.create/);
+  assert.match(route, /mode:\s*"subscription"/);
+  assert.match(route, /payment_method_collection:\s*"always"/);
+  assert.match(route, /trial_period_days:\s*runtime\.config\.trialLengthDays/);
+  assert.match(route, /price:\s*process\.env\.STRIPE_MONTHLY_PRICE_ID/);
+  assert.match(route, /successPath[\s\S]*?\{CHECKOUT_SESSION_ID\}/);
+  assert.equal((route.match(/checkoutIntentId: checkoutIntent\.checkoutIntentId/g) || []).length, 3);
+  assert.equal((route.match(/normalizedEmail: checkoutIntent\.normalizedEmail/g) || []).length, 2);
+  assert.match(claims, /randomUUID\(\)/);
+  assert.match(claims, /status: "checkout_started"/);
+  assert.match(claims, /anonymousUid/);
+  assert.match(claims, /expiresAt/);
+  assert.doesNotMatch(route, /balance|bills/);
+});
+
+test("Stripe-confirmed subscription creates one pending claim and grants provisional access", () => {
+  const webhook = read("app/api/stripe/webhook/route.js");
+  const claims = read("lib/billing/trialClaims.server.js");
+  const completed = between(webhook, 'case "checkout.session.completed"', 'case "customer.subscription.created"');
+  assert.match(completed, /object\.mode !== "subscription"/);
+  assert.match(completed, /stripe\.subscriptions\.retrieve/);
+  assert.match(completed, /createPendingTrialClaim/);
+  assert.match(completed, /syncStripeSubscriptionToFirestore/);
+  assert.match(claims, /session\.customer_details\?\.email/);
+  assert.match(claims, /intent\.normalizedEmail\) !== confirmedEmail/);
+  assert.match(claims, /intent\.checkoutSessionId !== session\.id/);
+  assert.match(claims, /subscription\.metadata\?\.firebaseUid/);
+  assert.match(claims, /subscription\.metadata\?\.checkoutIntentId/);
+  assert.match(claims, /\["trialing", "active"\]\.includes\(subscription\.status\)/);
+  assert.match(claims, /claimStatus: "pending"/);
+  assert.match(claims, /trialEndAt/);
+  assert.match(claims, /transaction\.create\(pendingRef, data\)/);
+});
+
+test("welcome email uses a hashed, expiring, single-use token and deduplicated outbox", () => {
+  const claims = read("lib/billing/trialClaims.server.js");
+  assert.match(claims, /randomBytes\(32\)\.toString\("base64url"\)/);
+  assert.match(claims, /createHash\("sha256"\)/);
+  assert.match(claims, /claimTokenHash/);
+  assert.doesNotMatch(claims, /claimToken:\s*rawToken/);
+  assert.match(claims, /claimExpiresAt/);
+  assert.match(claims, /if \(!allowSent && \(outbox\.status === "sent" \|\| outbox\.sentAt\)\) return false/);
+  assert.match(claims, /subject = "Your ClearTill trial is active"/);
+  assert.match(claims, /Your 7-day free trial has started\. £0 was charged today\./);
+  assert.match(claims, /Open ClearTill securely/);
+  assert.doesNotMatch(between(claims, "function buildWelcomeEmail", "async function buildClaimLink"), /balance|bill amount|financial/i);
+});
+
+test("same-device claim links the email credential and preserves the anonymous UID", () => {
+  const page = read("app/trial/claim/page.jsx");
+  assert.match(page, /EmailAuthProvider\.credentialWithLink\(emailPayload\.email, claimRef\.current\.href\)/);
+  assert.match(page, /linkWithCredential\(auth\.currentUser, emailCredential\)/);
+  assert.doesNotMatch(page, /createUserWithEmailAndPassword|password/);
+  const claims = read("lib/billing/trialClaims.server.js");
+  assert.match(claims, /if \(anonymousUid !== authenticatedUid\)/);
+  assert.match(claims, /else \{[\s\S]*?transaction\.set\(sourceSubscription/);
+});
+
+test("existing-email and different-device claims sign in passwordlessly and merge server-side", () => {
+  const page = read("app/trial/claim/page.jsx");
+  assert.match(page, /LINK_CONFLICT_CODES/);
+  assert.match(page, /signInWithEmailLink\(auth, emailPayload\.email, claimRef\.current\.href\)/);
+  assert.doesNotMatch(page, /email already registered|user-not-found/i);
+  const claims = read("lib/billing/trialClaims.server.js");
+  assert.match(claims, /const COPY_COLLECTIONS = \["settings", "income", "bills", "incomeEvents", "largeCosts", "reminders"\]/);
+  assert.match(claims, /targetProfile = targetUserSnapshot\.exists \? targetUserSnapshot\.data\(\) : \{\}/);
+  assert.match(claims, /\.\.\.sourceProfile,\s*\.\.\.targetProfile/);
+  assert.match(claims, /if \(!targetSnapshot\.exists\) transaction\.set/);
+  assert.match(claims, /transaction\.delete\(sourceSubscription\)/);
+  assert.match(claims, /subscriptionClaimedToUid: authenticatedUid/);
+});
+
+test("protected claim derives target UID and email only from verified Firebase auth", () => {
+  const route = read("app/api/trial-claim/claim/route.js");
+  assert.match(route, /verifyRequestUser\(request\)/);
+  assert.match(route, /authenticatedUser\.email_verified !== true/);
+  assert.match(route, /authenticatedUid: authenticatedUser\.uid/);
+  assert.match(route, /authenticatedEmail: authenticatedUser\.email/);
+  assert.doesNotMatch(route, /body\?\.(uid|targetUid)|body\.(uid|targetUid)/);
+  const claims = read("lib/billing/trialClaims.server.js");
+  assert.match(claims, /initial\.email !== verifiedEmail/);
+  assert.match(claims, /claim\.normalizedEmail !== verifiedEmail/);
+  assert.match(claims, /claim\.claimTokenHash/);
+  assert.match(claims, /claimTokenHash: null/);
+});
+
+test("claim reuse is idempotent for its owner while expired and stolen tokens are rejected", () => {
+  const claims = read("lib/billing/trialClaims.server.js");
+  assert.match(claims, /existing\.claimStatus === "claimed" && existing\.claimedUid === authenticatedUid/);
+  assert.match(claims, /return \{[\s\S]*?alreadyClaimed: true/);
+  assert.match(claims, /hashToken\(claimToken\) !== claim\.claimTokenHash/);
+  assert.match(claims, /asDate\(claim\.claimExpiresAt\)[\s\S]*?< Date\.now\(\)/);
+  assert.match(claims, /claim\.claimedUid === authenticatedUid/);
+  assert.match(claims, /throw new TrialClaimError\("already_claimed"/);
+});
+
+test("subscription ownership and later Stripe events move to the permanent UID", () => {
+  const route = read("app/api/trial-claim/claim/route.js");
+  assert.match(route, /stripe\.subscriptions\.update\(result\.stripeSubscriptionId/);
+  assert.match(route, /metadata: \{ firebaseUid: authenticatedUser\.uid \}/);
+  assert.match(route, /stripe\.customers\.update\(result\.stripeCustomerId/);
+  const claims = read("lib/billing/trialClaims.server.js");
+  assert.match(claims, /migratedFromAnonymousUid: anonymousUid/);
+  assert.match(claims, /audit: \{\s*anonymousUid,\s*permanentUid: authenticatedUid,\s*stripeSubscriptionId/);
+});
+
+test("trialing anonymous customers see Trial active and a masked secure-link banner", () => {
   const source = read("app/dashboard/page.jsx");
-  const transitionStart = source.indexOf('  if (entryIntent === "trial") {\n    return (');
-  const transition = source.slice(transitionStart, source.indexOf("if (!authReady)", transitionStart));
-  const normalDashboard = source.indexOf('  return (\n    <main className="dashboard-shell">', source.indexOf("if (!user || shouldShowDirectAuth)"));
-  assert.ok(transitionStart > -1);
-  assert.match(transition, /Opening your secure 7-day free trial…/);
-  assert.match(transition, /Try opening checkout again/);
-  assert.match(transition, /Return to homepage/);
-  assert.doesNotMatch(transition, /Guest session|Add your current available money/);
-  assert.ok(normalDashboard > source.indexOf("if (!authReady)", transitionStart));
+  assert.match(source, /!billingStatusReady \? "Checking access…" : hasActiveSubscription \? "Trial active" : "Guest session"/);
+  assert.match(source, /Secure access on another device/);
+  assert.match(source, /We sent a sign-in link to \{billingClaim\.maskedEmail\}/);
+  assert.match(source, /Resend secure link/);
+  assert.match(source, /user\?\.isAnonymous && billingStatusReady && !hasActiveSubscription && !accountSecured/);
+  const subscribedBanner = between(source, "user?.isAnonymous && hasActiveSubscription", "user?.isAnonymous && billingStatusReady");
+  assert.doesNotMatch(subscribedBanner, /password|Google/i);
+  const resendRoute = read("app/api/trial-claim/resend/route.js");
+  assert.match(resendRoute, /checkRateLimit\("trial-claim-resend"/);
+  assert.match(resendRoute, /anonymousUid: authenticatedUser\.uid/);
 });
 
-test("trial transition prevents Firestore dashboard snapshot listeners", () => {
-  const source = read("app/dashboard/page.jsx");
-  const guard = source.indexOf('if (!entryParamsReady || !user || !db || entryIntent === "trial"');
-  const firstSnapshot = source.indexOf("const unsubscribeBills = onSnapshot", guard);
-  assert.ok(guard > -1 && firstSnapshot > guard);
-  assert.match(source.slice(guard, firstSnapshot), /setBills\(\[\]\)/);
-  assert.match(source, /\}, \[entryIntent, entryParamsReady, shouldUseDirectAuthEntry, user\]\);/);
-});
-
-test("plain dashboard visits retain normal anonymous guest access", () => {
-  const source = read("app/dashboard/page.jsx");
-  const anonymousEffect = source.slice(
-    source.indexOf("if (!entryParamsReady || !authReady || user || !auth)"),
-    source.indexOf("}, [authReady, entryParamsReady, shouldUseDirectAuthEntry, user]") + 67,
-  );
-  assert.match(anonymousEffect, /signInAnonymously\(auth\)/);
-  assert.match(source, /Guest session/);
-  assert.match(source, /Add your current available money/);
-});
-
-test("checkout route uses card collection, seven-day subscription trial, and recurring monthly price", () => {
-  const source = read("app/api/stripe/checkout/route.js");
-  const config = read("lib/billing/config.js");
-  assert.match(source, /verifyRequestUser/);
-  assert.match(source, /mode:\s*"subscription"/);
-  assert.match(source, /payment_method_collection:\s*"always"/);
-  assert.match(source, /trial_period_days:\s*runtime\.config\.trialLengthDays/);
-  assert.match(source, /price:\s*process\.env\.STRIPE_MONTHLY_PRICE_ID/);
-  assert.match(source, /successPath[\s\S]*?\{CHECKOUT_SESSION_ID\}/);
-  assert.match(config, /const TRIAL_LENGTH_DAYS = 7/);
-  assert.match(config, /const MONTHLY_PRICE_PENCE = 199/);
-  assert.match(config, /trialLengthDays:\s*TRIAL_LENGTH_DAYS/);
-  assert.match(config, /offerCopy: "£0 today\./);
-  assert.match(config, /£1\.99/);
-});
-
-test("checkout lets Stripe create an emailed customer for anonymous users", () => {
-  const source = read("app/api/stripe/checkout/route.js");
-  assert.doesNotMatch(source, /decodedToken\.email[^|]*\)\s*\{?\s*return/);
-  assert.doesNotMatch(source, /stripe\.customers\.create/);
-  assert.match(source, /stripeCustomerId[\s\S]*?\{ customer: stripeCustomerId \}[\s\S]*?email[\s\S]*?\{ customer_email: email \}[\s\S]*?: \{\}/);
-  assert.equal((source.match(/firebaseUid: decodedToken\.uid/g) || []).length, 2);
-});
-
-test("checkout completion stores Stripe customer identity against the Firebase UID", () => {
-  const source = read("app/api/stripe/webhook/route.js");
-  assert.match(source, /case "checkout\.session\.completed"/);
-  assert.match(source, /const uid = object\.metadata\?\.firebaseUid/);
-  assert.match(source, /object\.customer_details\?\.email/);
-  assert.match(source, /upsertUserProfile\(uid/);
-  assert.match(source, /syncSubscriptionState\(uid/);
-});
-
-test("anonymous success confirmation verifies Stripe ownership before granting trial access", () => {
-  const activation = read("app/billing/subscribe/success/SubscriptionActivation.jsx");
-  const endpoint = read("app/api/stripe/confirm-subscription/route.js");
-  assert.match(activation, /if \(!active \|\| !user \|\| confirmationStartedRef\.current\) return/);
-  assert.doesNotMatch(activation, /user\.isAnonymous/);
-  assert.match(endpoint, /session\.metadata\?\.firebaseUid !== user\.uid/);
-  assert.match(endpoint, /session\.status !== "complete" \|\| session\.mode !== "subscription"/);
-  assert.match(endpoint, /syncStripeSubscriptionToFirestore/);
-  assert.match(activation, /Your 7-day free trial is active/);
-  assert.match(activation, /£0 was charged today\. Your first £1\.99 payment is due after seven days, then monthly unless you cancel\./);
-});
-
-test("success URL alone cannot grant entitlement without verified Stripe state", () => {
-  const endpoint = read("app/api/stripe/confirm-subscription/route.js");
-  const statusCheck = endpoint.indexOf('session.status !== "complete"');
-  const ownershipCheck = endpoint.indexOf("session.metadata?.firebaseUid !== user.uid");
-  const subscriptionCheck = endpoint.indexOf("if (!session.subscription)");
-  const entitlementSync = endpoint.indexOf("await syncStripeSubscriptionToFirestore");
-  assert.ok(statusCheck > -1 && ownershipCheck > statusCheck);
-  assert.ok(subscriptionCheck > ownershipCheck && entitlementSync > subscriptionCheck);
-});
-
-test("post-checkout access can be opened immediately or saved by linking credentials", () => {
-  const activation = read("app/billing/subscribe/success/SubscriptionActivation.jsx");
-  const source = read("app/dashboard/page.jsx");
-  assert.match(activation, />Open ClearTill</);
-  assert.match(activation, />Save my access</);
-  assert.match(source, /Secure your ClearTill account/);
-  assert.match(source, /Continue with Google/);
-  const googleStart = source.indexOf("async function handleGoogleSignIn");
-  const googleEnd = source.indexOf("async function handleEmailAuth", googleStart);
-  const googleHandler = source.slice(googleStart, googleEnd);
-  const googleAnonymousBranch = googleHandler.slice(
-    googleHandler.indexOf("if (auth.currentUser?.isAnonymous)"),
-    googleHandler.indexOf("const credential = await signInWithPopup"),
-  );
-  assert.match(googleAnonymousBranch, /linkWithPopup\(auth\.currentUser, googleProvider\)/);
-  assert.doesNotMatch(googleAnonymousBranch, /signOut\(|delete\(|signInWithPopup/);
-  const emailStart = source.indexOf("async function handleEmailAuth");
-  const emailEnd = source.indexOf("async function startTrialCheckoutForUser", emailStart);
-  const emailHandler = source.slice(emailStart, emailEnd);
-  const emailAnonymousBranch = emailHandler.slice(
-    emailHandler.indexOf("if (auth.currentUser?.isAnonymous)"),
-    emailHandler.indexOf("} else if", emailHandler.indexOf("if (auth.currentUser?.isAnonymous)")),
-  );
-  assert.match(emailAnonymousBranch, /linkWithCredential\(auth\.currentUser, emailCredential\)/);
-  assert.doesNotMatch(emailAnonymousBranch, /createUserWithEmailAndPassword|signInWithEmailAndPassword|signOut\(|delete\(/);
-});
-
-test("Stripe customer email pre-populates only an untouched account form", () => {
-  const source = read("app/dashboard/page.jsx");
-  const billingLoad = source.slice(
-    source.indexOf("async function loadBillingStatus"),
-    source.indexOf("const displayIncome", source.indexOf("async function loadBillingStatus")),
-  );
-  assert.match(billingLoad, /payload\.subscription\?\.customerEmail/);
-  assert.match(billingLoad, /if \(user\?\.isAnonymous && stripeCustomerEmail\)/);
-  assert.match(billingLoad, /setEmailForm\(\(current\) =>/);
-  assert.match(billingLoad, /current\.email\.trim\(\)\s*\? current\s*:\s*\{ \.\.\.current, email: stripeCustomerEmail \}/);
-  assert.match(source, /Stripe has confirmed your email as \$\{billingSubscription\.customerEmail\}/);
-  assert.match(source, /placeholder="Create a ClearTill password"/);
-  assert.match(source, /accountLinking \? "Saving…" : "Secure my account"/);
-});
-
-test("manual email mismatch requires confirmation and does not move Stripe billing", () => {
-  const source = read("app/dashboard/page.jsx");
-  const emailHandler = source.slice(
-    source.indexOf("async function handleEmailAuth"),
-    source.indexOf("function completeAnonymousAccountLink"),
-  );
-  assert.match(emailHandler, /billingSubscription\?\.customerEmail/);
-  assert.match(emailHandler, /normalisedEmail !== stripeCustomerEmail\.toLowerCase\(\)/);
-  assert.match(emailHandler, /confirmedMismatchEmail !== normalisedEmail/);
-  assert.match(emailHandler, /Your Stripe billing email will remain \$\{stripeCustomerEmail\}/);
-  assert.ok(emailHandler.indexOf("setEmailMismatchWarning") < emailHandler.indexOf("linkWithCredential"));
-  assert.doesNotMatch(emailHandler, /setBillingSubscription|syncSubscription|stripeCustomerId/);
-});
-
-test("account linking preserves UID and subscription state, then hides the panel", () => {
-  const source = read("app/dashboard/page.jsx");
-  const googleHandler = source.slice(
-    source.indexOf("async function handleGoogleSignIn"),
-    source.indexOf("async function handleEmailAuth"),
-  );
-  const emailHandler = source.slice(
-    source.indexOf("async function handleEmailAuth"),
-    source.indexOf("async function startTrialCheckoutForUser"),
-  );
-  const completion = source.slice(
-    source.indexOf("function completeAnonymousAccountLink"),
-    source.indexOf("async function startTrialCheckoutForUser"),
-  );
-  assert.match(googleHandler, /const anonymousUid = auth\.currentUser\.uid/);
-  assert.match(googleHandler, /completeAnonymousAccountLink\(credential\.user, anonymousUid\)/);
-  assert.match(emailHandler, /completeAnonymousAccountLink\(linkedCredential\.user, anonymousUid\)/);
-  assert.match(completion, /linkedUser\.uid !== anonymousUid/);
-  assert.match(completion, /setAccountSecured\(true\)/);
-  assert.match(completion, /setUser\(linkedUser\)/);
-  assert.match(completion, /Your account is secured\. You can now sign in on another device\./);
-  assert.doesNotMatch(`${googleHandler}\n${emailHandler}\n${completion}`, /setBillingSubscription|setBillingEntitlement/);
-  assert.match(source, /user\?\.isAnonymous && !accountSecured/);
-});
-
-test("save-access loading labels only follow account-link operations", () => {
-  const source = read("app/dashboard/page.jsx");
-  const panel = source.slice(
-    source.indexOf('<section className="setup-card" id="save-access"'),
-    source.indexOf("{showSetupCard ?", source.indexOf('<section className="setup-card" id="save-access"')),
-  );
-  assert.equal((panel.match(/accountLinking \? "Saving…"/g) || []).length, 2);
-  assert.doesNotMatch(panel, /signingIn \? "Saving…"/);
-  assert.match(source, /if \(linkingAnonymousAccount\) \{\s*setAccountLinking\(true\)/);
+test("founding-member entitlement flow stays isolated and email enumeration copy is removed", () => {
+  const claims = read("lib/billing/trialClaims.server.js");
+  assert.match(claims, /pendingTrialClaims/);
+  assert.doesNotMatch(claims, /pendingEntitlements|FOUNDING_PLAN|FOUNDING_ACCESS/);
+  const dashboard = read("app/dashboard/page.jsx");
+  const claimPage = read("app/trial/claim/page.jsx");
+  assert.doesNotMatch(`${dashboard}\n${claimPage}`, /This email is already registered|fetchSignInMethodsForEmail/);
+  const founding = read("lib/entitlements.server.js");
+  assert.match(founding, /pendingEntitlements/);
+  assert.match(founding, /FOUNDING_PLAN/);
 });

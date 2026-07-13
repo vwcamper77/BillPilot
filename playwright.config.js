@@ -2,6 +2,15 @@ import { defineConfig, devices } from "@playwright/test";
 
 process.env.EMAIL_SERVICE_MODE = "mock";
 
+// Client-only specs intercept Firebase's network calls, so keep those tests
+// runnable without borrowing production Firebase configuration.
+process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||= "playwright-api-key";
+process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN ||= "cleartill-playwright.test";
+process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||= "cleartill-hydration-test";
+process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET ||= "cleartill-hydration-test.appspot.com";
+process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID ||= "123456789";
+process.env.NEXT_PUBLIC_FIREBASE_APP_ID ||= "1:123456789:web:playwright";
+
 const testPort = process.env.PLAYWRIGHT_PORT || "3000";
 const testBaseUrl = `http://localhost:${testPort}`;
 

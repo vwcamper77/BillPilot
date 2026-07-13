@@ -28,7 +28,7 @@ function anonymousIdToken(uid) {
 }
 
 for (const trialPath of trialPaths) {
-  test(`${trialPath} hydrates and opens card-first Checkout once`, async ({ page }) => {
+  test(`${trialPath} hydrates and opens email-first card Checkout once`, async ({ page }) => {
     const failures = [];
     const checkoutRequests = [];
     const uid = `anonymous-${trialPaths.indexOf(trialPath) + 1}`;
@@ -93,7 +93,7 @@ for (const trialPath of trialPaths) {
 
     await page.route("**/api/stripe/checkout", async (route) => {
       checkoutRequests.push(route.request());
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       const origin = new URL(route.request().url()).origin;
       await route.fulfill({
         status: 200,
@@ -106,6 +106,12 @@ for (const trialPath of trialPaths) {
     });
 
     await page.goto(trialPath);
+    await expect(page.getByRole("heading", { name: "Start your secure 7-day free trial" })).toBeVisible();
+    await expect(page.getByLabel("Email address")).toBeVisible();
+    await expect(page.locator('input[type="password"]')).toHaveCount(0);
+    await expect(page.getByText("Guest session")).toHaveCount(0);
+    await page.getByLabel("Email address").fill("  Trial.User@Example.COM  ");
+    await page.getByRole("button", { name: "Continue to secure checkout" }).click();
     await expect(page.getByRole("heading", { name: "Opening your secure 7-day free trial…" })).toBeVisible();
     await expect(page.getByText("Stripe will securely collect your email and card details. £0 is charged today.")).toBeVisible();
     await expect(page.getByText("Guest session")).toHaveCount(0);
@@ -114,6 +120,7 @@ for (const trialPath of trialPaths) {
 
     expect(checkoutRequests).toHaveLength(1);
     expect(checkoutRequests[0].headers().authorization).toMatch(/^Bearer /);
+    expect(checkoutRequests[0].postDataJSON().email).toBe("trial.user@example.com");
     expect(failures).toEqual([]);
   });
 }

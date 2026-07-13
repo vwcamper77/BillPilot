@@ -71,7 +71,7 @@ export default function SubscriptionActivation({ sessionId }) {
       {state === "active" ? (
         <div className="auth-button-row">
           <Link className="primary-button" href="/dashboard">Open ClearTill</Link>
-          <Link className="secondary-button" href="/dashboard?saveAccess=1#save-access">Save my access</Link>
+          <Link className="secondary-button" href="/dashboard#secure-access">Check secure access link</Link>
         </div>
       ) : null}
       {state === "error" ? (
