@@ -151,6 +151,21 @@ export default function DashboardPage() {
   const [csvError, setCsvError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
   const [authMode, setAuthMode] = useState("signin");
+  const [entryAuthMode] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    const requestedMode = String(new URLSearchParams(window.location.search).get("auth") || "").toLowerCase();
+    return requestedMode === "signup" || requestedMode === "signin" ? requestedMode : "";
+  });
+  const [entryIntent] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    return String(new URLSearchParams(window.location.search).get("intent") || "").toLowerCase();
+  });
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
@@ -202,6 +217,7 @@ export default function DashboardPage() {
   const firstResultTrackedRef = useRef(false);
   const trialOfferTrackedRef = useRef(false);
   const onboardingStartedRef = useRef(false);
+  const checkoutStartedRef = useRef(false);
 
   useEffect(() => {
     if (!auth) {
@@ -235,6 +251,10 @@ export default function DashboardPage() {
       return;
     }
 
+    if (shouldUseDirectAuthEntry) {
+      return;
+    }
+
     let cancelled = false;
     setSigningIn(true);
     setAuthError("");
@@ -256,7 +276,16 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [authReady, user]);
+  }, [authReady, shouldUseDirectAuthEntry, user]);
+
+  useEffect(() => {
+    if (!shouldUseDirectAuthEntry) {
+      return;
+    }
+
+    setShowGuestAuthFallback(true);
+    setAuthMode(entryAuthMode);
+  }, [entryAuthMode, shouldUseDirectAuthEntry]);
 
   useEffect(() => {
     billsRef.current = bills;
@@ -694,6 +723,8 @@ export default function DashboardPage() {
   const importButtonLabel = getImportButtonLabel(isImporting, currentImportStep, importJobs, currentImportJobId);
   const setupMessage = getSetupMessage(setupStep);
   const showSetupCard = setupStep < 4 || !setupDismissed;
+  const shouldUseDirectAuthEntry = entryAuthMode === "signup" || entryAuthMode === "signin";
+  const shouldShowGuestFallback = showGuestAuthFallback || shouldUseDirectAuthEntry;
   const firestoreDiagnostics = {
     uid: auth?.currentUser?.uid || user?.uid || "none",
     envProjectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
@@ -735,12 +766,18 @@ export default function DashboardPage() {
       await authPersistenceReady;
 
       if (auth.currentUser?.isAnonymous) {
-        await linkWithPopup(auth.currentUser, googleProvider);
+        const credential = await linkWithPopup(auth.currentUser, googleProvider);
+        if (entryIntent === "trial") {
+          await startTrialCheckoutForUser(credential.user);
+        }
         return;
       }
 
-      await signInWithPopup(auth, googleProvider);
+      const credential = await signInWithPopup(auth, googleProvider);
       setShowGuestAuthFallback(false);
+      if (entryIntent === "trial") {
+        await startTrialCheckoutForUser(credential.user);
+      }
     } catch (signInError) {
       if (
         signInError?.code === "auth/credential-already-in-use"
@@ -748,7 +785,10 @@ export default function DashboardPage() {
       ) {
         try {
           await auth.currentUser.delete().catch(() => signOut(auth));
-          await signInWithPopup(auth, googleProvider);
+          const credential = await signInWithPopup(auth, googleProvider);
+          if (entryIntent === "trial") {
+            await startTrialCheckoutForUser(credential.user);
+          }
           return;
         } catch (retryError) {
           setAuthError(friendlyGoogleAuthError(retryError));
@@ -787,15 +827,20 @@ export default function DashboardPage() {
     try {
       await authPersistenceReady;
 
+      let credential;
       if (auth.currentUser?.isAnonymous) {
-        const credential = EmailAuthProvider.credential(email, password);
-        await linkWithCredential(auth.currentUser, credential);
+        const emailCredential = EmailAuthProvider.credential(email, password);
+        const linkedCredential = await linkWithCredential(auth.currentUser, emailCredential);
+        credential = linkedCredential;
       } else if (authMode === "signup") {
-        await createUserWithEmailAndPassword(auth, email, password);
+        credential = await createUserWithEmailAndPassword(auth, email, password);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        credential = await signInWithEmailAndPassword(auth, email, password);
       }
       setShowGuestAuthFallback(false);
+      if (entryIntent === "trial") {
+        await startTrialCheckoutForUser(credential.user);
+      }
     } catch (emailError) {
       setAuthError(friendlyAuthError(emailError));
     } finally {
@@ -803,18 +848,23 @@ export default function DashboardPage() {
     }
   }
 
-  async function handleStartTrialCheckout() {
-    if (!auth?.currentUser) {
+  async function startTrialCheckoutForUser(accountUser) {
+    if (!accountUser) {
       setBillingError("Please wait for ClearTill to finish setting up your session.");
       return;
     }
 
-    if (auth.currentUser.isAnonymous) {
+    if (accountUser.isAnonymous) {
       setShowTrialAccountForm(true);
       setBillingError("Save your result with Google or email before starting the 7-day free trial.");
       return;
     }
 
+    if (checkoutStartedRef.current) {
+      return;
+    }
+
+    checkoutStartedRef.current = true;
     setBillingBusy(true);
     setBillingError("");
 
@@ -823,10 +873,10 @@ export default function DashboardPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${await auth.currentUser.getIdToken()}`,
+          Authorization: `Bearer ${await accountUser.getIdToken()}`,
         },
         body: JSON.stringify({
-          successPath: "/dashboard?checkout=success",
+          successPath: "/billing/subscribe/success?session_id={CHECKOUT_SESSION_ID}",
           cancelPath: "/dashboard?checkout=cancelled",
         }),
       });
@@ -839,10 +889,15 @@ export default function DashboardPage() {
       void trackClientAnalyticsEvent("trial_checkout_started", { source: "dashboard" });
       window.location.assign(payload.url);
     } catch (error) {
+      checkoutStartedRef.current = false;
       setBillingError(error?.message || "Could not open Stripe Checkout.");
     } finally {
       setBillingBusy(false);
     }
+  }
+
+  async function handleStartTrialCheckout() {
+    await startTrialCheckoutForUser(auth?.currentUser);
   }
 
   async function handleManageSubscription() {
@@ -2596,18 +2651,28 @@ export default function DashboardPage() {
       <main className="dashboard-shell">
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
-          <h1>Preparing your free pay-date forecast…</h1>
-          <p>ClearTill is opening a private guest session so you can see your first result before any payment step.</p>
+          <h1>{shouldUseDirectAuthEntry ? "Create your ClearTill account" : "Preparing your free pay-date forecast…"}</h1>
+          <p>
+            {shouldUseDirectAuthEntry
+              ? "Save your result, then continue to Stripe to enter your card. You pay £0 today, then £1.99 after 7 days and monthly after that unless you cancel."
+              : "ClearTill is opening a private guest session so you can see your first result before any payment step."}
+          </p>
           <TrustShield className="auth-trust-banner" compact />
           {authError ? (
             <>
-              <p className="error">{authError}</p>
-              <button className="secondary-button" type="button" onClick={handleSignIn} disabled={signingIn}>
-                Try guest access again
-              </button>
-              {showGuestAuthFallback ? (
+              {!shouldUseDirectAuthEntry ? <p className="error">{authError}</p> : null}
+              {!shouldUseDirectAuthEntry ? (
+                <button className="secondary-button" type="button" onClick={handleSignIn} disabled={signingIn}>
+                  Try guest access again
+                </button>
+              ) : null}
+              {shouldShowGuestFallback ? (
                 <div className="auth-panel auth-panel-inline" style={{ marginTop: "16px" }}>
-                  <p>Guest access is unavailable right now. Continue with Google or email so you can still get your first ClearTill result.</p>
+                  <p>
+                    {shouldUseDirectAuthEntry
+                      ? "Use Google or email to create your account and carry on to your free trial."
+                      : "Guest access is unavailable right now. Continue with Google or email so you can still get your first ClearTill result."}
+                  </p>
                   <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
                     {signingIn ? "Opening Google..." : "Continue with Google"}
                   </button>
@@ -2653,11 +2718,68 @@ export default function DashboardPage() {
                       </button>
                     </div>
                   </form>
+                  {shouldUseDirectAuthEntry ? <p className="error">{authError}</p> : null}
                 </div>
               ) : null}
             </>
           ) : (
-            <p className="helper-text">{signingIn ? "Starting secure guest access…" : "One moment…"}</p>
+            shouldShowGuestFallback ? (
+              <div className="auth-panel auth-panel-inline" style={{ marginTop: "16px" }}>
+                <p>
+                  {entryIntent === "trial"
+                    ? "Create your account first, then Stripe will securely collect your card for the free 7-day trial."
+                    : "Continue with Google or email to get into ClearTill."}
+                </p>
+                <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
+                  {signingIn ? "Opening Google..." : "Continue with Google"}
+                </button>
+                <div className="auth-divider" aria-hidden="true"><span>or</span></div>
+                <div className="auth-mode-row">
+                  <button
+                    className={`secondary-button${authMode === "signin" ? " is-active" : ""}`}
+                    type="button"
+                    onClick={() => setAuthMode("signin")}
+                    disabled={signingIn}
+                  >
+                    Sign in with email
+                  </button>
+                  <button
+                    className={`secondary-button${authMode === "signup" ? " is-active" : ""}`}
+                    type="button"
+                    onClick={() => setAuthMode("signup")}
+                    disabled={signingIn}
+                  >
+                    Create account
+                  </button>
+                </div>
+                <form className="auth-email-form" onSubmit={handleEmailAuth}>
+                  <input
+                    type="email"
+                    value={emailForm.email}
+                    onChange={(e) => setEmailForm((f) => ({ ...f, email: e.target.value }))}
+                    placeholder="Email"
+                    autoComplete="email"
+                    disabled={signingIn}
+                  />
+                  <input
+                    type="password"
+                    value={emailForm.password}
+                    onChange={(e) => setEmailForm((f) => ({ ...f, password: e.target.value }))}
+                    placeholder="Password"
+                    autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                    disabled={signingIn}
+                  />
+                  <div className="auth-button-row">
+                    <button className="primary-button" type="submit" disabled={signingIn}>
+                      {signingIn ? "Continuing..." : authMode === "signup" ? "Create account to continue" : "Continue with email"}
+                    </button>
+                  </div>
+                </form>
+                {authError ? <p className="error">{authError}</p> : null}
+              </div>
+            ) : (
+              <p className="helper-text">{signingIn ? "Starting secure guest access…" : "One moment…"}</p>
+            )
           )}
         </section>
       </main>

@@ -53,3 +53,18 @@ test("dashboard presents the result before the trial CTA copy", () => {
   assert.match(source, /charges £0 now, bills £1\.99 after the 7-day trial, then charges monthly unless you cancel/);
   assert.match(source, /Save this result with Google or email first/);
 });
+
+test("trial signup continues directly from account creation to Stripe", () => {
+  const source = read("app/dashboard/page.jsx");
+  assert.match(source, /entryIntent === "trial"/);
+  assert.match(source, /startTrialCheckoutForUser\(credential\.user\)/);
+  assert.match(source, /billing\/subscribe\/success\?session_id=\{CHECKOUT_SESSION_ID\}/);
+});
+
+test("subscription success securely confirms Stripe ownership and activates access", () => {
+  const source = read("app/api/stripe/confirm-subscription/route.js");
+  assert.match(source, /verifyRequestUser/);
+  assert.match(source, /session\.metadata\?\.firebaseUid !== user\.uid/);
+  assert.match(source, /session\.status !== "complete"/);
+  assert.match(source, /syncStripeSubscriptionToFirestore/);
+});

@@ -28,7 +28,7 @@ export async function POST(request) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const successPath = String(body?.successPath || "/dashboard?checkout=success");
+    const successPath = String(body?.successPath || "/billing/subscribe/success?session_id={CHECKOUT_SESSION_ID}");
     const cancelPath = String(body?.cancelPath || "/dashboard?checkout=cancelled");
     const stripe = getStripeClient();
     const { subscription } = await getSubscriptionState(decodedToken.uid);

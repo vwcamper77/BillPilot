@@ -127,6 +127,17 @@ button {
   z-index: 2;
 }
 
+.home-signin-error {
+  position: absolute;
+  top: 60px;
+  right: 0;
+  margin: 0;
+  max-width: 260px;
+  color: var(--warn);
+  font-size: 0.85rem;
+  text-align: right;
+}
+
 .home-hero-eyebrow {
   margin-bottom: 0;
   font-size: 0.88rem;

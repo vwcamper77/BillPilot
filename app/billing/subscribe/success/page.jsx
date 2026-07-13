@@ -1,3 +1,20 @@
-import Link from "next/link";
-export default function SubscriptionSuccessPage() { return <main className="account-shell"><section className="account-panel"><h1>Your trial is being activated</h1><p>Stripe’s verified billing update activates access. This page alone does not grant access.</p><Link className="primary-button" href="/dashboard">Open ClearTill</Link><Link className="secondary-button" href="/account">Manage account</Link></section></main>; }
+import Logo from "@/components/Logo";
+import SubscriptionActivation from "./SubscriptionActivation";
 
+export const metadata = {
+  title: "Trial started | ClearTill",
+};
+
+export default async function SubscriptionSuccessPage({ searchParams }) {
+  const params = await searchParams;
+  const sessionId = String(params?.session_id || "").trim();
+
+  return (
+    <main className="account-shell">
+      <section className="account-panel">
+        <Logo className="eyebrow-logo" />
+        <SubscriptionActivation sessionId={sessionId} />
+      </section>
+    </main>
+  );
+}
