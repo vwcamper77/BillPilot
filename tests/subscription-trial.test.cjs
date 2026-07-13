@@ -56,6 +56,9 @@ test("dashboard presents the result before the trial CTA copy", () => {
 
 test("trial signup continues directly from account creation to Stripe", () => {
   const source = read("app/dashboard/page.jsx");
+  const directAuthDeclaration = source.indexOf("const shouldUseDirectAuthEntry");
+  const directAuthEffect = source.indexOf("if (shouldUseDirectAuthEntry)");
+  assert.ok(directAuthDeclaration > -1 && directAuthDeclaration < directAuthEffect);
   assert.match(source, /entryIntent === "trial"/);
   assert.match(source, /startTrialCheckoutForUser\(credential\.user\)/);
   assert.match(source, /billing\/subscribe\/success\?session_id=\{CHECKOUT_SESSION_ID\}/);

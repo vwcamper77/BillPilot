@@ -166,6 +166,7 @@ export default function DashboardPage() {
 
     return String(new URLSearchParams(window.location.search).get("intent") || "").toLowerCase();
   });
+  const shouldUseDirectAuthEntry = entryAuthMode === "signup" || entryAuthMode === "signin";
   const [emailForm, setEmailForm] = useState({ email: "", password: "" });
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
@@ -723,7 +724,6 @@ export default function DashboardPage() {
   const importButtonLabel = getImportButtonLabel(isImporting, currentImportStep, importJobs, currentImportJobId);
   const setupMessage = getSetupMessage(setupStep);
   const showSetupCard = setupStep < 4 || !setupDismissed;
-  const shouldUseDirectAuthEntry = entryAuthMode === "signup" || entryAuthMode === "signin";
   const shouldShowGuestFallback = showGuestAuthFallback || shouldUseDirectAuthEntry;
   const firestoreDiagnostics = {
     uid: auth?.currentUser?.uid || user?.uid || "none",
