@@ -19,6 +19,7 @@ import {
 } from "firebase/firestore";
 import {
   EmailAuthProvider,
+  beforeAuthStateChanged,
   createUserWithEmailAndPassword,
   linkWithCredential,
   linkWithPopup,
@@ -86,6 +87,29 @@ function getIncomeStatusText(income, currency = "GBP") {
 const BILLS_PER_PAGE = 6;
 const BALANCE_HELPER_TEXT = "This is just the money currently available in your account, so ClearTill can show today’s cash position after bills.";
 const BALANCE_MISSING_FORECAST_COPY = "Add your current available money to see today’s exact cash forecast.";
+const FIRESTORE_PERMISSION_ERROR_COPY = "ClearTill could not save this yet. Refresh the page and try again.";
+
+function isFirestorePermissionError(error) {
+  return error?.code === "permission-denied" || error?.code === "firestore/permission-denied";
+}
+
+function customerSafeFirestoreError(error, fallback) {
+  return isFirestorePermissionError(error) ? FIRESTORE_PERMISSION_ERROR_COPY : fallback;
+}
+
+function logFirestoreError(context, error, userUid) {
+  const code = error?.code || "unknown";
+  safeError(context, { code });
+
+  if (process.env.NODE_ENV !== "production") {
+    console.info("[firestore-diagnostic]", {
+      "user.uid": userUid || null,
+      "auth.currentUser.uid": auth?.currentUser?.uid || null,
+      projectId: firebaseApp?.options?.projectId || null,
+      code,
+    });
+  }
+}
 
 export default function DashboardPage() {
   const recognitionRef = useRef(null);
@@ -104,6 +128,7 @@ export default function DashboardPage() {
   const billsRef = useRef([]);
   const [user, setUser] = useState(null);
   const [authReady, setAuthReady] = useState(false);
+  const [authStateChanging, setAuthStateChanging] = useState(Boolean(auth));
   const [bills, setBills] = useState([]);
   const [largeCosts, setLargeCosts] = useState([]);
   const [savings, setSavings] = useState(null);
@@ -237,11 +262,17 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!auth) {
       setAuthReady(true);
+      setAuthStateChanging(false);
       return undefined;
     }
 
     let isMounted = true;
     let unsubscribe = () => undefined;
+    const unsubscribeBeforeAuthChange = beforeAuthStateChanged(auth, () => {
+      if (isMounted) {
+        setAuthStateChanging(true);
+      }
+    });
 
     authPersistenceReady.finally(() => {
       if (!isMounted) {
@@ -251,12 +282,14 @@ export default function DashboardPage() {
       unsubscribe = onAuthStateChanged(auth, (currentUser) => {
         setUser(currentUser);
         setAuthReady(true);
+        setAuthStateChanging(false);
         setSigningIn(false);
       });
     });
 
     return () => {
       isMounted = false;
+      unsubscribeBeforeAuthChange();
       unsubscribe();
     };
   }, []);
@@ -423,7 +456,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!entryParamsReady || !user || !db || entryIntent === "trial" || (shouldUseDirectAuthEntry && user.isAnonymous)) {
+    if (!entryParamsReady || !user || !db || authStateChanging || auth?.currentUser?.uid !== user.uid || entryIntent === "trial" || (shouldUseDirectAuthEntry && user.isAnonymous)) {
       setBills([]);
       setLargeCosts([]);
       setSavings(null);
@@ -448,9 +481,16 @@ export default function DashboardPage() {
       where("active", "==", true),
     );
 
+    const handleSnapshotError = (source, showBalanceError = false) => (snapshotError) => {
+      logFirestoreError(`[firestore-${source}-snapshot] failed`, snapshotError, user.uid);
+      if (showBalanceError && isFirestorePermissionError(snapshotError)) {
+        setBalanceError(FIRESTORE_PERMISSION_ERROR_COPY);
+      }
+    };
+
     const unsubscribeBills = onSnapshot(billsQuery, (snapshot) => {
       setBills(snapshot.docs.map((billDoc) => ({ id: billDoc.id, ...billDoc.data() })));
-    });
+    }, handleSnapshotError("bills"));
     const unsubscribeIncome = onSnapshot(doc(db, "users", user.uid, "income", "main"), (snapshot) => {
       const loadedIncome = snapshot.exists() ? snapshot.data() : null;
       if (loadedIncome && !isValidDueDay(loadedIncome.payDay)) {
@@ -463,30 +503,30 @@ export default function DashboardPage() {
         amount: nextIncome?.amount === null || nextIncome?.amount === undefined ? "" : String(nextIncome.amount),
         payDay: nextIncome?.payDay === null || nextIncome?.payDay === undefined ? "" : String(nextIncome.payDay),
       });
-    });
+    }, handleSnapshotError("income"));
     const unsubscribeAccount = onSnapshot(balanceDocRef, (snapshot) => {
       const nextAccount = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setAccount(nextAccount);
       setOptimisticBalance(null);
       setBalanceInput(nextAccount?.currentBalance?.toString() || "");
-    });
+    }, handleSnapshotError("balance", true));
     const unsubscribeLargeCosts = onSnapshot(largeCostsQuery, (snapshot) => {
       setLargeCosts(snapshot.docs.map((costDoc) => ({ id: costDoc.id, ...costDoc.data() })));
-    });
+    }, handleSnapshotError("large-costs"));
     const unsubscribeSavings = onSnapshot(doc(db, "users", user.uid, "settings", "savings"), (snapshot) => {
       const nextSavings = snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
       setSavings(nextSavings);
       setSavingsInput(nextSavings?.totalSetAside === undefined || nextSavings?.totalSetAside === null ? "" : String(nextSavings.totalSetAside));
-    });
+    }, handleSnapshotError("savings"));
     const unsubscribeReminders = onSnapshot(remindersQuery, (snapshot) => {
       setReminders(snapshot.docs.map((reminderDoc) => ({ id: reminderDoc.id, ...reminderDoc.data() })));
-    });
+    }, handleSnapshotError("reminders"));
     const unsubscribePreferences = onSnapshot(doc(db, "users", user.uid, "settings", "preferences"), (snapshot) => {
       if (snapshot.exists()) {
         const prefs = snapshot.data();
         if (prefs.currency) setDisplayCurrency(prefs.currency);
       }
-    });
+    }, handleSnapshotError("preferences"));
 
     return () => {
       unsubscribeBills();
@@ -497,7 +537,7 @@ export default function DashboardPage() {
       unsubscribeReminders();
       unsubscribePreferences();
     };
-  }, [entryIntent, entryParamsReady, shouldUseDirectAuthEntry, user]);
+  }, [authStateChanging, entryIntent, entryParamsReady, shouldUseDirectAuthEntry, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1528,8 +1568,20 @@ export default function DashboardPage() {
     return { skipped: false };
   }
 
+  function getAuthenticatedWriteUid() {
+    const authenticatedUid = auth?.currentUser?.uid;
+
+    if (!authReady || authStateChanging || !user?.uid || !authenticatedUid || authenticatedUid !== user.uid) {
+      return null;
+    }
+
+    return auth.currentUser.uid;
+  }
+
   async function handleSkipBalance() {
-    if (!user) {
+    const authenticatedUid = getAuthenticatedWriteUid();
+    if (!authenticatedUid) {
+      setBalanceError(FIRESTORE_PERMISSION_ERROR_COPY);
       return;
     }
 
@@ -1545,16 +1597,19 @@ export default function DashboardPage() {
       createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
     };
 
-    void setDoc(doc(db, "users", user.uid, "settings", "balance"), payload, { merge: true })
+    void setDoc(doc(db, "users", authenticatedUid, "settings", "balance"), payload, { merge: true })
       .catch((saveError) => {
-        safeError("[firestore-balance-skip] failed", { code: saveError?.code });
+        logFirestoreError("[firestore-balance-skip] failed", saveError, user.uid);
+        setBalanceError(customerSafeFirestoreError(saveError, "Current available money could not be skipped."));
       });
   }
 
   async function handleBalanceSave(event) {
     event.preventDefault();
 
-    if (!user) {
+    const authenticatedUid = getAuthenticatedWriteUid();
+    if (!authenticatedUid) {
+      setBalanceError(FIRESTORE_PERMISSION_ERROR_COPY);
       return;
     }
 
@@ -1573,9 +1628,10 @@ export default function DashboardPage() {
         createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
       };
 
-      void setDoc(doc(db, "users", user.uid, "settings", "balance"), payload, { merge: true })
+      void setDoc(doc(db, "users", authenticatedUid, "settings", "balance"), payload, { merge: true })
         .catch((saveError) => {
-          safeError("[firestore-balance-save] failed", { code: saveError?.code });
+          logFirestoreError("[firestore-balance-save] failed", saveError, user.uid);
+          setBalanceError(customerSafeFirestoreError(saveError, "Current available money could not be saved."));
         });
       return;
     }
@@ -1595,7 +1651,7 @@ export default function DashboardPage() {
     setPageNotice("");
     setOptimisticBalance(parsedBalance);
     setBalanceInput(parsedBalance.toString());
-    setSavingBalance(false);
+    setSavingBalance(true);
     setPageNotice(`Current available money updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
 
     const payload = {
@@ -1607,7 +1663,7 @@ export default function DashboardPage() {
     };
 
     void setDoc(
-      doc(db, "users", user.uid, "settings", "balance"),
+      doc(db, "users", authenticatedUid, "settings", "balance"),
       payload,
       { merge: true },
     )
@@ -1633,10 +1689,15 @@ export default function DashboardPage() {
           return;
         }
 
-        safeError("[firestore-balance-save] failed", { code: saveError?.code });
+        logFirestoreError("[firestore-balance-save] failed", saveError, user.uid);
         setOptimisticBalance(null);
         setPageNotice("");
-        setBalanceError(saveError.message || "Current available money could not be saved.");
+        setBalanceError(customerSafeFirestoreError(saveError, "Current available money could not be saved."));
+      })
+      .finally(() => {
+        if (balanceSaveRequestRef.current === saveRequestId) {
+          setSavingBalance(false);
+        }
       });
   }
 
@@ -1703,7 +1764,7 @@ export default function DashboardPage() {
       setPageNotice("Bill updated.");
     } catch (saveError) {
       safeError("[firestore-bill-save] failed", { code: saveError?.code });
-      setEditError(saveError.message);
+      setEditError(customerSafeFirestoreError(saveError, "Could not save that bill. Try again."));
     } finally {
       setSavingEdit(false);
     }
@@ -1773,7 +1834,7 @@ export default function DashboardPage() {
       setOptimisticIncome(null);
       setEditingIncome(true);
       setPageNotice("");
-      setEditError(saveError.message);
+      setEditError(customerSafeFirestoreError(saveError, "Could not save your pay date. Try again."));
     } finally {
       setSavingEdit(false);
     }
@@ -2167,7 +2228,7 @@ export default function DashboardPage() {
             : entry
         )));
         setPageNotice("");
-        setEditError(saveError.message || "Could not reactivate that bill.");
+        setEditError(customerSafeFirestoreError(saveError, "Could not reactivate that bill."));
       }
       return;
     }
@@ -2214,7 +2275,7 @@ export default function DashboardPage() {
           : entry
       )));
       setPageNotice("");
-      setEditError(saveError.message || "Could not mark that bill as paid.");
+      setEditError(customerSafeFirestoreError(saveError, "Could not mark that bill as paid."));
     }
   }
 
@@ -2378,7 +2439,7 @@ export default function DashboardPage() {
         clearImports({ preserveAssistantMessage: true });
       }
     } catch (saveError) {
-      setChatError(saveError.message || "Could not save that bill yet.");
+      setChatError(customerSafeFirestoreError(saveError, "Could not save that bill yet."));
     } finally {
       setSubmitting(false);
     }
@@ -2502,7 +2563,7 @@ export default function DashboardPage() {
       resetLargeCostForm();
     } catch (saveError) {
       safeError("[firestore-large-cost-save] failed", { code: saveError?.code });
-      setLargeCostError(saveError.message || "Could not save that large cost.");
+      setLargeCostError(customerSafeFirestoreError(saveError, "Could not save that large cost."));
     } finally {
       setSavingLargeCost(false);
     }
@@ -2593,7 +2654,7 @@ export default function DashboardPage() {
       );
       setPageNotice("Savings not assigned to a big cost updated.");
     } catch (saveError) {
-      setSavingsError(saveError.message || "Could not save your extra savings.");
+      setSavingsError(customerSafeFirestoreError(saveError, "Could not save your extra savings."));
     } finally {
       setSavingSavings(false);
     }
@@ -3319,18 +3380,18 @@ export default function DashboardPage() {
                     id="account-balance"
                     inputMode="decimal"
                     value={balanceInput}
-                    disabled={importLocked}
+                    disabled={importLocked || savingBalance || authStateChanging}
                     onChange={(event) => setBalanceInput(event.target.value)}
                     placeholder="Current available money"
                   />
-                  <button className="secondary-button" type="submit" disabled={importLocked}>
+                  <button className="secondary-button" type="submit" disabled={importLocked || savingBalance || authStateChanging}>
                     Update
                   </button>
                 </div>
               </div>
             </form>
             <p className="helper-text balance-copy" style={{ marginTop: "8px" }}>{BALANCE_HELPER_TEXT}</p>
-            <button className="secondary-button small-button" type="button" onClick={handleSkipBalance} disabled={importLocked} style={{ marginTop: "8px" }}>
+            <button className="secondary-button small-button" type="button" onClick={handleSkipBalance} disabled={importLocked || savingBalance || authStateChanging} style={{ marginTop: "8px" }}>
               Skip for now
             </button>
             {hasBalanceSnapshot ? (

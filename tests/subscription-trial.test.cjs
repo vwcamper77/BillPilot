@@ -291,3 +291,55 @@ test("founding-member entitlement flow stays isolated and email enumeration copy
   assert.match(founding, /pendingEntitlements/);
   assert.match(founding, /FOUNDING_PLAN/);
 });
+
+test("Firebase deployment config points at the checked-in Firestore rules", () => {
+  const config = JSON.parse(read("firebase.json"));
+  assert.deepEqual(config, { firestore: { rules: "firestore.rules" } });
+});
+
+test("Firestore rules allow only the requested owner data paths and protect billing settings", () => {
+  const rules = read("firestore.rules");
+  assert.match(rules, /function isOwner\(userId\)[\s\S]*?request\.auth != null && request\.auth\.uid == userId/);
+  assert.match(rules, /match \/users\/\{userId\} \{[\s\S]*?allow read, write: if isOwner\(userId\)/);
+  assert.match(rules, /match \/users\/\{userId\}\/settings\/\{settingId\}[\s\S]*?\["balance", "preferences", "savings"\]/);
+  for (const collectionName of ["income", "bills", "largeCosts", "reminders"]) {
+    assert.match(rules, new RegExp(`match \\/users\\/\\{userId\\}\\/${collectionName}\\/\\{[^}]+\\} \\{[\\s\\S]*?allow read, write: if isOwner\\(userId\\)`));
+  }
+  const billingRule = between(rules, "match /users/{userId}/settings/billing", "match /users/{userId}/income");
+  assert.match(billingRule, /allow read: if isOwner\(userId\)/);
+  assert.match(billingRule, /allow write: if false/);
+  assert.doesNotMatch(billingRule, /allow read, write/);
+});
+
+test("balance saves use the authenticated UID only after auth identity is stable", () => {
+  const source = read("app/dashboard/page.jsx");
+  const balanceFlow = between(source, "function getAuthenticatedWriteUid", "function startBillEdit");
+  assert.match(balanceFlow, /const authenticatedUid = auth\?\.currentUser\?\.uid/);
+  assert.match(balanceFlow, /authStateChanging[\s\S]*?authenticatedUid !== user\.uid/);
+  assert.match(balanceFlow, /return auth\.currentUser\.uid/);
+  assert.equal((balanceFlow.match(/doc\(db, "users", authenticatedUid, "settings", "balance"\)/g) || []).length, 3);
+  assert.doesNotMatch(balanceFlow, /doc\(db, "users", user\.uid, "settings", "balance"\)/);
+  assert.match(source, /beforeAuthStateChanged\(auth,[\s\S]*?setAuthStateChanging\(true\)/);
+});
+
+test("permission-denied balance failures show only customer-friendly copy", () => {
+  const source = read("app/dashboard/page.jsx");
+  const balanceFlow = between(source, "function getAuthenticatedWriteUid", "function startBillEdit");
+  assert.match(source, /ClearTill could not save this yet\. Refresh the page and try again\./);
+  assert.match(source, /error\?\.code === "permission-denied" \|\| error\?\.code === "firestore\/permission-denied"/);
+  assert.match(balanceFlow, /customerSafeFirestoreError\(saveError, "Current available money could not be saved\."\)/);
+  assert.doesNotMatch(balanceFlow, /saveError\.message|Missing or insufficient permissions/);
+});
+
+test("dashboard snapshot listener errors are handled and safely diagnosed", () => {
+  const source = read("app/dashboard/page.jsx");
+  const listeners = between(source, "const handleSnapshotError", "return () => {");
+  for (const listenerName of ["bills", "income", "balance", "large-costs", "savings", "reminders", "preferences"]) {
+    assert.match(listeners, new RegExp(`handleSnapshotError\\("${listenerName}"`));
+  }
+  assert.match(source, /safeError\(context, \{ code \}\)/);
+  assert.match(source, /process\.env\.NODE_ENV !== "production"/);
+  assert.match(source, /"user\.uid": userUid \|\| null/);
+  assert.match(source, /"auth\.currentUser\.uid": auth\?\.currentUser\?\.uid \|\| null/);
+  assert.match(source, /projectId: firebaseApp\?\.options\?\.projectId \|\| null/);
+});
