@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import AdminFoundingAccessForm from "@/components/AdminFoundingAccessForm";
@@ -55,6 +55,7 @@ export default function AccountPage() {
   const [billingLoading, setBillingLoading] = useState(false);
   const [billingResolvedUid, setBillingResolvedUid] = useState("");
   const [billingError, setBillingError] = useState("");
+  const [secureLinkResend, setSecureLinkResend] = useState({ busy: false, sent: false, error: "" });
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAnalyticsAdmin, setIsAnalyticsAdmin] = useState(false);
 
@@ -170,23 +171,33 @@ export default function AccountPage() {
   }, [user]);
 
   const dialogConfig = dialogAction ? ACCOUNT_DIALOGS[dialogAction] : null;
-  const signedInLabel = useMemo(() => {
-    if (!user) return "";
-    if (user.isAnonymous) return "Temporary guest profile";
-    return user.email || user.displayName || "Signed in";
-  }, [user]);
   const subscriptionStatus = subscription?.subscriptionStatus || entitlement?.subscriptionStatus || "";
   const billingReady = Boolean(user && billingResolvedUid === user.uid);
   const hasCurrentBillingAccess = ["trialing", "active"].includes(subscriptionStatus) || Boolean(entitlement?.hasFullAccess);
   const hasPendingClaim = Boolean(user?.isAnonymous && claim?.claimStatus === "pending");
   const isAccountSecured = Boolean(!user?.isAnonymous || claim?.claimStatus === "claimed");
-  const accountAccessLabel = !billingReady
-    ? "Checking account security…"
-    : isAccountSecured
-    ? "Account secured"
-    : hasPendingClaim
-    ? "Not yet secured for another device"
-    : "Current browser only";
+  const secureAccessEmail = claim?.maskedEmail || subscription?.customerEmail || user?.email || "your billing email";
+
+  async function handleResendSecureLink() {
+    if (!auth?.currentUser || !claim?.checkoutIntentId) return;
+    setSecureLinkResend({ busy: true, sent: false, error: "" });
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      const response = await fetch("/api/trial-claim/resend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ checkoutIntentId: claim.checkoutIntentId }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not resend the secure link.");
+      setSecureLinkResend({ busy: false, sent: true, error: "" });
+    } catch (error) {
+      setSecureLinkResend({ busy: false, sent: false, error: error?.message || "Could not resend the secure link." });
+    }
+  }
 
   async function handleExportData() {
     if (!auth?.currentUser) {
@@ -329,7 +340,7 @@ export default function AccountPage() {
       <main className="account-shell">
         <section className="account-panel">
           <Logo className="eyebrow-logo" />
-          <h1>Firebase is not configured.</h1>
+          <h1>ClearTill account services are not configured.</h1>
         </section>
       </main>
     );
@@ -341,7 +352,7 @@ export default function AccountPage() {
         <section className="account-panel">
           <Logo className="eyebrow-logo" />
           <h1>Sign in to manage your account.</h1>
-          <p className="helper-text">Open your dashboard to sign in or continue as a guest first.</p>
+          <p className="helper-text">Open your dashboard to sign in or continue setting up.</p>
           <div className="topbar-actions">
             <Link className="secondary-button" href="/dashboard">Go to dashboard</Link>
             <Link className="secondary-button" href="/">Back to home</Link>
@@ -375,74 +386,80 @@ export default function AccountPage() {
 
       <div className="account-stack">
         <section className="account-panel">
-          <p className="account-section-label">Account</p>
-          <h2 className="account-heading">Signed in as</h2>
-          <p className="account-identity">{signedInLabel}</p>
-          <p className="account-section-label" style={{ marginTop: "18px" }}>Account access</p>
-          <p className="account-identity">{accountAccessLabel}</p>
-          {hasPendingClaim ? (
-            <div className="page-notice" style={{ marginTop: "12px", marginBottom: 0, fontWeight: 400 }}>
-              <p className="account-section-label">Trial active</p>
-              <strong>Account security pending</strong>
+          <p className="account-section-label">Your account</p>
+          {!billingReady ? <p className="helper-text" role="status">Loading your account…</p> : null}
+          {billingReady && hasPendingClaim ? (
+            <div style={{ display: "grid", gap: "10px" }}>
+              <h2 className="account-heading">Secure access link sent</h2>
               <p className="helper-text">
-                Your trial and current-browser access are active. Open the secure link sent to {claim.maskedEmail} to sign in on another device. You can continue onboarding in this browser.
+                Your ClearTill trial is active and your information is available on this device.
               </p>
-              <Link className="secondary-button" href="/dashboard#secure-access">Return to secure-access notice</Link>
+              <div>
+                <p className="helper-text">We sent a secure sign-in link to:</p>
+                <p className="account-identity" style={{ marginTop: "4px" }}>{secureAccessEmail}</p>
+              </div>
+              <p className="helper-text">Use the link to access ClearTill on another device.</p>
+              <div>
+                <button
+                  type="button"
+                  onClick={handleResendSecureLink}
+                  disabled={secureLinkResend.busy}
+                  style={{ border: 0, background: "none", color: "var(--accent-dark)", cursor: secureLinkResend.busy ? "wait" : "pointer", padding: "4px 0", textDecoration: "underline" }}
+                >
+                  {secureLinkResend.busy ? "Resending…" : "Resend secure link"}
+                </button>
+              </div>
+              {secureLinkResend.sent ? <p className="helper-text billing-success">Secure link sent.</p> : null}
+              {secureLinkResend.error ? <p className="error" role="alert">{secureLinkResend.error}</p> : null}
             </div>
-          ) : (
-            <p className="helper-text">
-              {!isAccountSecured
-                ? "Your ClearTill data is available in this browser."
-                : `Verified Firebase email: ${user.email || "Signed-in account"}.`}
-            </p>
-          )}
+          ) : null}
+          {billingReady && isAccountSecured ? (
+            <div style={{ display: "grid", gap: "8px" }}>
+              <h2 className="account-heading">Account secured</h2>
+              <p className="helper-text">Signed in with {user.email || subscription?.customerEmail || "your email"}</p>
+            </div>
+          ) : null}
+          {billingReady && !hasPendingClaim && !isAccountSecured ? (
+            <div style={{ display: "grid", gap: "8px" }}>
+              <h2 className="account-heading">Your information is available on this device</h2>
+              <p className="helper-text">Return to your dashboard whenever you&apos;re ready to continue.</p>
+            </div>
+          ) : null}
           <p className="legal-company-note">ClearTill is a product from GMBF Ventures Ltd.</p>
         </section>
 
         <section className="account-panel">
-          <p className="account-section-label">Billing access</p>
+          <p className="account-section-label">Your subscription</p>
           {!billingReady || billingLoading ? <p className="helper-text" role="status">Loading billing status…</p> : null}
           {billingReady && !billingLoading && billingError ? <p className="error" role="alert">{billingError}</p> : null}
-          {billingReady && !billingLoading && !billingError ? (
-            <div className="account-action-list">
-              <div className="account-row">
-                <div>
-                  <strong>Plan</strong>
-                  <span>{hasCurrentBillingAccess ? "ClearTill monthly — £1.99" : "No active subscription"}</span>
-                </div>
+          {billingReady && !billingLoading && !billingError && subscriptionStatus === "trialing" ? (
+            <div style={{ display: "grid", gap: "12px" }}>
+              <h2 className="account-heading">7-day free trial</h2>
+              <div className="helper-text" style={{ display: "grid", gap: "6px" }}>
+                <span>£0 charged today</span>
+                <span>£1.99 on {formatDate(subscription?.trialEnd)}</span>
+                <span>Then £1.99 monthly</span>
+                <span>Billing email: {subscription?.customerEmail || user.email || "—"}</span>
               </div>
-              <div className="account-row">
-                <div>
-                  <strong>Status</strong>
-                  <span>{subscriptionStatus === "trialing" ? "7-day trial active" : subscriptionStatus === "active" ? "Subscription active" : entitlement?.hasFullAccess ? "Access active" : "Subscription inactive"}</span>
-                </div>
+              {entitlement?.canManageSubscription ? <div><ManageSubscriptionButton /></div> : null}
+            </div>
+          ) : null}
+          {billingReady && !billingLoading && !billingError && subscriptionStatus === "active" ? (
+            <div style={{ display: "grid", gap: "12px" }}>
+              <h2 className="account-heading">ClearTill monthly</h2>
+              <div className="helper-text" style={{ display: "grid", gap: "6px" }}>
+                <span>£1.99 per month</span>
+                <span>{subscription?.cancelAtPeriodEnd ? "Access ends" : "Next payment"}: {formatDate(subscription?.currentPeriodEnd)}</span>
+                <span>Billing email: {subscription?.customerEmail || user.email || "—"}</span>
               </div>
-              {subscriptionStatus === "trialing" ? (
-                <>
-                  <div className="account-row"><div><strong>Amount charged today</strong><span>£0.00</span></div></div>
-                  <div className="account-row"><div><strong>First payment</strong><span>£1.99 on {formatDate(subscription?.trialEnd)}</span></div></div>
-                </>
-              ) : null}
-              {subscriptionStatus === "active" ? (
-                <div className="account-row">
-                  <div>
-                    <strong>{subscription?.cancelAtPeriodEnd ? "Current period ends" : "Next renewal"}</strong>
-                    <span>{formatDate(subscription?.currentPeriodEnd)}</span>
-                  </div>
-                </div>
-              ) : null}
-              {hasCurrentBillingAccess ? (
-                <>
-                  <div className="account-row"><div><strong>Billing email</strong><span>{subscription?.customerEmail || user.email || "—"}</span></div></div>
-                  {subscription?.latestInvoiceStatus ? (
-                    <div className="account-row"><div><strong>Latest invoice</strong><span>{friendlyInvoiceStatus(subscription.latestInvoiceStatus)}</span></div></div>
-                  ) : null}
-                  <div className="account-row"><div><strong>Access source</strong><span>{entitlement?.accessSource === "stripe" ? "Stripe subscription" : "ClearTill entitlement"}</span></div></div>
-                </>
-              ) : null}
-              {entitlement?.canManageSubscription ? (
-                <div className="account-row"><div><strong>Subscription</strong><span>Update payment details, view invoices or cancel in Stripe.</span></div><ManageSubscriptionButton /></div>
-              ) : null}
+              {entitlement?.canManageSubscription ? <div><ManageSubscriptionButton /></div> : null}
+            </div>
+          ) : null}
+          {billingReady && !billingLoading && !billingError && !["trialing", "active"].includes(subscriptionStatus) ? (
+            <div style={{ display: "grid", gap: "10px" }}>
+              <h2 className="account-heading">{hasCurrentBillingAccess ? "ClearTill access" : "No active subscription"}</h2>
+              {hasCurrentBillingAccess ? <p className="helper-text">Your ClearTill access is active.</p> : null}
+              {entitlement?.canManageSubscription ? <div><ManageSubscriptionButton /></div> : null}
             </div>
           ) : null}
         </section>
@@ -606,10 +623,4 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(date);
-}
-
-function friendlyInvoiceStatus(status) {
-  return String(status || "")
-    .replaceAll("_", " ")
-    .replace(/^./, (character) => character.toUpperCase());
 }
