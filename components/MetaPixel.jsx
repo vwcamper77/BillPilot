@@ -7,7 +7,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
 
 export function track(event, params = {}, eventID) {
-  if (typeof window === "undefined" || typeof window.fbq !== "function") {
+  if (typeof window === "undefined" || window.__CLEARTILL_INTERNAL_ANALYTICS__ || typeof window.fbq !== "function") {
     return;
   }
 
@@ -23,7 +23,7 @@ function PixelPageviews() {
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof window.fbq !== "function") {
+    if (typeof window === "undefined" || window.__CLEARTILL_INTERNAL_ANALYTICS__ || typeof window.fbq !== "function") {
       return;
     }
 

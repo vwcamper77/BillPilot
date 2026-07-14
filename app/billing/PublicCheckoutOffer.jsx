@@ -4,6 +4,7 @@ import { useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth, authPersistenceReady } from "@/lib/firebase";
 import { trackGa4Event, getGaClientId } from "@/lib/analytics/ga4";
+import { getStoredAttributionBundle } from "@/lib/analytics/attribution";
 
 /** Resolves with the first restored auth user (or null), not just whatever
  * auth.currentUser happens to be synchronously right now — Firebase restores
@@ -47,7 +48,7 @@ export default function PublicCheckoutOffer() {
       const response = await fetch("/api/stripe/public-checkout", {
         method: "POST",
         headers,
-        body: JSON.stringify({ gaClientId: getGaClientId() }),
+        body: JSON.stringify({ gaClientId: getGaClientId(), attribution: getStoredAttributionBundle() }),
       });
 
       const payload = await response.json().catch(() => ({}));

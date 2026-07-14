@@ -55,8 +55,10 @@ import {
 } from "@/lib/billMath";
 import { analyseCsvText } from "@/lib/csvBillFinder";
 import { trackClientAnalyticsEvent } from "@/lib/clientAnalytics";
+import { getStoredAttributionBundle } from "@/lib/analytics/attribution";
 import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clientSecurity";
 import { safeError, safeWarn } from "@/lib/security/safeLog";
+import { postDashboardSettingsAction } from "@/app/dashboard/lib/dashboardApi";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
 
@@ -120,6 +122,7 @@ export default function DashboardPage() {
   const messageInputRef = useRef(null);
   const balanceSectionRef = useRef(null);
   const balanceInputRef = useRef(null);
+  const primaryResultRef = useRef(null);
   const paydaySectionRef = useRef(null);
   const paydaySettingsSectionRef = useRef(null);
   const paydayAmountInputRef = useRef(null);
@@ -233,6 +236,9 @@ export default function DashboardPage() {
   const [savingSavings, setSavingSavings] = useState(false);
   const [savingsError, setSavingsError] = useState("");
   const [highlightBalanceForm, setHighlightBalanceForm] = useState(false);
+  const [highlightPrimaryResult, setHighlightPrimaryResult] = useState(false);
+  const [showBalanceEditor, setShowBalanceEditor] = useState(false);
+  const [balanceImpact, setBalanceImpact] = useState("");
   const [highlightPaydayForm, setHighlightPaydayForm] = useState(false);
   const [highlightAddBillForm, setHighlightAddBillForm] = useState(false);
   const [pendingSetupFocus, setPendingSetupFocus] = useState("");
@@ -452,7 +458,7 @@ export default function DashboardPage() {
   }, [billingError, user]);
 
   useEffect(() => {
-    void trackClientAnalyticsEvent("landing_page_viewed", {});
+    void trackClientAnalyticsEvent("ad_landing_view", {});
   }, []);
 
   useEffect(() => {
@@ -636,9 +642,10 @@ export default function DashboardPage() {
   const trialEnabled = Boolean(billingConfig.enabled);
   const subscriptionStatus = billingSubscription?.subscriptionStatus || billingEntitlement?.subscriptionStatus || "";
   const hasActiveSubscription = subscriptionStatus === "trialing" || subscriptionStatus === "active";
-  const hasPremiumAccess = !trialEnabled || Boolean(billingEntitlement?.hasFullAccess);
-  const shouldShowTrialOffer = trialEnabled && hasFirstResult && !hasPremiumAccess;
-  const shouldLockPremiumSections = trialEnabled && hasFirstResult && !hasPremiumAccess;
+  const hasPremiumAccess = !trialEnabled || Boolean(billingEntitlement?.hasAccess);
+  const shouldShowTrialOffer = trialEnabled && billingStatusReady && hasFirstResult && !hasPremiumAccess
+    && billingEntitlement?.reason === "no_entitlement";
+  const shouldLockPremiumSections = trialEnabled && billingStatusReady && hasFirstResult && !hasPremiumAccess;
   const setupStep = !hasBalanceSnapshot ? 1 : !hasPayday ? 2 : !hasBills ? 3 : 4;
 
   const allBillsForList = useMemo(() => {
@@ -1000,6 +1007,7 @@ export default function DashboardPage() {
           email: checkoutEmail,
           successPath: "/billing/subscribe/success?session_id={CHECKOUT_SESSION_ID}",
           cancelPath: "/dashboard?checkout=cancelled",
+          attribution: getStoredAttributionBundle(),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -1646,6 +1654,8 @@ export default function DashboardPage() {
     const saveRequestId = balanceSaveRequestRef.current + 1;
     balanceSaveRequestRef.current = saveRequestId;
     const shouldAdvanceToPayday = setupStep === 1;
+    const previousBalance = Number(account?.currentBalance);
+    const previousResult = spendingRoomUntilPayday;
 
     setBalanceError("");
     setPageNotice("");
@@ -1654,19 +1664,11 @@ export default function DashboardPage() {
     setSavingBalance(true);
     setPageNotice(`Current available money updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
 
-    const payload = {
+    void postDashboardSettingsAction("save_balance", {
       currentBalance: parsedBalance,
       currency: "GBP",
-      updatedAt: serverTimestamp(),
-      snapshotEnteredAt: serverTimestamp(),
-      createdAt: account?.id ? account.createdAt || serverTimestamp() : serverTimestamp(),
-    };
-
-    void setDoc(
-      doc(db, "users", authenticatedUid, "settings", "balance"),
-      payload,
-      { merge: true },
-    )
+      snapshotEntered: true,
+    })
       .then(() => {
         if (balanceSaveRequestRef.current !== saveRequestId) {
           return;
@@ -1682,7 +1684,26 @@ export default function DashboardPage() {
           return;
         }
 
-        setPageNotice(`Current available money saved: ${formatCurrency(parsedBalance, displayCurrency)}.`);
+        const balanceChanged = Number.isFinite(previousBalance) ? parsedBalance - previousBalance : null;
+        const nextResult = previousResult === null ? null : previousResult + (balanceChanged || 0);
+        const impact = balanceChanged === null || balanceChanged === 0 || nextResult === null
+          ? "Your dashboard result has been recalculated."
+          : previousResult < 0 && nextResult <= 0 && balanceChanged > 0
+            ? `Your shortfall reduced by ${formatCurrency(Math.min(Math.abs(previousResult), balanceChanged), displayCurrency)}.`
+            : balanceChanged > 0
+              ? `Your safe-to-spend amount increased by ${formatCurrency(balanceChanged, displayCurrency)}.`
+              : `Your safe-to-spend amount decreased by ${formatCurrency(Math.abs(balanceChanged), displayCurrency)}.`;
+        setPageNotice(Number.isFinite(previousBalance)
+          ? `Balance updated from ${formatCurrency(previousBalance, displayCurrency)} to ${formatCurrency(parsedBalance, displayCurrency)}.`
+          : `Balance updated to ${formatCurrency(parsedBalance, displayCurrency)}.`);
+        setBalanceImpact(impact);
+        setShowBalanceEditor(false);
+        setHighlightPrimaryResult(true);
+        window.setTimeout(() => {
+          primaryResultRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          primaryResultRef.current?.focus({ preventScroll: true });
+        }, 50);
+        window.setTimeout(() => setHighlightPrimaryResult(false), 1800);
       })
       .catch((saveError) => {
         if (balanceSaveRequestRef.current !== saveRequestId) {
@@ -2661,6 +2682,7 @@ export default function DashboardPage() {
   }
 
   function focusBalanceSnapshotForm() {
+    setShowBalanceEditor(true);
     balanceSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setHighlightBalanceForm(true);
     window.setTimeout(() => {
@@ -2719,12 +2741,11 @@ export default function DashboardPage() {
     }
 
     if (checkout === "success") {
-      setPageNotice("Your 7-day ClearTill trial has started. Stripe charged £0 today, will bill £1.99 after 7 days, then continue monthly unless you cancel.");
-      void trackClientAnalyticsEvent("trial_checkout_completed", { source: "stripe_redirect" });
+      setPageNotice("Checkout returned successfully. ClearTill is waiting for Stripe's signed confirmation before activating access.");
     }
 
     if (checkout === "cancelled") {
-      setPageNotice("Your trial has not started yet. Your result is still here when you're ready.");
+      setPageNotice("Checkout was cancelled. Your current ClearTill access has not changed.");
     }
 
     if (claim === "complete") {
@@ -3225,6 +3246,12 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
+      <div
+        ref={primaryResultRef}
+        className={highlightPrimaryResult ? "primary-result-highlight" : ""}
+        tabIndex={-1}
+        aria-live="polite"
+      >
       <HeroCard
         status={clearTillStatus}
         headline={(() => {
@@ -3248,6 +3275,39 @@ export default function DashboardPage() {
         trustLine="ClearTill Trust: No bank login • No Open Banking • You control your data"
         trustNote="Sensitive import data encrypted where supported."
       />
+      {balanceImpact ? <p className="balance-impact" role="status">{balanceImpact}</p> : null}
+      </div>
+
+      <div className="stat-chip-row" aria-label="Key figures">
+        <span className="stat-chip">
+          <strong>{hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "—"}</strong>
+          <span>Current available money</span>
+        </span>
+        <span className="stat-chip">
+          <strong>{hasBalanceSnapshot && hasPayday ? formatCurrency(dashboard.totalBeforePayday, displayCurrency) : "—"}</strong>
+          <span>Bills before payday</span>
+        </span>
+        <span className="stat-chip">
+          <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "Not set"}</strong>
+          <span>Payday date</span>
+        </span>
+        <span className="stat-chip">
+          <strong>{hasBills ? formatCurrency(totalMonthlyBills, displayCurrency) : "—"}</strong>
+          <span>Total monthly bills</span>
+        </span>
+      </div>
+
+      {billingStatusReady && billingEntitlement?.paymentPending ? (
+        <section className="page-notice" aria-live="polite">
+          Your payment or subscription is still pending. ClearTill will not start another checkout while Stripe confirms its status.
+        </section>
+      ) : null}
+
+      {billingStatusReady && !hasPremiumAccess && /expired|cancelled|refunded|revoked/.test(billingEntitlement?.reason || "") ? (
+        <section className="page-notice" aria-live="polite">
+          Your previous access has ended. Open Account to review billing or access options; this is not a trial-not-started state.
+        </section>
+      ) : null}
 
       {shouldShowTrialOffer ? (
         <section className="setup-card" aria-live="polite">
@@ -3255,18 +3315,8 @@ export default function DashboardPage() {
             <div>
               <p className="eyebrow">Subscription trial</p>
               <h2>{billingConfig.offerHeadline}</h2>
-              <p className="helper-text">{billingConfig.offerCopy}</p>
-              <p className="helper-text">
-                You&apos;ve seen your first personalised result. Continue only if you want the 7-day free trial, then £1.99 after the free week and monthly after that.
-              </p>
-              <p className="helper-text">
-                {billingConfig.checkoutCommitmentCopy}
-              </p>
-            </div>
-            <div className="setup-chip-row" aria-label="Trial steps">
-              <span className="setup-chip is-done"><span>1</span> Result</span>
-              <span className="setup-chip is-current"><span>2</span> Trial</span>
-              <span className="setup-chip"><span>3</span> Billing</span>
+              <p className="helper-text">7 days free, then £1.99/month. Cancel anytime.</p>
+              <p className="helper-text">Stripe collects a payment method now, charges £0 today, then £1.99 after the 7-day trial and monthly until cancelled.</p>
             </div>
           </div>
           <div className="setup-cta-row">
@@ -3329,31 +3379,6 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      <div className="stat-chip-row">
-        <span className="stat-chip">
-          <strong>{hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "—"}</strong>
-          {" in account"}
-        </span>
-        <span className="stat-chip">
-          <strong>{hasBalanceSnapshot && hasPayday ? formatCurrency(dashboard.totalBeforePayday, displayCurrency) : "—"}</strong>
-          {" bills before payday"}
-        </span>
-        <span className="stat-chip">
-          {"Pay date "}
-          <strong>{dashboard.paydayDate ? formatDisplayDate(dashboard.paydayDate) : "not set"}</strong>
-        </span>
-        {hasBills ? (
-          <span className="stat-chip">
-            <strong>{formatCurrency(totalMonthlyBills, displayCurrency)}</strong>
-            {" total monthly bills"}
-          </span>
-        ) : null}
-        <span className="stat-chip">
-          {"Today "}
-          <strong>{formatDisplayDate(todayIso)}</strong>
-        </span>
-      </div>
-
       <section className="content-grid">
         <div className="stack">
           <section
@@ -3366,10 +3391,15 @@ export default function DashboardPage() {
                 <p className="helper-text balance-copy">Update this when your cash position changes. ClearTill uses it to work out what is still safe to spend until payday.</p>
               </div>
             </div>
-            <p className="balance-action-value">
-              {hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : BALANCE_MISSING_FORECAST_COPY}
-            </p>
-            <form className="chat-form" onSubmit={handleBalanceSave}>
+            <div className="balance-compact-row">
+              <p className="balance-action-value">
+                {hasBalanceSnapshot ? formatCurrency(dashboard.currentBalance, displayCurrency) : "Not set"}
+              </p>
+              <button className="secondary-button small-button" type="button" onClick={() => setShowBalanceEditor((shown) => !shown)}>
+                {showBalanceEditor ? "Close" : "Update"}
+              </button>
+            </div>
+            {showBalanceEditor || !hasBalanceSnapshot ? <form className="chat-form" onSubmit={handleBalanceSave}>
               <div className="field-row">
                 <label className="field-label" htmlFor="account-balance">
                   Current available money
@@ -3389,7 +3419,7 @@ export default function DashboardPage() {
                   </button>
                 </div>
               </div>
-            </form>
+            </form> : null}
             <p className="helper-text balance-copy" style={{ marginTop: "8px" }}>{BALANCE_HELPER_TEXT}</p>
             <button className="secondary-button small-button" type="button" onClick={handleSkipBalance} disabled={importLocked || savingBalance || authStateChanging} style={{ marginTop: "8px" }}>
               Skip for now

@@ -10,14 +10,15 @@ export async function GET(request) {
   try {
     const decodedToken = await verifyIdTokenFromRequest(request);
     const uid = String(decodedToken.uid || "").trim();
-    const { accessActive, state, entitlement } = await hasActiveEntitlement(uid);
+    const { accessActive, state, entitlement } = await hasActiveEntitlement(uid, { accountEmail: decodedToken.email || null });
 
     return NextResponse.json({
       ok: true,
       state,
       accessActive,
-      accessStatus: entitlement.status,
+      accessStatus: entitlement.hasAccess ? "active" : entitlement.reason,
       accessUntil: entitlement.accessExpiresAt,
+      entitlement,
     });
   } catch (error) {
     if (error?.code === "auth/missing-id-token" || error?.code === "auth/invalid-id-token") {

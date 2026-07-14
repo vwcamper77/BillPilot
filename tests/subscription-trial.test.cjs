@@ -219,7 +219,7 @@ test("claim banner dismissal is session-only and never changes claim status", ()
 test("trial access and subscription management remain independent of claim-banner state", () => {
   const source = read("app/dashboard/page.jsx");
   assert.match(source, /const hasActiveSubscription = subscriptionStatus === "trialing" \|\| subscriptionStatus === "active"/);
-  assert.match(source, /const hasPremiumAccess = !trialEnabled \|\| Boolean\(billingEntitlement\?\.hasFullAccess\)/);
+  assert.match(source, /const hasPremiumAccess = !trialEnabled \|\| Boolean\(billingEntitlement\?\.hasAccess\)/);
   assert.match(source, /billingEntitlement\?\.canManageSubscription[\s\S]*?Manage subscription/);
   assert.doesNotMatch(source, /hasPremiumAccess\s*=.*trialClaimBannerState/);
 });
@@ -317,7 +317,8 @@ test("balance saves use the authenticated UID only after auth identity is stable
   assert.match(balanceFlow, /const authenticatedUid = auth\?\.currentUser\?\.uid/);
   assert.match(balanceFlow, /authStateChanging[\s\S]*?authenticatedUid !== user\.uid/);
   assert.match(balanceFlow, /return auth\.currentUser\.uid/);
-  assert.equal((balanceFlow.match(/doc\(db, "users", authenticatedUid, "settings", "balance"\)/g) || []).length, 3);
+  assert.equal((balanceFlow.match(/doc\(db, "users", authenticatedUid, "settings", "balance"\)/g) || []).length, 2);
+  assert.match(balanceFlow, /postDashboardSettingsAction\("save_balance"/);
   assert.doesNotMatch(balanceFlow, /doc\(db, "users", user\.uid, "settings", "balance"\)/);
   assert.match(source, /beforeAuthStateChanged\(auth,[\s\S]*?setAuthStateChanging\(true\)/);
 });

@@ -4,6 +4,8 @@ import { getStripeServerClient } from "@/lib/stripe";
 import { FOUNDING_PLAN } from "@/lib/billingAccess";
 import { isPublicCheckoutEnabled } from "@/lib/checkoutFlags";
 import { checkRateLimit, getRequestIp, RateLimitedError } from "@/lib/security/rateLimit.server";
+import { isInternalAnalyticsRequest } from "@/lib/analytics/internal.server";
+import { attributionMetadata, sanitizeAttributionBundle } from "@/lib/analytics/attribution.server";
 
 export const runtime = "nodejs";
 
@@ -26,12 +28,15 @@ export async function POST(request) {
     const origin = request.nextUrl.origin;
     const stripe = getStripeServerClient();
     const priceId = process.env.STRIPE_PRICE_ID;
-    const prefillEmail = await resolvePrefillEmail(request);
+    const identity = await resolvePrefillIdentity(request);
+    const internalTest = isInternalAnalyticsRequest(request);
+    const attribution = sanitizeAttributionBundle(body?.attribution);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer_creation: "always",
-      customer_email: prefillEmail || undefined,
+      customer_email: identity.email || undefined,
+      client_reference_id: identity.uid || undefined,
       success_url: `${origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/billing`,
       allow_promotion_codes: true,
@@ -57,7 +62,10 @@ export async function POST(request) {
         accessDurationDays: "90",
         offer: "founding_member_2026",
         flow: "public",
+        ...(identity.uid ? { firebaseUid: identity.uid } : {}),
         gaClientId: sanitizeClientId(body?.gaClientId),
+        internal_test: internalTest ? "1" : "0",
+        ...attributionMetadata(attribution),
       },
     });
 
@@ -84,23 +92,23 @@ function sanitizeClientId(value) {
 }
 
 /** Optional convenience only — never trusted as the fulfilment source of truth. */
-async function resolvePrefillEmail(request) {
+async function resolvePrefillIdentity(request) {
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
 
   if (!match?.[1]) {
-    return null;
+    return { uid: "", email: "" };
   }
 
   try {
     const decodedToken = await getAdminAuth().verifyIdToken(match[1]);
 
     if (decodedToken.firebase?.sign_in_provider === "anonymous") {
-      return null;
+      return { uid: "", email: "" };
     }
 
-    return decodedToken.email || null;
+    return { uid: decodedToken.uid || "", email: decodedToken.email || "" };
   } catch {
-    return null;
+    return { uid: "", email: "" };
   }
 }

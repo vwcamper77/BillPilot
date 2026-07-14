@@ -31,6 +31,8 @@ for (const trialPath of trialPaths) {
   test(`${trialPath} hydrates and opens email-first card Checkout once`, async ({ page }) => {
     const failures = [];
     const checkoutRequests = [];
+    let releaseCheckoutResponse;
+    const checkoutResponseGate = new Promise((resolve) => { releaseCheckoutResponse = resolve; });
     const uid = `anonymous-${trialPaths.indexOf(trialPath) + 1}`;
 
     page.on("console", (message) => {
@@ -93,7 +95,7 @@ for (const trialPath of trialPaths) {
 
     await page.route("**/api/stripe/checkout", async (route) => {
       checkoutRequests.push(route.request());
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await checkoutResponseGate;
       const origin = new URL(route.request().url()).origin;
       await route.fulfill({
         status: 200,
@@ -112,8 +114,14 @@ for (const trialPath of trialPaths) {
     await expect(page.getByText("Guest session")).toHaveCount(0);
     await page.getByLabel("Email address").fill("  Trial.User@Example.COM  ");
     await page.getByRole("button", { name: "Continue to secure checkout" }).click();
-    await expect(page.getByRole("heading", { name: "Opening your secure 7-day free trial…" })).toBeVisible();
-    await expect(page.getByText("Stripe will securely collect your email and card details. £0 is charged today.")).toBeVisible();
+    // The heading and disclosure are rendered atomically in the transient
+    // pre-redirect state. Observe them concurrently so a fast mocked redirect
+    // cannot occur between two otherwise equivalent sequential assertions.
+    await Promise.all([
+      expect(page.getByRole("heading", { name: "Opening your secure 7-day free trial…" })).toBeVisible(),
+      expect(page.getByText("Stripe will securely collect your email and card details. £0 is charged today.")).toBeVisible(),
+    ]);
+    releaseCheckoutResponse();
     await expect(page.getByText("Guest session")).toHaveCount(0);
     await page.waitForURL("**/billing/subscribe/cancel?mock_checkout=opened");
     await page.waitForTimeout(250);

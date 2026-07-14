@@ -25,9 +25,9 @@ export default function BillingPage() {
       <TrustShield className="page-trust-banner" compact />
 
       <section className="legal-panel">
-        <h2>Start your 7-day free trial</h2>
-        <p>£0 today. After 7 days, ClearTill bills £1.99, then continues monthly unless you cancel.</p>
-        <p>After you choose the plan from your dashboard, this area is where you manage billing safely in Stripe.</p>
+        <h2>Billing and subscription management</h2>
+        <p>Your verified access status and any relevant subscription action appear on your dashboard and account page.</p>
+        <p>Stripe securely handles payment methods, invoices, and cancellation for subscription customers.</p>
         <ul className="page-list">
           <li>view payment history</li>
           <li>manage your subscription</li>
@@ -35,7 +35,7 @@ export default function BillingPage() {
           <li>cancel your plan</li>
         </ul>
         <p className="helper-text">
-          Start from your dashboard after you&apos;ve seen your first personalised result and are ready to begin the free trial.
+          Return to your dashboard to view your ClearTill result and current access status.
         </p>
       </section>
     </main>

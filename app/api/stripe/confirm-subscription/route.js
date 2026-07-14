@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { getBillingRuntimeConfig } from "@/lib/billing/config";
-import { syncStripeSubscriptionToFirestore } from "@/lib/billing/subscriptionSync";
-import { getStripeClient } from "@/lib/billing/stripe";
 import { verifyRequestUser } from "@/lib/serverAuth";
+import { getSubscriptionState } from "@/lib/billing/store";
+import { resolveEntitlementForUid } from "@/lib/entitlementResolver.server";
 
 export const runtime = "nodejs";
 
@@ -23,38 +23,19 @@ export async function POST(request) {
       return NextResponse.json({ ok: false, error: "Invalid Stripe checkout reference." }, { status: 400 });
     }
 
-    const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.retrieve(sessionId, {
-      expand: ["subscription.latest_invoice"],
-    });
-    if (session.status !== "complete" || session.mode !== "subscription") {
-      return NextResponse.json({ ok: false, error: "Stripe checkout is not complete." }, { status: 409 });
-    }
-    if (session.metadata?.firebaseUid !== user.uid) {
+    const { subscription } = await getSubscriptionState(user.uid);
+    const entitlement = await resolveEntitlementForUid(user.uid, { accountEmail: user.email || null });
+    if (subscription?.lastCheckoutSessionId !== sessionId) {
       return NextResponse.json({ ok: false, error: "This checkout belongs to a different account." }, { status: 403 });
     }
-
-    if (!session.subscription) {
-      return NextResponse.json({ ok: false, error: "Stripe did not create the subscription." }, { status: 409 });
-    }
-
-    const subscription = typeof session.subscription === "object"
-      ? session.subscription
-      : await stripe.subscriptions.retrieve(session.subscription, { expand: ["latest_invoice"] });
-    await syncStripeSubscriptionToFirestore({
-      uid: user.uid,
-      subscription,
-      customerEmail: user.email || session.customer_details?.email || "",
-      extras: {
-        checkoutCompletedAt: Date.now(),
-        stripeCustomerId: typeof session.customer === "string" ? session.customer : session.customer?.id || "",
-      },
-    });
+    const verifiedStatus = subscription?.subscriptionStatus || "pending";
+    const confirmed = verifiedStatus === "trialing" && entitlement.hasAccess;
 
     return NextResponse.json({
       ok: true,
-      status: subscription.status,
-      trialEnd: subscription.trial_end ? subscription.trial_end * 1000 : null,
+      outcome: confirmed ? "confirmed" : ["past_due", "unpaid", "incomplete_expired", "canceled"].includes(verifiedStatus) ? "failed" : "pending",
+      status: verifiedStatus,
+      trialEnd: subscription?.trialEnd || null,
     });
   } catch (error) {
     const status = error?.code?.startsWith?.("auth/") ? 401 : 500;

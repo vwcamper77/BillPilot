@@ -3,6 +3,7 @@ import { getBillingRuntimeConfig } from "@/lib/billing/config";
 import { getSubscriptionState } from "@/lib/billing/store";
 import { verifyRequestUser } from "@/lib/serverAuth";
 import { getTrialClaimStatus } from "@/lib/billing/trialClaims.server";
+import { resolveEntitlementForUid } from "@/lib/entitlementResolver.server";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,7 @@ export async function GET(request) {
 
     const decodedToken = await verifyRequestUser(request);
     const state = await getSubscriptionState(decodedToken.uid);
+    const entitlement = await resolveEntitlementForUid(decodedToken.uid, { accountEmail: decodedToken.email || null });
     const claim = await getTrialClaimStatus({
       uid: decodedToken.uid,
       checkoutIntentId: state.subscription?.checkoutIntentId,
@@ -31,7 +33,7 @@ export async function GET(request) {
       ok: true,
       config: runtime.config,
       subscription: state.subscription,
-      entitlement: state.entitlement,
+      entitlement,
       claim,
     });
   } catch (error) {

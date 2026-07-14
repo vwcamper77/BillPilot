@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { sanitiseAnalyticsPayload, trackServerAnalyticsEvent } from "@/lib/analytics";
 import { verifyRequestUser } from "@/lib/serverAuth";
+import { isInternalAnalyticsRequest } from "@/lib/analytics/internal.server";
 
 export const runtime = "nodejs";
 
 export async function POST(request) {
   try {
+    if (isInternalAnalyticsRequest(request)) {
+      return NextResponse.json({ ok: true, suppressed: true });
+    }
     const body = await request.json().catch(() => ({}));
     const eventName = String(body?.eventName || "");
     const payload = sanitiseAnalyticsPayload(body?.payload || {});
