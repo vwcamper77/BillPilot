@@ -1,7 +1,9 @@
+import { BLOG_POSTS } from "./blog/posts";
+
 const siteUrl = "https://www.cleartill.money";
 
 export default function sitemap() {
-  return [
+  const staticPages = [
     {
       url: siteUrl,
       changeFrequency: "weekly",
@@ -10,6 +12,11 @@ export default function sitemap() {
     {
       url: `${siteUrl}/billing`,
       changeFrequency: "monthly",
+      priority: 0.8,
+    },
+    {
+      url: `${siteUrl}/blog`,
+      changeFrequency: "weekly",
       priority: 0.8,
     },
     {
@@ -28,4 +35,13 @@ export default function sitemap() {
       priority: 0.3,
     },
   ];
+
+  const blogPosts = BLOG_POSTS.map((post) => ({
+    url: `${siteUrl}/blog/${post.slug}`,
+    lastModified: post.updatedAt || post.publishedAt,
+    changeFrequency: "monthly",
+    priority: 0.7,
+  }));
+
+  return [...staticPages, ...blogPosts];
 }
