@@ -19,6 +19,8 @@ Clients may render the normalized result, but a client flag is never sufficient 
 
 Firebase UID metadata is authoritative. New checkout sessions store it on the Checkout Session and subscription, and webhook handling mirrors it to the Stripe Customer. Email-to-Firebase lookup is only a recovery fallback for legacy Stripe objects and produces reconciliation warnings when it cannot establish ownership.
 
+Founding-member fulfilment additionally requires the configured `STRIPE_PRICE_ID`, exactly one unit of that Price, Checkout mode `payment`, a completed and paid Session, and an exact £5 GBP total. Plan metadata alone is never sufficient, and zero-value promotions do not enter the paid founding-member fulfilment path.
+
 The success URL is read-only: it can display a webhook-created record but cannot create an entitlement, customer, purchase outcome, or email.
 
 ## Email triggers

@@ -4,7 +4,8 @@
 //  - Firestore-logic tests that call lib/entitlements.server.js directly
 //    (real Firestore Admin SDK against the configured project, no Stripe
 //    network calls) — these run regardless of whether real Stripe test-mode
-//    credentials are configured, and cover fulfilment, CLEAR100, duplicate
+//    credentials are configured, and cover paid fulfilment, rejected zero-
+//    value promotions, duplicate
 //    delivery, claim variations, expiry, and resend.
 //  - A small number of real browser tests that need CHECKOUT_AUTH_REQUIRED
 //    set to the literal string "false" for the dev server under test — they
@@ -36,8 +37,10 @@ import {
 } from "../../lib/entitlements.server.js";
 
 function fixtureSession(sessionId, overrides = {}) {
+  process.env.STRIPE_PRICE_ID ||= "price_founding_test";
   return {
     id: sessionId,
+    mode: "payment",
     status: "complete",
     payment_status: "paid",
     amount_total: 500,
@@ -47,6 +50,7 @@ function fixtureSession(sessionId, overrides = {}) {
     customer_details: { email: `${sessionId}@cleartill.test` },
     metadata: { planKey: "founding_member" },
     discounts: [],
+    line_items: { data: [{ quantity: 1, price: { id: process.env.STRIPE_PRICE_ID, product: "prod_founding_test" } }] },
     ...overrides,
   };
 }
@@ -95,21 +99,17 @@ test.describe("Phase A — fulfilment", () => {
     }
   });
 
-  test("a confirmed CLEAR100 zero-total session grants QA access with no revenue", async () => {
+  test("a CLEAR100 zero-total session cannot create founding access or revenue", async () => {
     const sessionId = `cs_test_clear100_${Date.now()}`;
     try {
-      await createPendingEntitlementFromCheckoutSession(fixtureSession(sessionId, {
+      await expect(createPendingEntitlementFromCheckoutSession(fixtureSession(sessionId, {
         payment_status: "no_payment_required",
         amount_total: 0,
         discounts: [{ promotion_code: { code: "CLEAR100" } }],
-      }));
+      }))).rejects.toThrow();
 
-      const entitlement = await getEntitlement(sessionId);
-      expect(entitlement.isQaPurchase).toBe(true);
-
-      const customer = await getCustomer(`pending_${sessionId}`);
-      expect(customer.paymentStatus).toBe("qa");
-      expect(customer.totalPaid).toBe(0);
+      expect(await getEntitlement(sessionId)).toBeNull();
+      expect(await getCustomer(`pending_${sessionId}`)).toBeNull();
     } finally {
       await cleanupSession(sessionId);
     }
@@ -385,7 +385,7 @@ test.describe("Browser journey", () => {
     }
   });
 
-  test("a real completed CLEAR100 checkout triggers the real webhook and creates QA access with no revenue", async ({ page }) => {
+  test("a real completed CLEAR100 checkout does not create founding access or revenue", async ({ page }) => {
     test.setTimeout(60000);
 
     await page.goto("/billing");
@@ -414,22 +414,11 @@ test.describe("Browser journey", () => {
     const sessionId = new URL(page.url()).searchParams.get("session_id");
     expect(sessionId).toMatch(/^cs_test_/);
 
-    let entitlement = null;
-    for (let attempt = 0; attempt < 10 && !entitlement; attempt += 1) {
-      entitlement = await getEntitlement(sessionId);
-      if (!entitlement) await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
+    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     try {
-      expect(entitlement).toBeTruthy();
-      expect(entitlement.status).toBe("pending_claim");
-      expect(entitlement.isQaPurchase).toBe(true);
-      expect(entitlement.amountPaid).toBe(0);
-      expect(String(entitlement.coupon || "").toUpperCase()).toBe("CLEAR100");
-
-      const customer = await getCustomer(`pending_${sessionId}`);
-      expect(customer?.paymentStatus).toBe("qa");
-      expect(customer?.totalPaid).toBe(0);
+      expect(await getEntitlement(sessionId)).toBeNull();
+      expect(await getCustomer(`pending_${sessionId}`)).toBeNull();
     } finally {
       await cleanupSession(sessionId);
     }

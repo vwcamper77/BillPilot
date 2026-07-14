@@ -8,6 +8,8 @@ import {
 import { buildAccessLinkEmail, formatAccessExpiry } from "../../lib/email/accessLinkTemplate.js";
 import { hashForAnalytics } from "../../lib/analytics/ga4.server.js";
 
+process.env.STRIPE_PRICE_ID = "price_founding_test";
+
 test("generateClaimToken produces long, unique, URL-safe tokens", () => {
   const a = generateClaimToken();
   const b = generateClaimToken();
@@ -40,6 +42,7 @@ test("hashForAnalytics never returns the raw value and is deterministic", () => 
 function fixtureSession(overrides = {}) {
   return {
     id: "cs_test_fixture",
+    mode: "payment",
     status: "complete",
     payment_status: "paid",
     amount_total: 500,
@@ -49,6 +52,7 @@ function fixtureSession(overrides = {}) {
     customer_details: { email: "buyer@example.com" },
     metadata: {},
     discounts: [],
+    line_items: { data: [{ quantity: 1, price: { id: "price_founding_test", product: "prod_founding_test" } }] },
     ...overrides,
   };
 }
@@ -60,15 +64,31 @@ test("a genuine paid session is fulfillable and not QA", async () => {
   expect(result.amountPaid).toBe(500);
 });
 
-test("a confirmed CLEAR100 zero-total session is fulfillable as QA, not paid", async () => {
+test("a zero-total promotion is not founding-member fulfilment", async () => {
   const result = await getCheckoutFulfillability(fixtureSession({
     payment_status: "no_payment_required",
     amount_total: 0,
     discounts: [{ promotion_code: { code: "clear100" } }],
   }));
-  expect(result.fulfillable).toBe(true);
-  expect(result.isQaPurchase).toBe(true);
+  expect(result.fulfillable).toBe(false);
+  expect(result.isQaPurchase).toBe(false);
   expect(result.coupon).toBe("CLEAR100");
+});
+
+test("wrong mode, amount, price, quantity, or extra line items are rejected", async () => {
+  const invalidSessions = [
+    fixtureSession({ mode: "subscription" }),
+    fixtureSession({ amount_total: 499 }),
+    fixtureSession({ line_items: { data: [{ quantity: 1, price: { id: "price_other" } }] } }),
+    fixtureSession({ line_items: { data: [{ quantity: 2, price: { id: "price_founding_test" } }] } }),
+    fixtureSession({ line_items: { data: [
+      { quantity: 1, price: { id: "price_founding_test" } },
+      { quantity: 1, price: { id: "price_other" } },
+    ] } }),
+  ];
+  for (const session of invalidSessions) {
+    expect((await getCheckoutFulfillability(session)).fulfillable).toBe(false);
+  }
 });
 
 test("an unrecognised zero-total session is rejected, not silently treated as QA", async () => {

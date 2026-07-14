@@ -15,10 +15,13 @@ test("manual success URL and refresh cannot fulfil or emit Purchase", () => {
 });
 
 test("one-off purchase requires verified positive GBP payment", () => {
-  assert.equal(classifyOneOff({ id: "cs_1", status: "complete", payment_status: "paid", amount_total: 500, currency: "gbp" }).paid, true);
-  assert.equal(classifyOneOff({ id: "cs_2", status: "complete", payment_status: "unpaid", amount_total: 500, currency: "gbp" }).paid, false);
-  assert.equal(classifyOneOff({ id: "cs_3", status: "complete", payment_status: "paid", amount_total: 0, currency: "gbp" }).paid, false);
-  assert.equal(classifyOneOff({ id: "cs_4", status: "complete", payment_status: "paid", amount_total: 500, currency: "usd" }).paid, false);
+  const valid = { id: "cs_1", mode: "payment", status: "complete", payment_status: "paid", amount_total: 500, currency: "gbp" };
+  assert.equal(classifyOneOff(valid).paid, true);
+  assert.equal(classifyOneOff({ ...valid, mode: "subscription" }).paid, false);
+  assert.equal(classifyOneOff({ ...valid, payment_status: "unpaid" }).paid, false);
+  assert.equal(classifyOneOff({ ...valid, amount_total: 0 }).paid, false);
+  assert.equal(classifyOneOff({ ...valid, amount_total: 501 }).paid, false);
+  assert.equal(classifyOneOff({ ...valid, currency: "usd" }).paid, false);
 });
 
 test("zero trial invoice is not revenue; positive invoices classify first and renewal", () => {
