@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminDb } from "@/lib/firebaseAdmin";
 import { verifyAnalyticsAdminRequest } from "@/lib/adminAuth.server";
+import { resolveEntitlementForUid } from "@/lib/entitlementResolver.server";
 
 export const runtime = "nodejs";
 
@@ -41,10 +42,12 @@ export async function GET(request) {
     }
 
     const billingSnapshotPromise = db.collection("users").doc(uid).collection("settings").doc("billing").get();
+    const entitlementPromise = resolveEntitlementForUid(uid, { accountEmail: customer.email || null });
 
-    const [eventSnapshots, billingSnapshot] = await Promise.all([
+    const [eventSnapshots, billingSnapshot, entitlement] = await Promise.all([
       Promise.all(queries),
       billingSnapshotPromise,
+      entitlementPromise,
     ]);
 
     const eventsById = new Map();
@@ -77,6 +80,7 @@ export async function GET(request) {
         dropOffStage: customer.dropOffStage || null,
       },
       billing: billingSnapshot.exists ? billingSnapshot.data() : null,
+      entitlement,
       timeline,
     });
   } catch (error) {

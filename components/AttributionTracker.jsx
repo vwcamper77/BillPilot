@@ -15,7 +15,7 @@ function AttributionTrackerInner() {
 
     if (isFirstTouch && !hasFiredLandingView.current) {
       hasFiredLandingView.current = true;
-      trackEvent("landing_page_view", { pathname });
+      trackEvent("ad_landing_view", { pathname });
     }
     // Only re-run on navigation, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -73,6 +73,9 @@ npm install
 
 Create `.env.local` from `.env.example` and fill in the Firebase, OpenAI, cron, Stripe, and email values.
 
+Analytics/payment integrity and the required GA4/Meta operator steps are documented in [`docs/analytics-integrity.md`](docs/analytics-integrity.md).
+The entitlement, webhook, email, and read-only Stripe reconciliation runbook is in [`docs/revenue-integrity-audit.md`](docs/revenue-integrity-audit.md).
+
 Firebase Auth should have anonymous sign-in enabled so visitors can see their first result before starting the trial.
 
 Stripe setup for the subscription trial:

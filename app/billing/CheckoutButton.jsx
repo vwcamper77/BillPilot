@@ -4,6 +4,7 @@ import { useState } from "react";
 import { auth } from "@/lib/firebase";
 import { trackEvent } from "@/lib/analytics/track";
 import { getGaClientId, trackGa4Event } from "@/lib/analytics/ga4";
+import { getStoredAttributionBundle } from "@/lib/analytics/attribution";
 
 export default function CheckoutButton() {
   const [status, setStatus] = useState({ busy: false, error: "" });
@@ -19,14 +20,10 @@ export default function CheckoutButton() {
 
     setStatus({ busy: true, error: "" });
 
-    if (typeof window !== "undefined" && typeof window.gtag === "function") {
-      window.gtag("event", "payment_button_click", {
-        event_category: "billing",
-        event_label: "founding_member_checkout",
-        value: 5,
-        currency: "GBP",
-      });
-    }
+    trackGa4Event("payment_button_click", {
+      event_category: "billing",
+      event_label: "founding_member_checkout",
+    });
 
     try {
       const idToken = await auth.currentUser.getIdToken();
@@ -36,7 +33,7 @@ export default function CheckoutButton() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ gaClientId: getGaClientId() }),
+        body: JSON.stringify({ gaClientId: getGaClientId(), attribution: getStoredAttributionBundle() }),
       });
 
       const payload = await response.json().catch(() => ({}));

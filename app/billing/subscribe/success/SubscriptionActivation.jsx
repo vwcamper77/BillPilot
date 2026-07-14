@@ -41,8 +41,16 @@ export default function SubscriptionActivation({ sessionId }) {
               throw new Error(payload?.error || "Could not confirm the trial.");
             }
             if (!active) return;
-            setState("active");
-            setMessage("£0 was charged today. Your first £1.99 payment is due after seven days, then monthly unless you cancel.");
+            if (payload.outcome === "pending") {
+              setState("pending");
+              setMessage("Stripe confirmation is still pending. Refresh shortly; this page does not activate access or record revenue.");
+            } else if (payload.outcome === "failed") {
+              setState("error");
+              setMessage("The trial could not be confirmed. Return to billing or contact support to recover.");
+            } else {
+              setState("active");
+              setMessage("£0 was charged today. Your verified trial is active; the first payment is due after seven days.");
+            }
           } catch (error) {
             if (!active) return;
             confirmationStartedRef.current = false;
@@ -74,7 +82,7 @@ export default function SubscriptionActivation({ sessionId }) {
           <Link className="secondary-button" href="/dashboard#secure-access">Check secure access link</Link>
         </div>
       ) : null}
-      {state === "error" ? (
+      {state === "error" || state === "pending" ? (
         <p className="helper-text">Stripe also sends ClearTill a secure confirmation. If checkout completed, access should appear shortly.</p>
       ) : null}
     </>

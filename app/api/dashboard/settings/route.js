@@ -22,6 +22,12 @@ export async function POST(request) {
         const balanceRef = db.collection("users").doc(decodedToken.uid).collection("settings").doc("balance");
         const currentBalance = body?.currentBalance;
         const currency = String(body?.currency || "GBP").trim() || "GBP";
+        if (currentBalance !== null && !Number.isFinite(Number(currentBalance))) {
+          return NextResponse.json(
+            { ok: false, error: "Current available money must be a valid number." },
+            { status: 400 },
+          );
+        }
         const payload = {
           currentBalance: currentBalance === null ? null : Number(currentBalance),
           currency,

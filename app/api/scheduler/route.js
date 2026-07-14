@@ -84,7 +84,12 @@ export async function POST(request) {
     }
 
     if (subscription.subscriptionStatus === "trialing" && subscription.trialEnd) {
-      await queueTrialEmail(summary, { userId, email, subscription });
+      const claimEmailAlreadySent = subscription.checkoutIntentId
+        ? await getAdminDb().collection("pendingTrialClaims").doc(subscription.checkoutIntentId).get()
+          .then((snapshot) => snapshot.exists && snapshot.data()?.emailOutbox?.status === "sent")
+          .catch(() => false)
+        : false;
+      await queueTrialEmail(summary, { userId, email, subscription, claimEmailAlreadySent });
     }
 
     if (subscription.latestInvoiceStatus === "payment_failed") {
@@ -105,12 +110,12 @@ function isSchedulerRequest(request) {
   return Boolean(secret) && request.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-async function sendOptionalReminder({ userId, email, type, period, subject, text, html }) {
+async function sendOptionalReminder({ userId, email, type, period, subject, text, html, transactional = false }) {
   if (await shouldSuppressOptionalEmail(userId, type)) {
     return { status: "suppressed" };
   }
 
-  const claimed = await claimEmailDelivery({ userId, type, period, transactional: false });
+  const claimed = await claimEmailDelivery({ userId, type, period, transactional });
   if (!claimed.ok) {
     return { status: claimed.reason === "duplicate" ? "skipped" : "failed" };
   }
@@ -132,7 +137,11 @@ async function sendOptionalReminder({ userId, email, type, period, subject, text
       return { status: "skipped" };
     }
 
-    await markEmailDelivery(claimed.ref, { status: "sent" });
+    await markEmailDelivery(claimed.ref, {
+      status: "sent",
+      sentAt: FieldValue.serverTimestamp(),
+      providerMessageId: response.providerMessageId || null,
+    });
     await trackServerAnalyticsEvent("trial_reminder_sent", { uid: userId, reminderType: type });
     return { status: "sent" };
   } catch (error) {
@@ -141,12 +150,12 @@ async function sendOptionalReminder({ userId, email, type, period, subject, text
   }
 }
 
-async function queueTrialEmail(summary, { userId, email, subscription }) {
+async function queueTrialEmail(summary, { userId, email, subscription, claimEmailAlreadySent = false }) {
   const now = Date.now();
   const trialEnd = Number(subscription.trialEnd || 0);
   const balanceLink = `${getAppBaseUrl()}/dashboard?focus=balance`;
 
-  if (subscription.trialWelcomeSentAt !== true) {
+  if (subscription.trialWelcomeSentAt !== true && !claimEmailAlreadySent) {
     summary.attempted += 1;
     const result = await sendOptionalReminder({
       userId,
@@ -156,6 +165,7 @@ async function queueTrialEmail(summary, { userId, email, subscription }) {
       subject: "Welcome to your ClearTill trial",
       text: `Your 7-day trial is live. First payment: £1.99 on ${new Date(trialEnd).toLocaleDateString("en-GB")} and monthly after that.\n\nManage your subscription in billing.\n\nUpdate my balance: ${balanceLink}`,
       html: `<p>Your 7-day trial is live.</p><p>First payment: £1.99 on ${new Date(trialEnd).toLocaleDateString("en-GB")} and monthly after that.</p><p><a href="${balanceLink}">Update my balance</a></p>`,
+      transactional: true,
     });
     applyReminderSummary(summary, result);
   }
@@ -185,6 +195,7 @@ async function queueFailedPaymentEmail(summary, { userId, email }) {
     subject: "Your ClearTill payment needs attention",
     text: `We couldn't take your £1.99 monthly payment. Update your payment details in the Customer Portal to keep access.`,
     html: "<p>We couldn't take your £1.99 monthly payment.</p><p>Update your payment details in the Customer Portal to keep access.</p>",
+    transactional: true,
   });
   applyReminderSummary(summary, result);
 }

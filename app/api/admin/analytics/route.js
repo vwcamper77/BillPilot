@@ -5,9 +5,8 @@ import { FUNNEL_STAGES } from "@/lib/analytics/constants";
 
 export const runtime = "nodejs";
 
-// No recurring-billing product exists yet (checkout is one-time payment
-// only) — MRR/trial KPIs render "N/A" rather than a misleading zero.
-const HAS_SUBSCRIPTIONS = false;
+const HAS_SUBSCRIPTIONS = true;
+const MONTHLY_SUBSCRIPTION_GBP = 1.99;
 
 const CUSTOMERS_LIMIT = 2000;
 const PAID_CUSTOMERS_LIMIT = 5000;
@@ -39,10 +38,13 @@ export async function GET(request) {
       signupsMonthSnapshot,
       paidCustomersCountSnapshot,
       trialUsersSnapshot,
+      activeSubscriptionsSnapshot,
       paidCustomersSnapshot,
       rangedCustomersSnapshot,
       rangedEventsSnapshot,
       adSpendSnapshot,
+      internalCustomersSnapshot,
+      pendingEntitlementsSnapshot,
     ] = await Promise.all([
       customersCollection.count().get(),
       customersCollection.where("createdAt", ">=", startOfToday).count().get(),
@@ -50,6 +52,7 @@ export async function GET(request) {
       customersCollection.where("createdAt", ">=", startOfMonth).count().get(),
       customersCollection.where("paymentStatus", "==", "paid").count().get(),
       customersCollection.where("subscriptionStatus", "==", "trialing").count().get(),
+      customersCollection.where("subscriptionStatus", "==", "active").count().get(),
       customersCollection.where("paymentStatus", "==", "paid").limit(PAID_CUSTOMERS_LIMIT).get(),
       (rangeStart
         ? customersCollection.where("createdAt", ">=", rangeStart).orderBy("createdAt", "desc")
@@ -63,9 +66,14 @@ export async function GET(request) {
         ? adSpendCollection.where("date", ">=", isoDate(rangeStart))
         : adSpendCollection
       ).limit(EVENTS_LIMIT).get(),
+      customersCollection.where("internalTest", "==", true).limit(CUSTOMERS_LIMIT).get(),
+      db.collection("pendingEntitlements").limit(CUSTOMERS_LIMIT).get(),
     ]);
 
-    const totalSignups = totalSignupsSnapshot.data().count || 0;
+    const internalCustomers = internalCustomersSnapshot.docs.map((doc) => doc.data());
+    const internalCreatedSince = (date) => internalCustomers.filter((customer) => toDate(customer.createdAt) >= date).length;
+    const internalWithStatus = (status) => internalCustomers.filter((customer) => customer.subscriptionStatus === status).length;
+    const totalSignups = Math.max(0, (totalSignupsSnapshot.data().count || 0) - internalCustomers.length);
     const paidCustomers = paidCustomersCountSnapshot.data().count || 0;
     const paidCustomerDocs = paidCustomersSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     const totalRevenue = paidCustomerDocs.reduce((sum, customer) => sum + (Number(customer.totalPaid) || 0), 0);
@@ -84,16 +92,16 @@ export async function GET(request) {
 
     const kpis = {
       totalSignups,
-      signupsToday: signupsTodaySnapshot.data().count || 0,
-      signupsWeek: signupsWeekSnapshot.data().count || 0,
-      signupsMonth: signupsMonthSnapshot.data().count || 0,
+      signupsToday: Math.max(0, (signupsTodaySnapshot.data().count || 0) - internalCreatedSince(startOfToday)),
+      signupsWeek: Math.max(0, (signupsWeekSnapshot.data().count || 0) - internalCreatedSince(startOfWeek)),
+      signupsMonth: Math.max(0, (signupsMonthSnapshot.data().count || 0) - internalCreatedSince(startOfMonth)),
       paidCustomers,
-      trialUsers: HAS_SUBSCRIPTIONS ? (trialUsersSnapshot.data().count || 0) : null,
+      trialUsers: HAS_SUBSCRIPTIONS ? Math.max(0, (trialUsersSnapshot.data().count || 0) - internalWithStatus("trialing")) : null,
       hasSubscriptions: HAS_SUBSCRIPTIONS,
       conversionRate: totalSignups > 0 ? paidCustomers / totalSignups : 0,
       totalRevenue: totalRevenueGbp,
-      mrr: HAS_SUBSCRIPTIONS ? 0 : null,
-      arpu: totalSignups > 0 ? totalRevenueGbp / totalSignups : 0,
+      mrr: HAS_SUBSCRIPTIONS ? Math.max(0, (activeSubscriptionsSnapshot.data().count || 0) - internalWithStatus("active")) * MONTHLY_SUBSCRIPTION_GBP : null,
+      arpu: paidCustomers > 0 ? totalRevenueGbp / paidCustomers : 0,
       cac: hasAdSpend && paidCustomersInRange.length > 0 ? totalAdSpend / paidCustomersInRange.length : null,
       roas: hasAdSpend && totalAdSpend > 0 ? revenueInRangeGbp / totalAdSpend : null,
       hasAdSpend,
@@ -103,8 +111,41 @@ export async function GET(request) {
     const events = rangedEventsSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     const funnel = buildFunnel(events);
 
-    const customers = rangedCustomersSnapshot.docs.map((doc) => serializeCustomer(doc.id, doc.data()));
-    const adPerformance = buildAdPerformance(events, rangedCustomersSnapshot.docs.map((d) => ({ id: d.id, ...d.data() })), paidCustomersInRange, adSpendEntries);
+    const externalCustomerDocs = rangedCustomersSnapshot.docs.filter((doc) => !doc.data()?.internalTest && !doc.data()?.excludedFromCommercialReporting);
+    const customers = externalCustomerDocs.map((doc) => serializeCustomer(doc.id, doc.data()));
+    const customerIndexBySession = new Map(customers.map((customer, index) => [customer.stripeCheckoutSessionId, index]).filter(([sessionId]) => sessionId));
+    const customerIndexByUid = new Map(customers.map((customer, index) => [customer.uid, index]).filter(([uid]) => uid));
+    for (const doc of pendingEntitlementsSnapshot.docs) {
+      const entitlement = doc.data();
+      if (entitlement.internalTest) continue;
+      const pending = serializePendingEntitlement(doc.id, entitlement);
+      const existingIndex = customerIndexBySession.get(doc.id) ?? customerIndexByUid.get(entitlement.uid);
+      if (existingIndex === undefined) {
+        customers.push(pending);
+        customerIndexBySession.set(doc.id, customers.length - 1);
+        if (entitlement.uid) customerIndexByUid.set(entitlement.uid, customers.length - 1);
+      } else {
+        const existing = customers[existingIndex];
+        customers[existingIndex] = {
+          ...pending,
+          ...existing,
+          uid: existing.uid,
+          email: existing.email || existing.authenticatedEmail || null,
+          authenticatedEmail: existing.authenticatedEmail || existing.email || null,
+          paymentEmail: pending.paymentEmail || existing.paymentEmail,
+          stripeCustomerId: pending.stripeCustomerId || existing.stripeCustomerId,
+          stripeCheckoutSessionId: pending.stripeCheckoutSessionId || existing.stripeCheckoutSessionId,
+          stripePaymentIntentId: pending.stripePaymentIntentId || existing.stripePaymentIntentId,
+          emailNotificationStatus: pending.emailNotificationStatus || existing.emailNotificationStatus,
+          emailProviderMessageId: pending.emailProviderMessageId || existing.emailProviderMessageId,
+          emailType: pending.emailType || existing.emailType,
+          reconciliationWarning: entitlement.status === "active" || entitlement.status === "claimed"
+            ? null
+            : pending.reconciliationWarning,
+        };
+      }
+    }
+    const adPerformance = buildAdPerformance(events, externalCustomerDocs.map((d) => ({ id: d.id, ...d.data() })), paidCustomersInRange, adSpendEntries);
 
     const response = NextResponse.json({
       ok: true,
@@ -153,23 +194,78 @@ function serializeTimestamp(value) {
 }
 
 function serializeCustomer(id, data) {
+  const firstTouch = data.firstTouchAttribution || data.attribution?.firstTouch || data.attribution || null;
+  const lastTouch = data.lastTouchAttribution || data.attribution?.lastTouch || firstTouch;
   return {
     uid: id,
     name: data.name || null,
     email: data.email || null,
+    authenticatedEmail: data.authenticatedEmail || data.email || null,
+    paymentEmail: data.paymentEmail || null,
     createdAt: serializeTimestamp(data.createdAt),
     lastActiveAt: serializeTimestamp(data.lastActiveAt),
     paymentStatus: data.paymentStatus || "none",
     totalPaid: Number(data.totalPaid) || 0,
     currency: data.currency || "gbp",
     stripeCustomerId: data.stripeCustomerId || null,
+    stripeCheckoutSessionId: data.stripeCheckoutSessionId || null,
+    stripePaymentIntentId: data.stripePaymentIntentId || null,
+    stripeSubscriptionId: data.stripeSubscriptionId || null,
+    accessType: data.accessType || "none",
+    entitlementStatus: data.entitlementStatus || "none",
     subscriptionStatus: data.subscriptionStatus || "none",
-    attribution: data.attribution || null,
+    trialStartedAt: serializeTimestamp(data.trialStartedAt),
+    trialEndsAt: serializeTimestamp(data.trialEndsAt),
+    currentPeriodEnd: serializeTimestamp(data.currentPeriodEnd),
+    lastWebhookEventId: data.lastWebhookEventId || null,
+    emailNotificationStatus: data.emailNotificationStatus || "unverifiable",
+    emailProviderMessageId: data.emailProviderMessageId || null,
+    emailType: data.emailType || null,
+    reconciliationWarning: data.reconciliationWarning || null,
+    attribution: firstTouch,
+    firstTouchAttribution: firstTouch,
+    lastTouchAttribution: lastTouch,
     billsCount: Number(data.billsCount) || 0,
     onboardingStatus: data.onboardingStatus || "not_started",
     dropOffStage: data.dropOffStage || null,
     firstActionAfterSignup: data.firstActionAfterSignup || null,
     lastDevice: data.lastDevice || null,
+  };
+}
+
+function serializePendingEntitlement(sessionId, data) {
+  return {
+    uid: data.uid || `pending:${sessionId}`,
+    name: null,
+    email: data.checkoutEmail || null,
+    authenticatedEmail: null,
+    paymentEmail: data.checkoutEmail || null,
+    createdAt: serializeTimestamp(data.createdAt),
+    lastActiveAt: null,
+    paymentStatus: data.paymentType === "paid" ? "paid" : data.paymentType || "none",
+    totalPaid: Number(data.amountPaidMinor ?? data.amountPaid) || 0,
+    currency: data.currency || "gbp",
+    stripeCustomerId: data.stripeCustomerId || null,
+    stripeCheckoutSessionId: sessionId,
+    stripePaymentIntentId: data.stripePaymentIntentId || null,
+    stripeSubscriptionId: data.stripeSubscriptionId || null,
+    accessType: "founding_member",
+    entitlementStatus: data.status || "pending_claim",
+    subscriptionStatus: "none",
+    trialStartedAt: null,
+    trialEndsAt: null,
+    currentPeriodEnd: null,
+    lastWebhookEventId: data.webhookEventId || null,
+    emailNotificationStatus: data.emailOutbox?.status || "never_triggered",
+    emailProviderMessageId: data.emailOutbox?.providerId || null,
+    emailType: "founding_member_access",
+    reconciliationWarning: data.uid ? "entitlement_not_synchronised_to_customer" : "paid_access_not_claimed_no_firebase_uid",
+    attribution: data.attribution || null,
+    billsCount: 0,
+    onboardingStatus: "not_started",
+    dropOffStage: null,
+    firstActionAfterSignup: null,
+    lastDevice: null,
   };
 }
 
@@ -206,15 +302,21 @@ function buildFunnel(events) {
 }
 
 function campaignKey(source) {
+  source = attributionTouch(source);
   const campaign = (source?.utm_campaign || "").trim().toLowerCase();
   const utmSource = (source?.utm_source || "").trim().toLowerCase();
   return campaign || utmSource || "unattributed";
+}
+
+function attributionTouch(source) {
+  return source?.firstTouch || source?.lastTouch || source || {};
 }
 
 function buildAdPerformance(events, customers, paidCustomersInRange, adSpendEntries) {
   const groups = new Map();
 
   function ensureGroup(key, sample) {
+    sample = attributionTouch(sample);
     if (!groups.has(key)) {
       groups.set(key, {
         key,

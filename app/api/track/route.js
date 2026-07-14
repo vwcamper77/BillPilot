@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { ANALYTICS_EVENTS } from "@/lib/analytics/constants";
 import { createOrUpdateCustomerOnAccountCreated, recordAnalyticsEvent } from "@/lib/customerProfile.server";
+import { isInternalAnalyticsRequest } from "@/lib/analytics/internal.server";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,9 @@ const DEVICE_TYPES = new Set(["mobile", "tablet", "desktop"]);
  */
 export async function POST(request) {
   try {
+    if (isInternalAnalyticsRequest(request)) {
+      return NextResponse.json({ ok: true, suppressed: true });
+    }
     const body = await request.json().catch(() => ({}));
     const eventName = String(body?.eventName || "").trim();
 
@@ -54,7 +58,7 @@ export async function POST(request) {
         uid,
         email: decodedToken.email || null,
         name: decodedToken.name || null,
-        attribution: sanitizeAttribution(body?.attribution),
+        attribution: sanitizeAttributionBundle(body?.attributionBundle) || { firstTouch: sanitizeAttribution(body?.attribution), lastTouch: sanitizeAttribution(body?.attribution) },
       });
     }
 
@@ -118,4 +122,11 @@ function sanitizeAttribution(attribution) {
     anonymousSessionId: sanitizeString(attribution.anonymousSessionId, 128),
     firstSeenAt: sanitizeString(attribution.firstSeenAt, 64),
   };
+}
+
+function sanitizeAttributionBundle(bundle) {
+  if (!bundle || typeof bundle !== "object") return null;
+  const firstTouch = sanitizeAttribution(bundle.firstTouch);
+  const lastTouch = sanitizeAttribution(bundle.lastTouch);
+  return firstTouch || lastTouch ? { firstTouch: firstTouch || lastTouch, lastTouch: lastTouch || firstTouch } : null;
 }

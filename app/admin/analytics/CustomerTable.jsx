@@ -6,11 +6,18 @@ import { formatDateTime, formatGbpFromPence, labelizeEventName } from "./format"
 const COLUMNS = [
   { key: "name", label: "Name" },
   { key: "email", label: "Email" },
+  { key: "paymentEmail", label: "Payment email" },
+  { key: "uid", label: "Firebase UID" },
   { key: "createdAt", label: "Signup" },
   { key: "paymentStatus", label: "Payment" },
   { key: "totalPaid", label: "Amount paid" },
   { key: "stripeCustomerId", label: "Stripe ID" },
+  { key: "accessType", label: "Access" },
   { key: "subscriptionStatus", label: "Subscription" },
+  { key: "trialEndsAt", label: "Trial ends" },
+  { key: "lastWebhookEventId", label: "Last webhook" },
+  { key: "emailNotificationStatus", label: "Email" },
+  { key: "reconciliationWarning", label: "Warning" },
   { key: "source", label: "Source / medium / campaign" },
   { key: "landingPage", label: "Landing page" },
   { key: "referrer", label: "Referrer" },
@@ -58,7 +65,7 @@ export default function CustomerTable({ customers, onRowClick }) {
 
     let rows = customers.filter((customer) => {
       if (query) {
-        const haystack = `${customer.name || ""} ${customer.email || ""}`.toLowerCase();
+        const haystack = `${customer.name || ""} ${customer.email || ""} ${customer.paymentEmail || ""} ${customer.uid || ""} ${customer.stripeCustomerId || ""}`.toLowerCase();
         if (!haystack.includes(query)) return false;
       }
       if (paymentFilter === "paid" && customer.paymentStatus !== "paid") return false;
@@ -138,6 +145,8 @@ export default function CustomerTable({ customers, onRowClick }) {
               >
                 <td>{customer.name || "—"}</td>
                 <td>{customer.email || "—"}</td>
+                <td>{customer.paymentEmail || "—"}</td>
+                <td>{customer.uid || "—"}</td>
                 <td>{formatDateTime(customer.createdAt)}</td>
                 <td>
                   <span className={`admin-badge ${customer.paymentStatus === "paid" ? "admin-badge-paid" : "admin-badge-none"}`}>
@@ -146,7 +155,12 @@ export default function CustomerTable({ customers, onRowClick }) {
                 </td>
                 <td>{formatGbpFromPence(customer.totalPaid)}</td>
                 <td>{customer.stripeCustomerId || "—"}</td>
+                <td>{customer.accessType || "none"}</td>
                 <td>{customer.subscriptionStatus}</td>
+                <td>{formatDateTime(customer.trialEndsAt)}</td>
+                <td>{customer.lastWebhookEventId || "—"}</td>
+                <td>{customer.emailNotificationStatus || "unverifiable"}</td>
+                <td>{customer.reconciliationWarning || "—"}</td>
                 <td>
                   {[customer.attribution?.utm_source, customer.attribution?.utm_medium, customer.attribution?.utm_campaign]
                     .filter(Boolean).join(" / ") || "—"}

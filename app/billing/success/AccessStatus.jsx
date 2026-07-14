@@ -1,72 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { onAuthStateChanged } from "firebase/auth";
+import { useState } from "react";
 import Link from "next/link";
-import { auth, authPersistenceReady } from "@/lib/firebase";
-import { trackGa4Event } from "@/lib/analytics/ga4";
-
-function getRestoredUser() {
-  return new Promise((resolve) => {
-    if (!auth) {
-      resolve(null);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      unsubscribe();
-      resolve(user);
-    });
-  });
-}
 
 /**
- * If the visitor already has a real (non-anonymous) Firebase session whose
- * email matches the checkout email, claims access immediately without
- * requiring the emailed link — see /api/access/claim's session-only path.
- * Otherwise shows the "check your email" state with a resend affordance.
+ * The success page is display-only. Account association requires the signed
+ * access link; neither this component nor a checkout redirect can grant it.
  */
 export default function AccessStatus({ sessionId, maskedEmail }) {
-  const [state, setState] = useState("checking"); // checking | awaiting-email | claimed
   const [resend, setResend] = useState({ busy: false, sent: false, error: "" });
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function tryImmediateClaim() {
-      try {
-        await authPersistenceReady;
-        const user = await getRestoredUser();
-
-        if (!user || user.isAnonymous || cancelled) {
-          if (!cancelled) setState("awaiting-email");
-          return;
-        }
-
-        const idToken = await user.getIdToken();
-        const response = await fetch("/api/access/claim", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
-          body: JSON.stringify({ sessionId }),
-        });
-
-        if (cancelled) return;
-
-        if (response.ok) {
-          setState("claimed");
-        } else {
-          setState("awaiting-email");
-        }
-      } catch {
-        if (!cancelled) setState("awaiting-email");
-      }
-    }
-
-    tryImmediateClaim();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
 
   async function handleResend() {
     setResend({ busy: true, sent: false, error: "" });
@@ -87,21 +29,6 @@ export default function AccessStatus({ sessionId, maskedEmail }) {
     } catch (error) {
       setResend({ busy: false, sent: false, error: error?.message || "We could not resend your access link." });
     }
-  }
-
-  if (state === "checking") {
-    return <p className="helper-text">Checking your access...</p>;
-  }
-
-  if (state === "claimed") {
-    return (
-      <div className="billing-access-block">
-        <p className="helper-text billing-success">Your ClearTill access is active.</p>
-        <Link className="primary-link billing-success-primary" href="/dashboard" onClick={() => trackGa4Event("dashboard_entered")}>
-          Go to dashboard
-        </Link>
-      </div>
-    );
   }
 
   return (

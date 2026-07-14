@@ -5,6 +5,8 @@ import { getMonthlySubscriptionPriceId, isSubscriptionTrialEnabled } from "@/lib
 import { BLOCKING_SUBSCRIPTION_STATUSES } from "@/lib/subscriptionState";
 import { hasActiveEntitlement } from "@/lib/entitlementResolver.server";
 import { buildSubscriptionCheckoutParams } from "@/lib/subscriptionCheckout";
+import { isInternalAnalyticsRequest } from "@/lib/analytics/internal.server";
+import { sanitizeAttributionBundle } from "@/lib/analytics/attribution.server";
 
 export const runtime = "nodejs";
 
@@ -21,20 +23,29 @@ export async function POST(request) {
     ]);
     const customer = customerSnapshot.exists ? customerSnapshot.data() : {};
 
-    if (access.accessActive && access.entitlement?.billingMode !== "subscription") {
-      return NextResponse.json({ error: "Your existing ClearTill access is already active." }, { status: 409 });
-    }
-    if (customer.stripeSubscriptionId && BLOCKING_SUBSCRIPTION_STATUSES.has(customer.subscriptionStatus)) {
-      return NextResponse.json({ error: "A subscription already exists. Manage it from your account." }, { status: 409 });
+    if (access.entitlement.preventsDuplicateCheckout
+      || (customer.stripeSubscriptionId && BLOCKING_SUBSCRIPTION_STATUSES.has(customer.subscriptionStatus))) {
+      return NextResponse.json({ error: access.accessActive
+        ? "Your existing ClearTill access is already active."
+        : "A payment or subscription is already in progress. Manage it from your account." }, { status: 409 });
     }
 
     const body = await request.json().catch(() => ({}));
     const stripe = getStripeServerClient();
     const origin = request.nextUrl.origin;
-    const stripeCustomerId = String(customer.stripeCustomerId || "").trim();
+    const stripeCustomerId = String(access.entitlement.stripeCustomerId || customer.stripeCustomerId || "").trim();
+    const attribution = sanitizeAttributionBundle(body?.attribution);
+    if (attribution) {
+      await getAdminDb().collection("customers").doc(user.uid).set({
+        attribution: customer.attribution || attribution,
+        firstTouchAttribution: customer.firstTouchAttribution || attribution.firstTouch,
+        lastTouchAttribution: attribution.lastTouch,
+      }, { merge: true });
+    }
     const session = await stripe.checkout.sessions.create(buildSubscriptionCheckoutParams({
       uid: user.uid, email: user.email, priceId: getMonthlySubscriptionPriceId(), origin,
       stripeCustomerId, gaClientId: sanitizeClientId(body?.gaClientId),
+      internalTest: isInternalAnalyticsRequest(request), attribution,
     }));
 
     if (!session.url) throw new Error("Stripe Checkout did not return a session URL.");

@@ -8,43 +8,36 @@ import {
   hashClaimToken,
   InvalidClaimTokenError,
 } from "@/lib/entitlements.server";
-import { FOUNDING_ITEM, sendGa4Event } from "@/lib/analytics/ga4.server";
+import { sendGa4Event } from "@/lib/analytics/ga4.server";
+import { isInternalAnalyticsRequest } from "@/lib/analytics/internal.server";
 import { checkRateLimit, getRequestIp, RateLimitedError } from "@/lib/security/rateLimit.server";
 
 export const runtime = "nodejs";
 
 /**
- * Two entry points converge here:
- *  - email-link claim: body carries { claimToken, sessionId } — the caller
- *    just completed Firebase signInWithEmailLink using a link containing
- *    both. We verify sha256(claimToken) against the stored activeTokenHash
- *    before ever touching the entitlement.
- *  - already-authenticated success-page claim: body carries only
- *    { sessionId } — no token. The security boundary is the email-match
- *    check inside claimPendingEntitlement itself, gated on the caller
- *    already holding a real (non-anonymous) Firebase session.
+ * The caller completed Firebase signInWithEmailLink and supplies the signed
+ * claim token plus checkout session. A success-page redirect or authenticated
+ * browser session without that token is never sufficient to grant access.
  */
 export async function POST(request) {
   try {
     const decodedToken = await verifyCaller(request);
     const body = await request.json().catch(() => ({}));
     const sessionId = String(body?.sessionId || body?.sid || "").trim();
-    const claimToken = typeof body?.claimToken === "string" ? body.claimToken : null;
+    const claimToken = typeof body?.claimToken === "string" ? body.claimToken : "";
     const isNewUser = Boolean(body?.isNewUser);
 
-    if (!sessionId) {
-      return NextResponse.json({ error: "Missing checkout session reference." }, { status: 400 });
+    if (!sessionId || !claimToken) {
+      return NextResponse.json({ error: "Missing secure access link details." }, { status: 400 });
     }
 
     await checkRateLimit("access-claim", `${getRequestIp(request)}:${sessionId}`, { max: 15, windowSeconds: 3600 });
 
-    if (claimToken) {
-      const entitlement = await getAdminDb().collection("pendingEntitlements").doc(sessionId).get();
-      const activeTokenHash = entitlement.exists ? entitlement.data()?.activeTokenHash : null;
+    const entitlement = await getAdminDb().collection("pendingEntitlements").doc(sessionId).get();
+    const activeTokenHash = entitlement.exists ? entitlement.data()?.activeTokenHash : null;
 
-      if (!activeTokenHash || hashClaimToken(claimToken) !== activeTokenHash) {
-        throw new InvalidClaimTokenError();
-      }
+    if (!activeTokenHash || hashClaimToken(claimToken) !== activeTokenHash) {
+      throw new InvalidClaimTokenError();
     }
 
     if (decodedToken.email_verified !== true) {
@@ -59,7 +52,7 @@ export async function POST(request) {
       verifiedEmail: decodedToken.email,
     });
 
-    if (!result.alreadyClaimed) {
+    if (!result.alreadyClaimed && !result.entitlement.internalTest && !isInternalAnalyticsRequest(request)) {
       await sendGa4Event({
         eventName: isNewUser ? "sign_up" : "login",
         userId: decodedToken.uid,
@@ -69,11 +62,7 @@ export async function POST(request) {
       await sendGa4Event({
         eventName: "entitlement_claimed",
         userId: decodedToken.uid,
-        params: {
-          value: result.entitlement.isQaPurchase ? 0 : (Number(result.entitlement.amountPaid) || 0) / 100,
-          currency: String(result.entitlement.currency || "gbp").toUpperCase(),
-          items: [FOUNDING_ITEM],
-        },
+        params: {},
       }).catch((error) => console.error("[access-claim] ga4 entitlement_claimed failed", error));
     }
 

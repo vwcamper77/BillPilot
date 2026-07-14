@@ -10,6 +10,7 @@ import AdminFoundingAccessForm from "@/components/AdminFoundingAccessForm";
 import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/firebase";
 import { trackEvent } from "@/lib/analytics/track";
 import ManageSubscriptionButton from "./ManageSubscriptionButton";
+import InternalAnalyticsControl from "@/components/InternalAnalyticsControl";
 
 const ACCOUNT_DIALOGS = {
   reset_data: {
@@ -173,7 +174,7 @@ export default function AccountPage() {
   const dialogConfig = dialogAction ? ACCOUNT_DIALOGS[dialogAction] : null;
   const subscriptionStatus = subscription?.subscriptionStatus || entitlement?.subscriptionStatus || "";
   const billingReady = Boolean(user && billingResolvedUid === user.uid);
-  const hasCurrentBillingAccess = ["trialing", "active"].includes(subscriptionStatus) || Boolean(entitlement?.hasFullAccess);
+  const hasCurrentBillingAccess = Boolean(entitlement?.hasAccess);
   const hasPendingClaim = Boolean(user?.isAnonymous && claim?.claimStatus === "pending");
   const isAccountSecured = Boolean(!user?.isAnonymous || claim?.claimStatus === "claimed");
   const secureAccessEmail = claim?.maskedEmail || subscription?.customerEmail || user?.email || "your billing email";
@@ -385,6 +386,7 @@ export default function AccountPage() {
       <TrustShield className="page-trust-banner" />
 
       <div className="account-stack">
+        <InternalAnalyticsControl />
         <section className="account-panel">
           <p className="account-section-label">Your account</p>
           {!billingReady ? <p className="helper-text" role="status">Loading your account…</p> : null}

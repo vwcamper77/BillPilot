@@ -11,6 +11,9 @@ import {
   normalizeTrialEmail,
   TrialClaimError,
 } from "@/lib/billing/trialClaims.server";
+import { isInternalAnalyticsRequest } from "@/lib/analytics/internal.server";
+import { attributionMetadata, sanitizeAttributionBundle } from "@/lib/analytics/attribution.server";
+import { resolveEntitlementForUid } from "@/lib/entitlementResolver.server";
 
 export const runtime = "nodejs";
 
@@ -39,24 +42,31 @@ export async function POST(request) {
     const cancelPath = String(body?.cancelPath || "/dashboard?checkout=cancelled");
     const stripe = getStripeClient();
     const { subscription } = await getSubscriptionState(decodedToken.uid);
+    const entitlement = await resolveEntitlementForUid(decodedToken.uid, { accountEmail: decodedToken.email || null });
 
-    if (subscription?.stripeSubscriptionId && preventsDuplicateSubscription(subscription.subscriptionStatus)) {
+    if (entitlement.preventsDuplicateCheckout || (subscription?.stripeSubscriptionId && preventsDuplicateSubscription(subscription.subscriptionStatus))) {
       return NextResponse.json(
-        { ok: false, error: "You already have a ClearTill trial or subscription in progress." },
+        { ok: false, error: entitlement.hasAccess
+          ? "Your ClearTill access is already active."
+          : "You already have a ClearTill payment or subscription in progress." },
         { status: 409 },
       );
     }
 
-    const stripeCustomerId = subscription?.stripeCustomerId || "";
+    const stripeCustomerId = entitlement.stripeCustomerId || subscription?.stripeCustomerId || "";
     const email = normalizedEmail;
 
     if (stripeCustomerId && email) {
       await stripe.customers.update(stripeCustomerId, { email });
     }
 
+    const internalTest = isInternalAnalyticsRequest(request);
+    const attribution = sanitizeAttributionBundle(body?.attribution);
     const checkoutIntent = await createTrialCheckoutIntent({
       anonymousUid: decodedToken.uid,
       normalizedEmail: email,
+      internalTest,
+      attribution,
     });
 
     const session = await stripe.checkout.sessions.create({
@@ -81,6 +91,8 @@ export async function POST(request) {
           checkoutIntentId: checkoutIntent.checkoutIntentId,
           trialOffer: "cleartill-7-day-trial",
           planCommitment: "gbp-199-monthly",
+          internal_test: internalTest ? "1" : "0",
+          ...attributionMetadata(attribution),
         },
       },
       metadata: {
@@ -88,6 +100,8 @@ export async function POST(request) {
         normalizedEmail: checkoutIntent.normalizedEmail,
         checkoutIntentId: checkoutIntent.checkoutIntentId,
         planCommitment: "gbp-199-monthly-after-7-day-trial",
+        internal_test: internalTest ? "1" : "0",
+        ...attributionMetadata(attribution),
       },
       allow_promotion_codes: false,
     });
@@ -102,7 +116,7 @@ export async function POST(request) {
       lastStripeEventAt: Date.now(),
       ...(email ? { customerEmail: email } : {}),
     }, { force: true });
-    await trackServerAnalyticsEvent("trial_checkout_started", { uid: decodedToken.uid, source: "dashboard" });
+    if (!internalTest) await trackServerAnalyticsEvent("trial_checkout_started", { uid: decodedToken.uid, source: "dashboard" });
 
     return NextResponse.json({
       ok: true,

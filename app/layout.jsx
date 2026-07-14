@@ -1,9 +1,12 @@
 import Script from "next/script";
+import { cookies } from "next/headers";
 import "./globals.css";
 import Footer from "@/components/Footer";
 import MetaPixel from "@/components/MetaPixel";
 import AttributionTracker from "@/components/AttributionTracker";
 import TestAuthBridge from "@/components/TestAuthBridge";
+import InternalAnalyticsBanner from "@/components/InternalAnalyticsBanner";
+import { INTERNAL_ANALYTICS_COOKIE, verifyInternalAnalyticsCookie } from "@/lib/analytics/internal.server";
 
 const isTestAuthBridgeEnabled = process.env.NODE_ENV !== "production";
 
@@ -60,11 +63,14 @@ export const metadata = {
 
 export const viewport = { themeColor: "#143C3A" };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const cookieStore = await cookies();
+  const internalAnalytics = verifyInternalAnalyticsCookie(cookieStore.get(INTERNAL_ANALYTICS_COOKIE)?.value);
   return (
     <html lang="en-GB">
       <body>
-        {gtmContainerId ? (
+        <script dangerouslySetInnerHTML={{ __html: `window.__CLEARTILL_INTERNAL_ANALYTICS__=${internalAnalytics ? "true" : "false"};` }} />
+        {gtmContainerId && !internalAnalytics ? (
           <Script id="google-tag-manager" strategy="beforeInteractive">
             {`(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
             new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
@@ -73,7 +79,7 @@ export default function RootLayout({ children }) {
             })(window,document,'script','dataLayer','${gtmContainerId}');`}
           </Script>
         ) : null}
-        {gtmContainerId ? (
+        {gtmContainerId && !internalAnalytics ? (
           <noscript>
             <iframe
               src={`https://www.googletagmanager.com/ns.html?id=${gtmContainerId}`}
@@ -84,10 +90,10 @@ export default function RootLayout({ children }) {
             />
           </noscript>
         ) : null}
-        <MetaPixel />
+        {internalAnalytics ? null : <MetaPixel />}
         <AttributionTracker />
         {isTestAuthBridgeEnabled ? <TestAuthBridge /> : null}
-        {gaMeasurementId ? (
+        {gaMeasurementId && !internalAnalytics ? (
           <>
             {/* A plain synchronous <script> (not next/script) — even
                 strategy="beforeInteractive" defers execution to Next's runtime
@@ -118,6 +124,7 @@ export default function RootLayout({ children }) {
           </>
         ) : null}
         <div className="app-frame">
+          <InternalAnalyticsBanner active={internalAnalytics} />
           <div className="app-content">{children}</div>
           <Footer />
         </div>

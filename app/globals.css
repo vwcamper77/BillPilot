@@ -11,6 +11,18 @@
   --brand-green: #2BA378;
 }
 
+.internal-analytics-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  padding: 6px 12px;
+  background: #fff4cc;
+  color: #5f4b00;
+  border-bottom: 1px solid #e4cf7a;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -6843,4 +6855,93 @@ h1 {
 .setup-wizard-bills-list li {
   font-size: 0.9rem;
   color: var(--ink);
+}
+.primary-result-highlight .hero-card {
+  animation: cleartill-result-highlight 1.8s ease-out;
+}
+
+.balance-impact {
+  margin: 8px 0 0;
+  color: var(--accent-dark);
+  font-weight: 700;
+}
+
+.balance-compact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@keyframes cleartill-result-highlight {
+  0%, 35% { box-shadow: 0 0 0 4px rgba(31, 143, 95, 0.28); }
+  100% { box-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-result-highlight .hero-card { animation: none; }
+}
+
+@media (max-width: 520px) {
+  html,
+  body,
+  .dashboard-shell {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+
+  .dashboard-shell { padding: 12px; }
+
+  .dashboard-shell .topbar {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .dashboard-shell .topbar .brand { display: none; }
+
+  .dashboard-shell .topbar-actions {
+    margin-left: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dashboard-shell .topbar-actions .user-id,
+  .dashboard-shell .topbar-actions > button:first-of-type { display: none; }
+
+  .dashboard-shell .topbar-actions .secondary-button {
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 0.78rem;
+  }
+
+  .dashboard-shell .hero-card,
+  .dashboard-shell .setup-card,
+  .dashboard-shell .chat-panel,
+  .dashboard-shell .runway-panel { padding: 14px; }
+
+  .dashboard-shell .hero-trust { display: none; }
+
+  .dashboard-shell .stat-chip-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .dashboard-shell .stat-chip {
+    min-width: 0;
+    min-height: 58px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    align-items: flex-start;
+    flex-direction: column;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .dashboard-shell input,
+  .dashboard-shell select,
+  .dashboard-shell button { max-width: 100%; }
 }

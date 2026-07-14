@@ -2,16 +2,10 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import FoundingFeedbackForm from "./FoundingFeedbackForm";
-import RepairAccessButton from "./RepairAccessButton";
 import RememberCheckoutSession from "./RememberCheckoutSession";
-import PurchasePixel from "./PurchasePixel";
 import DashboardLink from "./DashboardLink";
 import AccessStatus from "./AccessStatus";
-import { grantFoundingAccessFromCheckoutSessionId } from "@/lib/billingAccess.server";
-import { formatBillingExpiry } from "@/lib/billingAccess";
 import {
-  createPendingEntitlementFromCheckoutSession,
-  getExpandedCheckoutSession,
   getPendingEntitlementBySessionId,
 } from "@/lib/entitlements.server";
 import { getFirebaseProjectId } from "@/lib/firebaseAdmin";
@@ -32,25 +26,21 @@ export default async function BillingSuccessPage({ searchParams }) {
 }
 
 async function renderLegacyFlow(sessionId) {
-  let accessMessage = "";
+  let accessMessage = "Payment confirmation is pending. Refresh shortly; no purchase is recorded by this page.";
   let accessError = "";
-  let purchaseAmount = 5;
-  let purchaseCurrency = "GBP";
-  let isQaPurchase = false;
+  let confirmed = false;
 
   if (sessionId) {
     try {
-      const billingRecord = await grantFoundingAccessFromCheckoutSessionId(sessionId);
-      accessMessage = `Access is live through ${formatBillingExpiry(billingRecord)}.`;
-      purchaseAmount = Number.isFinite(Number(billingRecord?.amountPaid))
-        ? Number(billingRecord.amountPaid) / 100
-        : 5;
-      purchaseCurrency = String(billingRecord?.currency || "gbp").toUpperCase();
-      isQaPurchase = String(billingRecord?.coupon || "").toUpperCase() === "CLEAR100";
+      const entitlement = await getPendingEntitlementBySessionId(sessionId);
+      if (entitlement) {
+        confirmed = true;
+        accessMessage = "Payment confirmed by Stripe. Your access is ready.";
+      }
     } catch (error) {
       // The underlying SDK error (Stripe/Firestore/Auth) is for logs only —
       // never surface raw error text to the user.
-      console.error("Failed to grant founding access from checkout session", {
+      console.error("Failed to read founding entitlement for checkout session", {
         stripeSessionId: sessionId,
         uid: error?.context?.uid || null,
         email: error?.context?.email || null,
@@ -59,7 +49,7 @@ async function renderLegacyFlow(sessionId) {
         attemptedUserDocPath: error?.context?.attemptedUserDocPath || "",
         attemptedBillingDocPath: error?.context?.attemptedBillingDocPath || "",
       }, error);
-      accessError = "Payment received, but we could not activate your access automatically. Please contact hello@cleartill.money.";
+      accessError = "We could not read the verified payment status. Please retry shortly or contact support.";
     }
   } else {
     console.error("Billing success page loaded without a checkout session id.");
@@ -68,32 +58,16 @@ async function renderLegacyFlow(sessionId) {
 
   return (
     <SuccessShell sessionId={sessionId}>
-      {sessionId && accessMessage && !accessError && !isQaPurchase && purchaseAmount > 0 ? (
-        <PurchasePixel sessionId={sessionId} amount={purchaseAmount} currency={purchaseCurrency} />
-      ) : null}
-
       <section className="billing-panel billing-status-panel">
-        <p className="billing-status-kicker">Founding member confirmed</p>
-        <h2 className="billing-status-headline">You&apos;re in — thank you for becoming a ClearTill founding member.</h2>
+        <p className="billing-status-kicker">Payment status</p>
+        <h2 className="billing-status-headline">{confirmed ? "Confirmed — your founding access is ready" : accessError ? "Recovery required" : "Confirmation pending"}</h2>
         <p className="billing-status-copy">
-          You now have 90 days of early access. I&apos;m building ClearTill with real
-          feedback from people who want a clearer answer to one question:
+          {confirmed ? "Your verified payment includes 90 days of early access." : "No access or purchase is created until the signed Stripe webhook confirms payment."}
         </p>
         <p className="billing-success-question">Will my money last until I'm paid?</p>
         <p className="billing-status-copy">Your feedback will directly shape what gets built next.</p>
         {accessMessage ? <p className="helper-text billing-success">{accessMessage}</p> : null}
         {accessError ? <p className="helper-text billing-error">{accessError}</p> : null}
-        {accessError && sessionId ? (
-          <div className="billing-repair-block">
-            <p className="billing-status-copy">Payment received. Activate my access</p>
-            <RepairAccessButton
-              sessionId={sessionId}
-              idleLabel="Activate my access"
-              busyLabel="Activating access..."
-              successMessage="Your ClearTill access is active."
-            />
-          </div>
-        ) : null}
       </section>
 
       <TrustShield className="page-trust-banner billing-trust-banner" compact />
@@ -113,29 +87,20 @@ async function renderLegacyFlow(sessionId) {
 async function renderPublicFlow(sessionId) {
   let maskedEmail = "";
   let accessError = "";
-  let purchaseAmount = 5;
-  let purchaseCurrency = "GBP";
-  let isQaPurchase = false;
 
   if (sessionId) {
     try {
-      // The query param is a lookup key only — the session is re-verified
-      // against Stripe directly (with discounts expanded, so CLEAR100
-      // detection matches the webhook exactly) before anything is trusted.
-      const session = await getExpandedCheckoutSession(sessionId);
-      await createPendingEntitlementFromCheckoutSession(session);
-
       const entitlement = await getPendingEntitlementBySessionId(sessionId);
+      if (!entitlement) throw Object.assign(new Error("Pending webhook verification"), { code: "pending" });
       maskedEmail = entitlement?.maskedEmail || "";
-      isQaPurchase = Boolean(entitlement?.isQaPurchase);
-      purchaseAmount = Number.isFinite(Number(entitlement?.amountPaid)) ? Number(entitlement.amountPaid) / 100 : 5;
-      purchaseCurrency = String(entitlement?.currency || "gbp").toUpperCase();
     } catch (error) {
-      console.error("Failed to fulfil checkout session on the success page", {
+      console.error("Failed to read checkout entitlement on the success page", {
         stripeSessionId: sessionId,
         firebaseProjectId: error?.context?.firebaseProjectId || getFirebaseProjectId(),
       }, error);
-      accessError = "Payment received, but we could not confirm it automatically. Please contact hello@cleartill.money.";
+      accessError = error?.code === "pending"
+        ? "Stripe confirmation is still pending. Refresh shortly; this page cannot create a purchase or grant access."
+        : "We could not read the verified payment status. Please contact hello@cleartill.money.";
     }
   } else {
     console.error("Billing success page loaded without a checkout session id.");
@@ -144,13 +109,9 @@ async function renderPublicFlow(sessionId) {
 
   return (
     <SuccessShell sessionId={sessionId}>
-      {sessionId && !accessError && !isQaPurchase && purchaseAmount > 0 ? (
-        <PurchasePixel sessionId={sessionId} amount={purchaseAmount} currency={purchaseCurrency} />
-      ) : null}
-
       <section className="billing-panel billing-status-panel">
-        <p className="billing-status-kicker">Founding member confirmed</p>
-        <h2 className="billing-status-headline">Payment received — your ClearTill access is ready</h2>
+        <p className="billing-status-kicker">Payment status</p>
+        <h2 className="billing-status-headline">{accessError ? "Confirmation pending" : "Payment confirmed — your ClearTill access is ready"}</h2>
         {accessError ? (
           <p className="helper-text billing-error">{accessError}</p>
         ) : (
@@ -180,7 +141,7 @@ function SuccessShell({ sessionId, children }) {
           <Link className="brand-link" href="/" aria-label="ClearTill home">
             <Logo className="eyebrow-logo" />
           </Link>
-          <h1 className="brand billing-success-eyebrow">Payment received</h1>
+          <h1 className="brand billing-success-eyebrow">Payment status</h1>
         </div>
       </header>
       {children}
