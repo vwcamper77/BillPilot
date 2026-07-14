@@ -27,7 +27,10 @@ export async function POST(request) {
     const body = await request.json().catch(() => ({}));
     const origin = request.nextUrl.origin;
     const stripe = getStripeServerClient();
-    const priceId = process.env.STRIPE_PRICE_ID;
+    const priceId = String(process.env.STRIPE_PRICE_ID || "").trim();
+    if (!priceId) {
+      return NextResponse.json({ error: "Founding-member checkout is not configured." }, { status: 503 });
+    }
     const identity = await resolvePrefillIdentity(request);
     const internalTest = isInternalAnalyticsRequest(request);
     const attribution = sanitizeAttributionBundle(body?.attribution);
@@ -41,21 +44,7 @@ export async function POST(request) {
       cancel_url: `${origin}/billing`,
       allow_promotion_codes: true,
       billing_address_collection: "auto",
-      line_items: priceId
-        ? [{ price: priceId, quantity: 1 }]
-        : [
-            {
-              price_data: {
-                currency: "gbp",
-                product_data: {
-                  name: "ClearTill Founding Member",
-                  description: "90 days of early access for one customer.",
-                },
-                unit_amount: 500,
-              },
-              quantity: 1,
-            },
-          ],
+      line_items: [{ price: priceId, quantity: 1 }],
       metadata: {
         plan: FOUNDING_PLAN,
         planKey: "founding_member",
