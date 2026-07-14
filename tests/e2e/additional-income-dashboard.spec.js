@@ -35,6 +35,15 @@ async function openSection(page, key, section) {
   await expect(section.locator("xpath=ancestor::section[contains(@class,'collapsible-section')][1]").locator(".collapsible-section-header")).toHaveAttribute("aria-expanded", "true");
 }
 
+async function openIncomeSettings(page) {
+  const action = page.getByRole("button", { name: "Update pay or income" });
+  if (!await action.isVisible()) {
+    const cycle = page.getByRole("button", { name: /Current pay cycle/ });
+    if (await cycle.getAttribute("aria-expanded") === "false") await cycle.click();
+  }
+  await action.click();
+}
+
 let user;
 let payday;
 let incomeDate;
@@ -70,7 +79,7 @@ test("secondary income updates safe daily, graph and Large Cost chronology witho
   await signIn(page, user.uid);
 
   await expect(page.locator(".hero-daily")).toContainText("£10");
-  await page.getByRole("button", { name: "Update pay or income" }).click();
+  await openIncomeSettings(page);
   const editor = page.getByTestId("additional-income-editor");
   await expect(editor.getByRole("button", { name: /Add another income/ })).toBeVisible();
   await editor.getByRole("button", { name: /Add another income/ }).click();
@@ -102,7 +111,7 @@ test("secondary income updates safe daily, graph and Large Cost chronology witho
   await expect(card).toContainText("From Freelance payment");
   await expect(card).toContainText("£100");
 
-  await page.getByRole("button", { name: "Update pay or income" }).click();
+  await openIncomeSettings(page);
   const reopenedEditor = page.getByTestId("additional-income-editor");
   const freelanceRow = reopenedEditor.locator("li").filter({ hasText: "Freelance payment" });
   const editIncomeButton = freelanceRow.getByRole("button", { name: "Edit", exact: true });
@@ -116,7 +125,7 @@ test("secondary income updates safe daily, graph and Large Cost chronology witho
   await expect(card).toContainText("Not affordable by due date — short by £50");
   await expect(page.locator(".hero-daily")).toContainText("£0");
   await page.reload();
-  await page.getByRole("button", { name: "Update pay or income" }).click();
+  await openIncomeSettings(page);
   const persistedEditor = page.getByTestId("additional-income-editor");
   await expect(persistedEditor).toContainText("2 active income schedules");
   await persistedEditor.getByRole("button", { name: /Add another income/ }).click();
@@ -126,6 +135,6 @@ test("secondary income updates safe daily, graph and Large Cost chronology witho
   await persistedEditor.locator("li").filter({ hasText: "Freelance payment" }).getByRole("button", { name: "Remove" }).click();
   await expect(persistedEditor).toContainText("1 active income schedule");
   await page.reload();
-  await page.getByRole("button", { name: "Update pay or income" }).click();
+  await openIncomeSettings(page);
   await expect(page.getByTestId("additional-income-editor")).toContainText("1 active income schedule");
 });

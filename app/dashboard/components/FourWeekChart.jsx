@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { buildWeeklySafeSpendingPlan, formatCurrency, formatDisplayDate } from "@/lib/billMath";
+import { buildWeeklySafeSpendingPlan, formatCurrency } from "@/lib/billMath";
 import FinancialDisclosure from "./FinancialDisclosure";
 
 export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, spendingRoomUntilPayday = null, hasBalanceSnapshot, todayIso, displayCurrency, incomeAmount = 0, additionalIncomeEvents = [] }) {
@@ -11,13 +11,12 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
   const sliderRef = useRef(null);
   const { currentBalance, paydayDate, beforePayday, afterPayday } = dashboard;
 
-  if (!hasBalanceSnapshot) return null;
+  if (!paydayDate || !hasBalanceSnapshot) return null;
 
   const chartBills = [...(beforePayday || []), ...(afterPayday || [])];
   const plan = buildWeeklySafeSpendingPlan(todayIso, paydayDate, currentBalance, chartBills, dueBeforePaydayLargeCosts, incomeAmount, additionalIncomeEvents, 4);
   const safeBeforePayday = Number.isFinite(Number(spendingRoomUntilPayday)) ? Number(spendingRoomUntilPayday) : null;
   const preShortfall = safeBeforePayday !== null && safeBeforePayday < 0;
-  const maxAvailable = Math.max(1, ...plan.map((point) => Math.max(0, point.availableToSpend)));
 
   const selectWeek = (index, openDetails = false) => {
     const next = Math.max(0, Math.min(plan.length - 1, index));
@@ -49,21 +48,21 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
 
       {activeTab === "spending" ? (
         <>
-          <div className="weekly-spend-grid" data-testid="weekly-spend-grid" ref={sliderRef} aria-label="Weekly safe spending">
+          <div className="weekly-spend-grid runway-timeline" data-testid="weekly-spend-grid" ref={sliderRef} aria-label="Four-week cash runway event timeline">
             {plan.map((week, i) => {
               const isSplit = week.preDays > 0 && week.postDays > 0;
               const isShort = week.isShortfall && week.availableToSpend < 0;
               const applicableDays = week.preDays + week.postDays;
-              const barHeight = isShort ? 0 : (Math.max(0, week.availableToSpend) / maxAvailable) * 100;
+              const visibleEvents = week.steps.filter((step) => step.type !== "opening").slice(0, 3);
               return (
                 <article className={`weekly-spend-card${i === 0 ? " is-current" : ""}${isShort ? " is-short" : ""}`} data-testid="weekly-spend-card" data-week-index={i} key={week.weekStart} onClick={() => selectWeek(i, true)}>
                   <div className="weekly-spend-card-header">
-                    <span className="weekly-spend-week-label">{["This week", "Next week", "Week 3", "Week 4"][i]}</span>
+                    <span className="weekly-spend-week-label">{week.weekLabel}</span>
                     {i === 0 ? <span className="weekly-today-badge">Today</span> : null}
                   </div>
-                  <p className="weekly-date-range">{formatDisplayDate(week.weekStart)} – {formatDisplayDate(week.weekEnd)}</p>
+                  <div className="timeline-rail" aria-hidden="true"><span className="timeline-node" /></div>
                   <div className="weekly-payday-marker-slot">
-                    {week.containsPayDate ? <span className="weekly-spend-payday-badge">{week.payDateLabel}</span> : null}
+                    {week.containsPayDate ? <span className="weekly-spend-payday-badge">{week.payDateLabel}</span> : <span className="timeline-period-label">Period {i + 1}</span>}
                   </div>
                   <div className="weekly-spend-value" data-testid="available-to-spend" data-week-index={i}>
                     {isShort ? `${formatCurrency(Math.abs(week.availableToSpend), displayCurrency)} short` : `${formatCurrency(week.availableToSpend, displayCurrency)} available`}
@@ -72,25 +71,22 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
                     {isShort ? "No safe spending allowance" : `${formatCurrency(week.dailyRate ?? (week.availableToSpend / Math.max(1, applicableDays)), displayCurrency)} per day`}
                     <span>{applicableDays} spending day{applicableDays === 1 ? "" : "s"}</span>
                   </div>
-                  <div className="weekly-bar-area" aria-label={`${formatCurrency(week.availableToSpend, displayCurrency)} safe to spend`}>
-                    <div className="weekly-bar-scale">
-                      {!isShort ? <div className="weekly-cash-bar" data-testid="weekly-spend-bar" data-value={week.availableToSpend} style={{ height: `${barHeight}%` }} /> : <div className="weekly-shortfall-marker">!</div>}
-                    </div>
-                  </div>
+                  {!isShort ? <span className="timeline-available-meter" data-testid="weekly-spend-bar" data-value={week.availableToSpend} /> : <p className="timeline-warning">Needs attention</p>}
+                  <ul className="timeline-events">
+                    {visibleEvents.length ? visibleEvents.map((event, eventIndex) => (
+                      <li key={`${event.type}-${event.date}-${eventIndex}`} className={`event-${event.amount > 0 ? "income" : event.type}`}>
+                        <span>{event.name || event.label || (event.amount > 0 ? "Income" : event.type === "large_cost" ? "Large cost" : "Bill")}</span>
+                        <strong>{event.amount > 0 ? "+" : "−"}{formatCurrency(Math.abs(event.amount), displayCurrency)}</strong>
+                      </li>
+                    )) : <li className="is-quiet"><span>No dated changes</span></li>}
+                  </ul>
                   {isSplit ? (
                     <div className="weekly-payday-split" data-testid="payday-split">
                       <span>Before payday <strong data-testid="available-before-payday">{formatCurrency(week.preAvailableToSpend, displayCurrency)} available</strong></span>
                       <span>After payday <strong data-testid="available-after-payday">{formatCurrency(week.postAvailableToSpend, displayCurrency)} available</strong></span>
                     </div>
                   ) : null}
-                  <dl className="weekly-card-cashflow">
-                    <div><dt>Opening balance</dt><dd>{formatCurrency(week.openingBalance, displayCurrency)}</dd></div>
-                    <div><dt>Income arriving</dt><dd>{formatCurrency(week.incomeReceived, displayCurrency)}</dd></div>
-                    <div><dt>Bills due</dt><dd>{formatCurrency(week.billsDue, displayCurrency)}</dd></div>
-                    <div><dt>Large costs funded from current account</dt><dd>{formatCurrency(week.largeCostAllocations, displayCurrency)}</dd></div>
-                    <div><dt>Available spending</dt><dd>{formatCurrency(week.availableToSpend, displayCurrency)}</dd></div>
-                    <div><dt>Projected closing balance</dt><dd>{formatCurrency(week.projectedClosingBalance, displayCurrency)}</dd></div>
-                  </dl>
+                  <p className="weekly-summary-line">Closes at {formatCurrency(week.projectedClosingBalance, displayCurrency)}</p>
                   <button type="button" className="weekly-view-breakdown" onClick={(event) => { event.stopPropagation(); selectWeek(i, true); }}>View breakdown</button>
                 </article>
               );

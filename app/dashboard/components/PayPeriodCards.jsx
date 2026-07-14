@@ -5,10 +5,10 @@ function SummaryRow({ label, value, displayCurrency, sign = "" }) {
   return <div className="pay-period-row"><span>{label}</span><strong>{sign}{formatCurrency(Math.abs(value || 0), displayCurrency)}</strong></div>;
 }
 
-export default function PayPeriodCards({ current, next, displayCurrency }) {
+export default function PayPeriodCards({ current, next, displayCurrency, show = "both" }) {
   return (
-    <section className="pay-period-grid" aria-label="Pay period summaries">
-      <article className="pay-period-card" data-testid="current-pay-period">
+    <section className={`pay-period-grid${show !== "both" ? " is-single" : ""}`} aria-label="Pay period summaries">
+      {show !== "next" ? <article className="pay-period-card" data-testid="current-pay-period">
         <h2>Current period</h2>
         <p>Now to {formatShortDisplayDate(current.endDate)}</p>
         <SummaryRow label="Starting balance" value={current.startingBalance} displayCurrency={displayCurrency} />
@@ -17,8 +17,8 @@ export default function PayPeriodCards({ current, next, displayCurrency }) {
         <FinancialDisclosure label="Large-cost funding" amount={current.largeCostTotal} items={current.largeCosts} displayCurrency={displayCurrency} testId="current-period-large-costs" />
         <SummaryRow label="Free to spend" value={current.freeCash} displayCurrency={displayCurrency} />
         <SummaryRow label="Daily allowance" value={current.dailyAllowance} displayCurrency={displayCurrency} />
-      </article>
-      <article className="pay-period-card" data-testid="next-pay-period">
+      </article> : null}
+      {show !== "current" ? <article className="pay-period-card" data-testid="next-pay-period">
         <h2>Next period</h2>
         <p>{formatShortDisplayDate(next.startDate)} to {formatShortDisplayDate(next.endDate)}</p>
         <FinancialDisclosure label="Income arriving" amount={next.incomeTotal} items={next.income} displayCurrency={displayCurrency} sign="+" testId="next-period-income" />
@@ -26,7 +26,7 @@ export default function PayPeriodCards({ current, next, displayCurrency }) {
         <FinancialDisclosure label="Large-cost funding" amount={next.largeCostTotal} items={next.largeCosts} displayCurrency={displayCurrency} testId="next-period-large-costs" />
         <SummaryRow label="Expected free cash" value={next.freeCash} displayCurrency={displayCurrency} />
         <SummaryRow label="Suggested daily allowance" value={next.dailyAllowance} displayCurrency={displayCurrency} />
-      </article>
+      </article> : null}
     </section>
   );
 }

@@ -78,6 +78,23 @@ function ArticleBlock({ block, faqs }) {
   return <p><InlineContent segments={block.segments} text={block.text} /></p>;
 }
 
+function DashboardHierarchyPreview() {
+  return (
+    <figure className="article-dashboard-preview" aria-label="The ClearTill dashboard hierarchy for irregular income">
+      <div className="preview-app-header"><Logo height={25} /><span>Overview</span></div>
+      <div className="preview-result-card">
+        <span className="status-pill">On track</span>
+        <strong>Available before your next reliable payment</strong>
+        <p>Per-day guidance for the days remaining</p>
+        <div className="preview-formula"><span>Balance</span><b>+</b><span>confirmed income</span><b>−</b><span>committed money</span><b>=</b><span>available</span></div>
+        <div className="preview-allocation"><i /><span>Available</span><span>Already committed</span></div>
+        <div className="preview-commitments"><span>Due next</span><span>Amount</span><span>Date</span></div>
+      </div>
+      <figcaption>The amount and reliable-payment date lead; evidence and management stay close without competing with the answer.</figcaption>
+    </figure>
+  );
+}
+
 export default async function BlogArticlePage({ params }) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
@@ -137,6 +154,8 @@ export default async function BlogArticlePage({ params }) {
           <p className="article-description">{post.description}</p>
           <div className="article-meta"><span>By ClearTill</span><span aria-hidden="true">·</span><time dateTime={post.publishedAt}>{formatPostDate(post.publishedAt)}</time><span aria-hidden="true">·</span><span>{post.readingMinutes} min read</span></div>
         </header>
+
+        {post.slug === "budgeting-irregular-income-no-payday" ? <DashboardHierarchyPreview /> : null}
 
         <div className="article-layout">
           <aside className="article-summary"><span>In one sentence</span><p>{post.takeaway}</p></aside>

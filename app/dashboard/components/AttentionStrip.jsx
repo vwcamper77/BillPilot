@@ -2,8 +2,10 @@ import { formatDisplayDate } from "@/lib/billMath";
 
 export const STALE_BALANCE_DAYS = 7;
 
-export default function AttentionStrip({ reminders, billsDueSoon, staleBalanceDays }) {
+export default function AttentionStrip({ reminders, billsDueSoon, staleBalanceDays, issues = [] }) {
   const items = [];
+
+  issues.filter(Boolean).forEach((text, index) => items.push({ key: `issue-${index}`, text }));
 
   (reminders || []).forEach((reminder) => {
     if (!reminder?.message) return;

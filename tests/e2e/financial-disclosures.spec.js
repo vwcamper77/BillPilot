@@ -34,6 +34,7 @@ async function signIn(page) {
   await page.waitForFunction(() => typeof window.__cleartillTestSignIn === "function");
   await page.evaluate((value) => window.__cleartillTestSignIn(value), token);
   await page.goto("/dashboard");
+  await page.getByRole("button", { name: "See breakdown" }).click();
   await page.locator('[data-testid="hero-bills"]').waitFor({ state: "visible", timeout: 20000 });
 }
 
@@ -67,6 +68,7 @@ test("disclosures are exact, accessible, period-correct and mobile-safe", async 
   await expect(page.locator('[data-testid="next-money-in"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="income-schedule-card"]')).toContainText("Other scheduled income");
   await page.reload();
+  await page.getByRole("button", { name: "See breakdown" }).click();
   await expect(heroIncome).toContainText("£1,000");
 
   const heroBills = page.locator('[data-testid="hero-bills"]');
@@ -86,7 +88,9 @@ test("disclosures are exact, accessible, period-correct and mobile-safe", async 
   const zeroLargeCosts = page.locator('[data-testid="hero-large-costs"]');
   await expect(zeroLargeCosts.getByRole("button")).toHaveCount(0);
 
+  await page.getByRole("button", { name: /Current pay cycle/ }).click();
   await expect(page.locator('[data-testid="current-pay-period"]')).toContainText("Rent");
+  await page.getByRole("button", { name: /Next pay cycle/ }).click();
   const nextIncome = page.locator('[data-testid="next-period-income"]');
   await nextIncome.getByRole("button").click();
   await expect(nextIncome).toContainText("Monthly pay");

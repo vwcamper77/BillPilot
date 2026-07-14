@@ -43,6 +43,15 @@ async function openLargeCostsSection(section) {
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 }
 
+async function openIncomeSettings(page) {
+  const action = page.getByRole("button", { name: "Update pay or income" });
+  if (!await action.isVisible()) {
+    const cycle = page.getByRole("button", { name: /Current pay cycle/ });
+    if (await cycle.getAttribute("aria-expanded") === "false") await cycle.click();
+  }
+  await action.click();
+}
+
 async function addCurrentBalanceCost(section, { name, amount, dueDate }) {
   await section.getByRole("button", { name: "Add large cost" }).click();
   await section.locator("#large-cost-name").fill(name);
@@ -86,9 +95,7 @@ test("split editor, persistence, due-date maths, hero and forecast update withou
   await seedUserBill(billUser.uid, { amount: 1, dueDay: 5 });
   await signIn(page);
 
-  const payOrIncomeButton = page.getByRole("button", { name: "Update pay or income" });
-  await expect(payOrIncomeButton).toBeVisible();
-  await payOrIncomeButton.click();
+  await openIncomeSettings(page);
   await expect(page.locator("#payday-amount")).toBeVisible();
   await expect(page.locator("#payday-amount")).toBeFocused();
   await page.locator(".balance-editor").getByRole("button", { name: "Close" }).click();

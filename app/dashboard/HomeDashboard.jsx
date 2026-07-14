@@ -45,7 +45,7 @@ import { postDashboardSettingsAction, postDashboardStateAction, saveIncome as sa
 import { friendlyAuthError, friendlyGoogleAuthError, friendlySettingsError } from "./lib/friendlyErrors";
 import CollapsibleSection from "./components/CollapsibleSection";
 import HeroCard from "./components/HeroCard";
-import QuickActions, { triggerQuickAction } from "./components/QuickActions";
+import { triggerQuickAction } from "./components/QuickActions";
 import AttentionStrip, { STALE_BALANCE_DAYS } from "./components/AttentionStrip";
 import BalanceEditor from "./components/BalanceEditor";
 import AddBills from "./components/AddBills";
@@ -564,6 +564,7 @@ function HomeDashboardContent() {
   const clearTillStatus = (() => {
     if (!hasBalanceSnapshot || !hasIncomeSchedule || spendingRoomUntilPayday === null) return "";
     if (spendingRoomUntilPayday < 0) return "negative";
+    if (unassignedCostsBeforePayday > 0 || estimatedIncomeTotal > 0 || buildTrackerChecks(bills).some((check) => !check.found)) return "attention";
     if (spendingRoomUntilPayday < 50) return "low";
     return "ok";
   })();
@@ -633,6 +634,11 @@ function HomeDashboardContent() {
   const currentPeriodIncome = dashboard.paydayDate
     ? upcomingIncome.filter((item) => item.date < dashboard.paydayDate)
     : upcomingIncome;
+  const estimatedIncomeOccurrences = useMemo(() => (
+    expandIncomeEvents(incomeEvents, todayIso, forecastHorizonDate, { confirmedOnly: false })
+      .filter((item) => item.confidence === "estimated" && item.date < forecastHorizonDate)
+  ), [forecastHorizonDate, incomeEvents, todayIso]);
+  const estimatedIncomeTotal = estimatedIncomeOccurrences.reduce((total, item) => total + (Number(item.amount) || 0), 0);
   const currentIncomeTotal = sumItemAmounts(currentPeriodIncome);
   const nextPeriodIncome = [
     ...upcomingIncome.filter((item) => item.date >= dashboard.paydayDate && item.date < nextPaydayDate),
@@ -681,6 +687,15 @@ function HomeDashboardContent() {
     daysSinceBalanceSnapshot !== null
     && (setupCompletedDaysAgo === null || setupCompletedDaysAgo >= STALE_BALANCE_DAYS)
   ) ? daysSinceBalanceSnapshot : null;
+  const balanceSnapshotDate = toDateMaybe(displayAccount?.snapshotEnteredAt || displayAccount?.updatedAt);
+  const balanceFreshness = optimisticBalance !== null
+    ? "Updated just now"
+    : balanceSnapshotDate
+      ? `Updated ${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: balanceSnapshotDate.getFullYear() === new Date().getFullYear() ? undefined : "numeric", timeZone: "Europe/London" }).format(balanceSnapshotDate)}`
+      : "Update time unavailable";
+  const balanceIsStale = hasBalanceSnapshot && (staleBalanceDaysForStrip === null
+    ? !balanceSnapshotDate
+    : staleBalanceDaysForStrip >= STALE_BALANCE_DAYS);
 
   const billsDueSoon = useMemo(() => {
     const candidates = dashboard.paydayDate
@@ -702,6 +717,9 @@ function HomeDashboardContent() {
     : "None planned";
   const trackerChecks = useMemo(() => buildTrackerChecks(bills), [bills]);
   const utilitiesSummaryValue = `${trackerChecks.filter((c) => c.found).length} of ${trackerChecks.length}`;
+  const nextCommitments = [...beforePaydayBillItems, ...beforePaydayLargeCostItems]
+    .filter((item) => item.date >= todayIso && item.date < forecastHorizonDate)
+    .sort((a, b) => a.date.localeCompare(b.date) || b.amount - a.amount);
 
   function trackAccountCreated(method) {
     trackEvent("account_created", { method, attribution: getStoredAttribution() });
@@ -1194,7 +1212,7 @@ function HomeDashboardContent() {
           <Link className="brand-link" href="/" aria-label="ClearTill home">
             <Logo className="eyebrow-logo" />
           </Link>
-          <h1 className="brand">Your actual cash runway before you get paid.</h1>
+          <p className="brand">Your cash runway</p>
         </div>
         <div className="topbar-actions">
           <span className="user-id">
@@ -1220,6 +1238,16 @@ function HomeDashboardContent() {
         </section>
       ) : null}
 
+      <AttentionStrip
+        reminders={reminders}
+        billsDueSoon={billsDueSoon}
+        staleBalanceDays={staleBalanceDaysForStrip}
+        issues={[
+          unassignedCostsBeforePayday > 0 ? `${formatCurrency(unassignedCostsBeforePayday, displayCurrency)} of planned costs still needs a funding choice.` : "",
+          estimatedIncomeTotal > 0 ? `${formatCurrency(estimatedIncomeTotal, displayCurrency)} of estimated income is not counted in the available amount.` : "",
+        ]}
+      />
+
       <div
         ref={primaryResultRef}
         className={highlightPrimaryResult ? "primary-result-highlight" : ""}
@@ -1238,6 +1266,10 @@ function HomeDashboardContent() {
           displayCurrency={displayCurrency}
           onUpdateBalance={() => openBalanceEditor(false)}
           onEditPaydaySettings={() => openBalanceEditor(true)}
+          nextCommitments={nextCommitments}
+          balanceFreshness={balanceFreshness}
+          balanceIsStale={balanceIsStale}
+          estimatedIncome={estimatedIncomeTotal}
           breakdownProps={{
             hasBalanceSnapshot,
             currentBalance: dashboard.currentBalance,
@@ -1254,43 +1286,6 @@ function HomeDashboardContent() {
         />
         {balanceImpact ? <p className="balance-impact" role="status">{balanceImpact}</p> : null}
       </div>
-
-      <div className="stat-chip-row" aria-label="Key figures">
-        <span className="stat-chip"><strong>{formatCurrency(dashboard.currentBalance, displayCurrency)}</strong><span>Current available money</span></span>
-        <span className="stat-chip"><strong>{formatCurrency(forecastBills.reduce((total, bill) => total + (Number(bill.amount) || 0), 0), displayCurrency)}</strong><span>{hasPayday ? "Bills before payday" : "Bills in forecast"}</span></span>
-        <span className="stat-chip"><strong>{hasPayday ? formatDisplayDate(dashboard.paydayDate) : "Rolling schedule"}</strong><span>{hasPayday ? "Payday date" : "Income pattern"}</span></span>
-        <span className="stat-chip"><strong>{formatCurrency(totalMonthlyBills, displayCurrency)}</strong><span>Total monthly bills</span></span>
-      </div>
-
-      {dashboard.paydayDate && nextPaydayDate ? (
-          <PayPeriodCards
-            displayCurrency={displayCurrency}
-            current={{
-              endDate: dashboard.paydayDate,
-              startingBalance: dashboard.currentBalance,
-              incomeTotal: currentIncomeTotal,
-              income: currentPeriodIncome,
-              billTotal: dashboard.totalBeforePayday,
-              bills: beforePaydayBillItems,
-              largeCostTotal: bigCostsDueBeforePayday,
-              largeCosts: beforePaydayLargeCostItems,
-              freeCash: Math.max(0, spendingRoomUntilPayday || 0),
-              dailyAllowance: Math.max(0, dailySpendingRoom || 0),
-            }}
-            next={{
-              startDate: dashboard.paydayDate,
-              endDate: nextPaydayDate,
-              incomeTotal: nextIncomeTotal,
-              income: nextPeriodIncome,
-              billTotal: nextBillTotal,
-              bills: nextPeriodBills,
-              largeCostTotal: nextLargeCostTotal,
-              largeCosts: nextPeriodLargeCosts,
-              freeCash: Math.max(0, nextFreeCash),
-              dailyAllowance: Math.max(0, nextFreeCash / nextPeriodDays),
-            }}
-          />
-      ) : null}
 
       <BalanceEditor
         open={balanceEditorOpen}
@@ -1325,15 +1320,70 @@ function HomeDashboardContent() {
         onCurrencySelect={handleCurrencySave}
       />
 
-      <QuickActions />
+      {dashboard.paydayDate && nextPaydayDate ? (
+        <>
+          <CollapsibleSection
+            title="Current pay cycle"
+            summaryValue={`${formatCurrency(Math.max(0, spendingRoomUntilPayday || 0), displayCurrency)} available · to ${formatDisplayDate(dashboard.paydayDate)}`}
+            storageKey="current-cycle"
+          >
+            <PayPeriodCards
+              show="current"
+              displayCurrency={displayCurrency}
+              current={{
+                endDate: dashboard.paydayDate,
+                startingBalance: dashboard.currentBalance,
+                incomeTotal: currentIncomeTotal,
+                income: currentPeriodIncome,
+                billTotal: dashboard.totalBeforePayday,
+                bills: beforePaydayBillItems,
+                largeCostTotal: bigCostsDueBeforePayday,
+                largeCosts: beforePaydayLargeCostItems,
+                freeCash: Math.max(0, spendingRoomUntilPayday || 0),
+                dailyAllowance: Math.max(0, dailySpendingRoom || 0),
+              }}
+              next={{
+                startDate: dashboard.paydayDate,
+                endDate: nextPaydayDate,
+                incomeTotal: nextIncomeTotal,
+                income: nextPeriodIncome,
+                billTotal: nextBillTotal,
+                bills: nextPeriodBills,
+                largeCostTotal: nextLargeCostTotal,
+                largeCosts: nextPeriodLargeCosts,
+                freeCash: Math.max(0, nextFreeCash),
+                dailyAllowance: Math.max(0, nextFreeCash / nextPeriodDays),
+              }}
+            />
+            <button className="secondary-button cycle-income-action" type="button" onClick={() => openBalanceEditor(true)}>Update pay or income</button>
+          </CollapsibleSection>
+          <CollapsibleSection
+            title="Next pay cycle"
+            summaryValue={`${formatCurrency(Math.max(0, nextFreeCash), displayCurrency)} expected · from ${formatDisplayDate(dashboard.paydayDate)}`}
+            storageKey="next-cycle"
+          >
+            <PayPeriodCards
+              show="next"
+              displayCurrency={displayCurrency}
+              current={{}}
+              next={{
+                startDate: dashboard.paydayDate,
+                endDate: nextPaydayDate,
+                incomeTotal: nextIncomeTotal,
+                income: nextPeriodIncome,
+                billTotal: nextBillTotal,
+                bills: nextPeriodBills,
+                largeCostTotal: nextLargeCostTotal,
+                largeCosts: nextPeriodLargeCosts,
+                freeCash: Math.max(0, nextFreeCash),
+                dailyAllowance: Math.max(0, nextFreeCash / nextPeriodDays),
+              }}
+            />
+          </CollapsibleSection>
+        </>
+      ) : null}
 
-      <AttentionStrip
-        reminders={reminders}
-        billsDueSoon={billsDueSoon}
-        staleBalanceDays={staleBalanceDaysForStrip}
-      />
-
-      <CollapsibleSection title="Four-week cash forecast" defaultCollapsed={false} storageKey="chart">
+      <CollapsibleSection title="Four-week outlook" summaryValue={`${nextCommitments.length} upcoming event${nextCommitments.length === 1 ? "" : "s"}`} defaultCollapsed={false} storageKey="chart">
         <FourWeekChart
           dashboard={dashboard}
           dueBeforePaydayLargeCosts={largeCostPlans.chartAllocations}
