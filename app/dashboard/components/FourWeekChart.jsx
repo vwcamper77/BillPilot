@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { buildWeeklySafeSpendingPlan, formatCurrency } from "@/lib/billMath";
+import { buildWeeklySafeSpendingPlan, formatCurrency, formatDisplayDate } from "@/lib/billMath";
 import FinancialDisclosure from "./FinancialDisclosure";
 
 export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, spendingRoomUntilPayday = null, hasBalanceSnapshot, todayIso, displayCurrency, incomeAmount = 0, additionalIncomeEvents = [] }) {
@@ -11,7 +11,7 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
   const sliderRef = useRef(null);
   const { currentBalance, paydayDate, beforePayday, afterPayday } = dashboard;
 
-  if (!paydayDate || !hasBalanceSnapshot) return null;
+  if (!hasBalanceSnapshot) return null;
 
   const chartBills = [...(beforePayday || []), ...(afterPayday || [])];
   const plan = buildWeeklySafeSpendingPlan(todayIso, paydayDate, currentBalance, chartBills, dueBeforePaydayLargeCosts, incomeAmount, additionalIncomeEvents, 4);
@@ -58,9 +58,10 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
               return (
                 <article className={`weekly-spend-card${i === 0 ? " is-current" : ""}${isShort ? " is-short" : ""}`} data-testid="weekly-spend-card" data-week-index={i} key={week.weekStart} onClick={() => selectWeek(i, true)}>
                   <div className="weekly-spend-card-header">
-                    <span className="weekly-spend-week-label">{week.weekLabel}</span>
+                    <span className="weekly-spend-week-label">{["This week", "Next week", "Week 3", "Week 4"][i]}</span>
                     {i === 0 ? <span className="weekly-today-badge">Today</span> : null}
                   </div>
+                  <p className="weekly-date-range">{formatDisplayDate(week.weekStart)} – {formatDisplayDate(week.weekEnd)}</p>
                   <div className="weekly-payday-marker-slot">
                     {week.containsPayDate ? <span className="weekly-spend-payday-badge">{week.payDateLabel}</span> : null}
                   </div>
@@ -82,7 +83,14 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
                       <span>After payday <strong data-testid="available-after-payday">{formatCurrency(week.postAvailableToSpend, displayCurrency)} available</strong></span>
                     </div>
                   ) : null}
-                  <p className="weekly-summary-line">{formatCurrency(week.incomeReceived, displayCurrency)} income · {formatCurrency(week.billsDue + week.largeCostAllocations, displayCurrency)} committed</p>
+                  <dl className="weekly-card-cashflow">
+                    <div><dt>Opening balance</dt><dd>{formatCurrency(week.openingBalance, displayCurrency)}</dd></div>
+                    <div><dt>Income arriving</dt><dd>{formatCurrency(week.incomeReceived, displayCurrency)}</dd></div>
+                    <div><dt>Bills due</dt><dd>{formatCurrency(week.billsDue, displayCurrency)}</dd></div>
+                    <div><dt>Large costs funded from current account</dt><dd>{formatCurrency(week.largeCostAllocations, displayCurrency)}</dd></div>
+                    <div><dt>Available spending</dt><dd>{formatCurrency(week.availableToSpend, displayCurrency)}</dd></div>
+                    <div><dt>Projected closing balance</dt><dd>{formatCurrency(week.projectedClosingBalance, displayCurrency)}</dd></div>
+                  </dl>
                   <button type="button" className="weekly-view-breakdown" onClick={(event) => { event.stopPropagation(); selectWeek(i, true); }}>View breakdown</button>
                 </article>
               );

@@ -4,6 +4,7 @@ import "./globals.css";
 import Footer from "@/components/Footer";
 import MetaPixel from "@/components/MetaPixel";
 import AttributionTracker from "@/components/AttributionTracker";
+import AnalyticsConsent from "@/components/AnalyticsConsent";
 import TestAuthBridge from "@/components/TestAuthBridge";
 import InternalAnalyticsBanner from "@/components/InternalAnalyticsBanner";
 import { INTERNAL_ANALYTICS_COOKIE, verifyInternalAnalyticsCookie } from "@/lib/analytics/internal.server";
@@ -90,7 +91,14 @@ export default async function RootLayout({ children }) {
             />
           </noscript>
         ) : null}
-        {internalAnalytics ? null : <MetaPixel />}
+        {internalAnalytics ? null : (
+          <>
+            <MetaPixel />
+            {/* Mounted above AttributionTracker so Mixpanel is ready before
+                the first mirrored product event fires. */}
+            <AnalyticsConsent />
+          </>
+        )}
         <AttributionTracker />
         {isTestAuthBridgeEnabled ? <TestAuthBridge /> : null}
         {gaMeasurementId && !internalAnalytics ? (

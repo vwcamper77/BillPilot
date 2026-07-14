@@ -94,3 +94,24 @@ test("a negative week shows a shortfall and no positive bar", async ({ page }) =
   await expect(shortCard.getByTestId("weekly-spend-bar")).toHaveCount(0);
   await page.screenshot({ path: "output/playwright/four-week-forecast-shortfall.png", fullPage: true });
 });
+
+for (const width of [320, 375, 390, 430]) {
+  test(`four forecast cards remain usable at ${width}px`, async ({ page }) => {
+    const today = todayIso();
+    const payday = addDays(today, Math.max(1, daysToNextMonday(today)));
+    await seedDashboardState(uid, { currentBalance: 500, payDay: day(payday), payAmount: 800 });
+    await seedUserBill(uid, { id: `mobile-${width}`, name: "Mobile bill", amount: 40, dueDay: day(addDays(today, 4)) });
+    await page.setViewportSize({ width, height: 844 });
+    await signIn(page);
+
+    const chart = page.getByTestId("four-week-forecast");
+    await expect(chart.getByTestId("weekly-spend-card")).toHaveCount(4);
+    await expect(chart.getByText("This week", { exact: true })).toBeVisible();
+    await expect(chart.getByText("Next week", { exact: true })).toBeAttached();
+    await expect(chart.getByText("Week 3", { exact: true })).toBeAttached();
+    await expect(chart.getByText("Week 4", { exact: true })).toBeAttached();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    if (width === 390) await page.screenshot({ path: "output/playwright/four-week-forecast-390.png", fullPage: true });
+  });
+}

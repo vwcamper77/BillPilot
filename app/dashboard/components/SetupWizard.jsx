@@ -17,12 +17,12 @@ const STEP_META = {
     detail: "Start with your current available money so ClearTill can calculate today’s cash runway.",
   },
   2: {
-    title: "When do you get paid?",
-    detail: "Once your payday is set, ClearTill can show what lands before payday.",
+    title: "Add an income schedule",
+    detail: "Add at least one active income source. It can be monthly, weekly, fortnightly, four-weekly or irregular.",
   },
   3: {
     title: "Add your bills",
-    detail: "Add your bills to build the forecast and runway.",
+    detail: "Bills are optional, but adding them makes your forecast more useful.",
   },
 };
 
@@ -117,8 +117,8 @@ export default function SetupWizard({
               displayCurrency={displayCurrency}
               autoFocusOnMount
             />
-            {billCount > 0 ? (
-              <div className="setup-wizard-bills-progress">
+            <div className="setup-wizard-bills-progress">
+              {billCount > 0 ? <>
                 <p className="helper-text setup-wizard-bills-tally">
                   {billCount} bill{billCount === 1 ? "" : "s"} added
                   {billCount === 1 ? " — add another, or continue when you're ready." : "."}
@@ -128,11 +128,9 @@ export default function SetupWizard({
                     <li key={bill.id}>{bill.name}</li>
                   ))}
                 </ul>
-                <button className="primary-button" type="button" onClick={onFinishBillsStep}>
-                  Continue to dashboard
-                </button>
-              </div>
-            ) : null}
+              </> : <p className="helper-text">You can add bills later from the dashboard.</p>}
+              <button className="primary-button" type="button" onClick={onFinishBillsStep}>Continue to dashboard</button>
+            </div>
           </>
         )}
       </section>

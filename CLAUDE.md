@@ -123,6 +123,14 @@ Internal-only acquisition/funnel dashboard, gated by `ADMIN_EMAILS` (checked via
 
 Client-side event firing goes through `trackEvent()` in `lib/analytics/track.js` (fire-and-forget, mirrors `lib/security/clientSecurity.js`'s pattern). First-touch UTM/referrer attribution is captured once per browser by `lib/analytics/attribution.js` into `localStorage`, and attached to the `customers/{uid}` doc at `account_created`.
 
+### Mixpanel
+
+`trackEvent()` is the single choke point: every event in `ANALYTICS_EVENTS` is mirrored to Mixpanel from `mirrorToMixpanel()` in `lib/analytics/track.js`. **To add an event, add it to `ANALYTICS_EVENTS` and call `trackEvent()` — never call `mixpanel.track()` directly**, or it will reach Mixpanel but not `/admin/analytics`.
+
+`identify()` fires on `account_created`/`login` and `reset()` on `logout`, all from that same choke point — the Firebase uid survives the anonymous → `linkWithPopup` upgrade, so the pre-sign-up funnel stitches to the user. ClearTill's Value Moment is `forecast_viewed`, which sets the `activated` / `first_forecast_viewed_at` profile properties.
+
+Mixpanel is initialised **opted out** (`lib/analytics/mixpanel.js`) and sends nothing — and writes no storage — until consent is granted via the `AnalyticsConsent` bar (UK GDPR/PECR). Don't flip `opt_out_tracking_by_default`; events collected pre-consent can only be undone with a deletion request. Note this gates Mixpanel *only* — GA4 and the Meta Pixel in `app/layout.jsx` still load unconditionally. Set `NEXT_PUBLIC_MIXPANEL_API_HOST` only if the Mixpanel project is provisioned for EU data residency; pointing a US project at the EU host silently drops data.
+
 `customers.totalPaid` is stored in pence (Stripe/billing convention); `adSpend.spend` is entered in whole pounds — the aggregation route (`app/api/admin/analytics/route.js`) converts pence→pounds before combining them for CAC/ROAS/ARPU. Stripe checkout is currently one-time-payment only (no subscriptions), so MRR/trial KPIs render "N/A" rather than a fabricated number.
 
 e2e coverage: `tests/e2e/admin-analytics.spec.js` (run via `npm run test:e2e`). Seeds test users and a sample customer via `tests/e2e/setup/seedTestUsers.mjs`, and uses a dev-only `window.__cleartillTestSignIn` hook (`components/TestAuthBridge.jsx`, never mounted in production) to sign into a real browser session as a specific seeded Firebase user without a real OAuth flow.

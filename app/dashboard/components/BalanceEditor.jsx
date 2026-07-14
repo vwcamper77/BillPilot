@@ -140,81 +140,23 @@ export default function BalanceEditor({
           <div className="income-schedule-header">
             <div>
               <span className="income-schedule-kicker">Income schedule</span>
-              <h2>Your regular pay</h2>
-              <p>Set when your main income normally arrives. Add bonuses, benefits or other payments below.</p>
+              <h2>Income schedule</h2>
+              <p>Add every source of income you rely on. A monthly salary is the common starting point, but it is not required.</p>
             </div>
-            <button
-              className="secondary-button small-button"
-              type="button"
-              onClick={() => onSetEditingIncome(!editingIncome)}
-            >
-              {editingIncome ? "Cancel editing" : income ? "Edit regular pay" : "Add regular pay"}
-            </button>
           </div>
-          {editingIncome ? (
-            <form className="income-schedule-form" onSubmit={onSubmitIncome}>
-              <div className="field-row">
-                <label className="field-label" htmlFor="payday-amount">Regular take-home amount</label>
-                <input ref={paydayAmountInputRef} id="payday-amount" inputMode="decimal" value={incomeForm.amount} onChange={(event) => onIncomeFormChange((current) => ({ ...current, amount: event.target.value }))} placeholder="4000" />
-              </div>
-              <div className="field-row">
-                <label className="field-label" htmlFor="payday-date">Next payday date</label>
-                <input
-                  id="payday-date"
-                  type="date"
-                  min={todayIso}
-                  value={selectedPaydayDate}
-                  onChange={(event) => onIncomeFormChange((current) => ({
-                    ...current,
-                    payDay: event.target.value ? String(Number(event.target.value.slice(8, 10))) : "",
-                  }))}
-                  onClick={(event) => event.currentTarget.showPicker?.()}
-                  className="date-input-full-click"
-                />
-                <p className="field-help">ClearTill will repeat this payday on the same day each month.</p>
-              </div>
-              <div className="edit-actions">
-                <button className="primary-button" type="submit" disabled={savingEdit}>
-                  {savingEdit ? "Saving..." : "Save regular pay"}
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div className="regular-pay-summary">
-              <div><span>Amount</span><strong>{hasIncomeAmount ? formatCurrency(income.amount, displayCurrency) : "Not set"}</strong></div>
-              <div><span>Schedule</span><strong>{hasPayday ? `${formatOrdinal(income.payDay)} of each month` : "Not set"}</strong></div>
-              {income && hasIncomeAmount ? (
-                <div className="regular-pay-forecast">
-                  {hasBills ? (
-                    <>
-                      <span>Monthly bills <strong>{formatCurrency(totalMonthlyBills, displayCurrency)}</strong></span>
-                      <span>After monthly bills <strong>{monthlySpendingRoomValue}</strong></span>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-              {income && hasIncomeAmount && !hasPayday ? (
-                <p className="helper-text helper-tooltip">Add payday</p>
-              ) : null}
-              {income && hasPayday && !hasIncomeAmount ? (
-                <p className="helper-text helper-tooltip">Add income amount if you want ClearTill to show monthly spending room.</p>
-              ) : null}
-            </div>
-          )}
           {!hasBalanceSnapshot ? (
             <p className="helper-text helper-tooltip">
               Add your current available money first so ClearTill can forecast what may be left.
             </p>
           ) : null}
-          {hasPayday && hasIncomeAmount ? (
-            <AdditionalIncomeEditor
-              incomeEvents={incomeEvents}
-              onIncomeEventsChange={onIncomeEventsChange}
-              todayIso={todayIso}
-              displayCurrency={displayCurrency}
-              onNotice={onNotice}
-            />
-          ) : null}
+          <AdditionalIncomeEditor
+            incomeEvents={incomeEvents}
+            onIncomeEventsChange={onIncomeEventsChange}
+            todayIso={todayIso}
+            displayCurrency={displayCurrency}
+            onNotice={onNotice}
+            defaultExpanded={!incomeEvents?.some((source) => source?.active !== false)}
+          />
           {editError ? <p className="error">{editError}</p> : null}
         </section>
       </div>

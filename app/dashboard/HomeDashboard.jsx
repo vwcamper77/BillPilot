@@ -36,6 +36,7 @@ import {
 } from "@/lib/billMath";
 import { calculateLargeCostAffordabilityPlans } from "@/lib/largeCostPlanner";
 import { calculateSafeSpendingPlan, expandIncomeEvents } from "@/lib/cashflowTimeline";
+import { hasActiveIncomeSchedule } from "@/lib/incomeSchedule";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
 import { logSecurityEventClient } from "@/lib/security/clientSecurity";
@@ -128,6 +129,9 @@ function HomeDashboardContent() {
   const [billsBusy, setBillsBusy] = useState(false);
   const [balanceEditorOpen, setBalanceEditorOpen] = useState(false);
   const [focusPayday, setFocusPayday] = useState(false);
+  const [balanceImpact, setBalanceImpact] = useState("");
+  const [highlightPrimaryResult, setHighlightPrimaryResult] = useState(false);
+  const [pendingBalanceResult, setPendingBalanceResult] = useState(null);
 
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
@@ -139,6 +143,7 @@ function HomeDashboardContent() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState("");
   const balanceSaveRequestRef = useRef(0);
+  const primaryResultRef = useRef(null);
 
   const requestedAuthMode = searchParams.get("auth") === "signup" ? "signup" : "signin";
   const requestedNextPath = getSafeNextPath(searchParams.get("next"));
@@ -381,10 +386,16 @@ function HomeDashboardContent() {
   ), [account, optimisticBalance]);
 
   const incomeForDashboard = useMemo(() => {
-    if (!displayIncome) return null;
-    if (!isValidDueDay(displayIncome.payDay)) return { ...displayIncome, payDay: null };
-    return displayIncome;
-  }, [displayIncome]);
+    if (displayIncome && isValidDueDay(displayIncome.payDay)) return displayIncome;
+    const monthlySource = incomeEvents.find((source) => source?.active !== false
+      && source?.frequency === "monthly"
+      && source?.confidence !== "estimated"
+      && Number(source?.amount) > 0
+      && /^\d{4}-\d{2}-\d{2}$/.test(String(source?.firstPaymentDate || source?.expectedDate || "")));
+    if (!monthlySource) return displayIncome ? { ...displayIncome, payDay: null } : null;
+    const firstPaymentDate = monthlySource.firstPaymentDate || monthlySource.expectedDate;
+    return { name: monthlySource.name, amount: Number(monthlySource.amount), payDay: Number(firstPaymentDate.slice(8, 10)), active: true };
+  }, [displayIncome, incomeEvents]);
 
   const dashboard = useMemo(
     () => calculateDashboard(bills, incomeForDashboard, displayAccount, undefined, displayCurrency),
@@ -395,8 +406,9 @@ function HomeDashboardContent() {
   const generalProtectedSavings = Math.max(0, Number(savings?.totalSetAside) || 0);
   const balanceValue = displayAccount?.currentBalance;
   const hasBalanceSnapshot = balanceValue !== undefined && balanceValue !== null && balanceValue !== "" && Number.isFinite(Number(balanceValue));
-  const hasPayday = isValidDueDay(displayIncome?.payDay);
-  const hasIncomeAmount = isValidIncomeAmount(displayIncome?.amount);
+  const hasPayday = isValidDueDay(incomeForDashboard?.payDay);
+  const hasIncomeAmount = isValidIncomeAmount(incomeForDashboard?.amount);
+  const hasIncomeSchedule = hasActiveIncomeSchedule(incomeEvents);
   const hasBills = bills.length > 0;
   // First-time onboarding shouldn't bounce someone out of "add your bills"
   // the instant they add one — let them keep going until they say they're
@@ -406,9 +418,9 @@ function HomeDashboardContent() {
   const [billsStepConfirmed, setBillsStepConfirmed] = useState(false);
   const setupStep = !hasBalanceSnapshot
     ? 1
-    : !hasPayday
+    : !hasIncomeSchedule
       ? 2
-      : (!hasBills || (!hasCompletedSetupBefore && !billsStepConfirmed))
+      : (!hasCompletedSetupBefore && !billsStepConfirmed)
         ? 3
         : 4;
 
@@ -452,7 +464,7 @@ function HomeDashboardContent() {
     todayIso,
     paydayDate: dashboard.paydayDate,
     currentBalance: hasBalanceSnapshot ? dashboard.currentBalance : 0,
-    incomeAmount: hasIncomeAmount ? Number(displayIncome.amount) : 0,
+    incomeAmount: 0,
     additionalIncomeEvents: incomeEvents,
     bills: [...dashboard.beforePayday, ...dashboard.afterPayday],
     largeCosts: largeCostImpact.costs,
@@ -480,44 +492,90 @@ function HomeDashboardContent() {
     }, 0);
   }, [dashboard.paydayDate, largeCostImpact.costs]);
   const totalProtectedSavings = largeCostImpact.totalProtectedSavings;
+  const rollingHorizonDate = useMemo(() => {
+    const date = new Date(`${todayIso}T12:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + 28);
+    return date.toISOString().slice(0, 10);
+  }, [todayIso]);
+  const forecastHorizonDate = dashboard.paydayDate || rollingHorizonDate;
+  const forecastBills = dashboard.paydayDate ? dashboard.beforePayday : dashboard.afterPayday;
   const safeSpendingPlan = useMemo(() => (
-    hasBalanceSnapshot && hasPayday && dashboard.paydayDate
+    hasBalanceSnapshot && hasIncomeSchedule
       ? calculateSafeSpendingPlan({
         todayIso,
-        horizonDate: dashboard.paydayDate,
+        horizonDate: forecastHorizonDate,
         currentBalance: dashboard.currentBalance,
-        bills: dashboard.beforePayday,
+        bills: forecastBills,
         largeCostAllocations: largeCostPlans.chartAllocations,
         additionalIncomeEvents: incomeEvents,
       })
       : null
   ), [
-    dashboard.beforePayday,
     dashboard.currentBalance,
-    dashboard.paydayDate,
+    forecastBills,
+    forecastHorizonDate,
     hasBalanceSnapshot,
-    hasPayday,
+    hasIncomeSchedule,
     incomeEvents,
     largeCostPlans.chartAllocations,
     todayIso,
   ]);
   const spendingRoomUntilPayday = safeSpendingPlan?.spendingRoom ?? null;
   const dailySpendingRoom = safeSpendingPlan?.safeDailyAmount ?? null;
+
+  useEffect(() => {
+    if (!pendingBalanceResult) return;
+
+    const { previousBalance, previousResult, nextBalance, focusResult } = pendingBalanceResult;
+    const resultChange = previousResult === null || spendingRoomUntilPayday === null
+      ? null
+      : spendingRoomUntilPayday - previousResult;
+    let impact = "Your dashboard result has been recalculated.";
+
+    if (resultChange !== null && Math.abs(resultChange) >= 0.005) {
+      if (previousResult < 0 && resultChange > 0) {
+        impact = `Your shortfall reduced by ${formatCurrency(Math.min(Math.abs(previousResult), resultChange), displayCurrency)}.`;
+      } else if (spendingRoomUntilPayday < 0 && resultChange < 0) {
+        impact = `Your shortfall increased by ${formatCurrency(Math.abs(resultChange), displayCurrency)}.`;
+      } else if (resultChange > 0) {
+        impact = `Your safe-to-spend amount increased by ${formatCurrency(resultChange, displayCurrency)}.`;
+      } else {
+        impact = `Your safe-to-spend amount decreased by ${formatCurrency(Math.abs(resultChange), displayCurrency)}.`;
+      }
+    }
+
+    setPageNotice(Number.isFinite(previousBalance)
+      ? `Balance updated from ${formatCurrency(previousBalance, displayCurrency)} to ${formatCurrency(nextBalance, displayCurrency)}.`
+      : `Balance updated to ${formatCurrency(nextBalance, displayCurrency)}.`);
+    setBalanceImpact(impact);
+    setPendingBalanceResult(null);
+
+    if (focusResult) {
+      setBalanceEditorOpen(false);
+      setHighlightPrimaryResult(true);
+      window.setTimeout(() => {
+        primaryResultRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        primaryResultRef.current?.focus({ preventScroll: true });
+      }, 50);
+      window.setTimeout(() => setHighlightPrimaryResult(false), 1800);
+    }
+  }, [displayCurrency, pendingBalanceResult, spendingRoomUntilPayday]);
+
   const clearTillStatus = (() => {
-    if (!hasBalanceSnapshot || !hasPayday || spendingRoomUntilPayday === null) return "";
+    if (!hasBalanceSnapshot || !hasIncomeSchedule || spendingRoomUntilPayday === null) return "";
     if (spendingRoomUntilPayday < 0) return "negative";
     if (spendingRoomUntilPayday < 50) return "low";
     return "ok";
   })();
   const spendingRoomFallbackCopy = (() => {
-    if (!hasBalanceSnapshot || !hasPayday || spendingRoomUntilPayday === null || spendingRoomUntilPayday >= 0 || totalProtectedSavings <= 0) {
+    if (!hasBalanceSnapshot || !hasIncomeSchedule || spendingRoomUntilPayday === null || spendingRoomUntilPayday >= 0 || totalProtectedSavings <= 0) {
       return "Not counted as daily spending money.";
     }
     return "Your savings now could cover this, but ClearTill does not count savings as daily spending money.";
   })();
   const spendingRoomValue = (() => {
     if (!hasBalanceSnapshot) return "Unlocks after you add your balance";
-    if (!hasPayday) return "Set your payday";
+    if (!hasIncomeSchedule) return "Add an income schedule";
     if (spendingRoomUntilPayday === null) return "—";
     if (spendingRoomUntilPayday < 0) return `${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
     return formatCurrency(spendingRoomUntilPayday, displayCurrency);
@@ -530,9 +588,9 @@ function HomeDashboardContent() {
     amount: Number(item.currentAccountAmount ?? item.amount) || 0,
     type,
   })).filter((item) => item.date && item.amount > 0);
-  const beforePaydayBillItems = toDisclosureItems(dashboard.beforePayday, "Bill", "bill");
+  const beforePaydayBillItems = toDisclosureItems(forecastBills, "Bill", "bill");
   const beforePaydayLargeCostItems = toDisclosureItems(
-    largeCostPlans.chartAllocations.filter((item) => (item.nextDueDate || item.date) < dashboard.paydayDate),
+    largeCostPlans.chartAllocations.filter((item) => (item.nextDueDate || item.date) < forecastHorizonDate),
     "Large-cost funding",
     "large_cost",
   );
@@ -566,14 +624,15 @@ function HomeDashboardContent() {
   );
   const scheduledIncomeOccurrences = dashboard.paydayDate && nextPaydayDate
     ? expandIncomeEvents(incomeEvents, todayIso, nextPaydayDate).filter((item) => item.date < nextPaydayDate)
-    : [];
+    : (safeSpendingPlan?.incomeOccurrences || []);
   const upcomingIncome = [
-    ...(hasIncomeAmount && dashboard.paydayDate ? [{ id: "primary-pay", name: "Monthly pay", date: dashboard.paydayDate, amount: Number(displayIncome.amount), type: "income" }] : []),
     ...scheduledIncomeOccurrences.map((item) => ({ ...item, id: item.occurrenceId, type: "income" })),
   ].filter((item) => item.date >= todayIso)
     .sort((a, b) => a.date.localeCompare(b.date) || String(a.name).localeCompare(String(b.name)));
   const sumItemAmounts = (items) => items.reduce((total, item) => total + item.amount, 0);
-  const currentPeriodIncome = upcomingIncome.filter((item) => item.date < dashboard.paydayDate);
+  const currentPeriodIncome = dashboard.paydayDate
+    ? upcomingIncome.filter((item) => item.date < dashboard.paydayDate)
+    : upcomingIncome;
   const currentIncomeTotal = sumItemAmounts(currentPeriodIncome);
   const nextPeriodIncome = [
     ...upcomingIncome.filter((item) => item.date >= dashboard.paydayDate && item.date < nextPaydayDate),
@@ -793,9 +852,12 @@ function HomeDashboardContent() {
 
     const saveRequestId = balanceSaveRequestRef.current + 1;
     balanceSaveRequestRef.current = saveRequestId;
+    const previousBalance = Number(displayAccount?.currentBalance);
+    const previousResult = spendingRoomUntilPayday;
 
     setBalanceError("");
     setPageNotice("");
+    setBalanceImpact("");
     setOptimisticBalance(parsedBalance);
     setBalanceInput(parsedBalance.toString());
     setSavingBalance(true);
@@ -812,6 +874,12 @@ function HomeDashboardContent() {
       }
 
       logSecurityEventClient("balance_updated");
+      setPendingBalanceResult({
+        previousBalance,
+        previousResult,
+        nextBalance: parsedBalance,
+        focusResult: setupStep === 4,
+      });
     } catch (saveError) {
       if (balanceSaveRequestRef.current !== saveRequestId) {
         return;
@@ -1152,31 +1220,47 @@ function HomeDashboardContent() {
         </section>
       ) : null}
 
-      <HeroCard
-        status={clearTillStatus}
-        hasBalanceSnapshot={hasBalanceSnapshot}
-        hasPayday={hasPayday}
-        spendingRoomUntilPayday={spendingRoomUntilPayday}
-        dailySpendingRoom={dailySpendingRoom}
-        daysTillPayday={dashboard.daysTillPayday}
-        paydayDate={dashboard.paydayDate}
-        displayCurrency={displayCurrency}
-        onUpdateBalance={() => openBalanceEditor(false)}
-        onEditPaydaySettings={() => openBalanceEditor(true)}
-        breakdownProps={{
-          hasBalanceSnapshot,
-          currentBalance: dashboard.currentBalance,
-          hasPayday,
-          totalBeforePayday: dashboard.totalBeforePayday,
-          bigCostsDueBeforePayday,
-          additionalIncomeBeforePayday: safeSpendingPlan?.confirmedAdditionalIncome || 0,
-          spendingRoomValue,
-          displayCurrency,
-          billItems: beforePaydayBillItems,
-          largeCostItems: beforePaydayLargeCostItems,
-          incomeItems: currentPeriodIncome,
-        }}
-      />
+      <div
+        ref={primaryResultRef}
+        className={highlightPrimaryResult ? "primary-result-highlight" : ""}
+        tabIndex={-1}
+        aria-live="polite"
+      >
+        <HeroCard
+          status={clearTillStatus}
+          hasBalanceSnapshot={hasBalanceSnapshot}
+          hasPayday={hasIncomeSchedule}
+          rollingForecast={!hasPayday}
+          spendingRoomUntilPayday={spendingRoomUntilPayday}
+          dailySpendingRoom={dailySpendingRoom}
+          daysTillPayday={dashboard.daysTillPayday || 28}
+          paydayDate={forecastHorizonDate}
+          displayCurrency={displayCurrency}
+          onUpdateBalance={() => openBalanceEditor(false)}
+          onEditPaydaySettings={() => openBalanceEditor(true)}
+          breakdownProps={{
+            hasBalanceSnapshot,
+            currentBalance: dashboard.currentBalance,
+            hasPayday: hasIncomeSchedule,
+            totalBeforePayday: forecastBills.reduce((total, bill) => total + (Number(bill.amount) || 0), 0),
+            bigCostsDueBeforePayday,
+            additionalIncomeBeforePayday: safeSpendingPlan?.confirmedAdditionalIncome || 0,
+            spendingRoomValue,
+            displayCurrency,
+            billItems: beforePaydayBillItems,
+            largeCostItems: beforePaydayLargeCostItems,
+            incomeItems: currentPeriodIncome,
+          }}
+        />
+        {balanceImpact ? <p className="balance-impact" role="status">{balanceImpact}</p> : null}
+      </div>
+
+      <div className="stat-chip-row" aria-label="Key figures">
+        <span className="stat-chip"><strong>{formatCurrency(dashboard.currentBalance, displayCurrency)}</strong><span>Current available money</span></span>
+        <span className="stat-chip"><strong>{formatCurrency(forecastBills.reduce((total, bill) => total + (Number(bill.amount) || 0), 0), displayCurrency)}</strong><span>{hasPayday ? "Bills before payday" : "Bills in forecast"}</span></span>
+        <span className="stat-chip"><strong>{hasPayday ? formatDisplayDate(dashboard.paydayDate) : "Rolling schedule"}</strong><span>{hasPayday ? "Payday date" : "Income pattern"}</span></span>
+        <span className="stat-chip"><strong>{formatCurrency(totalMonthlyBills, displayCurrency)}</strong><span>Total monthly bills</span></span>
+      </div>
 
       {dashboard.paydayDate && nextPaydayDate ? (
           <PayPeriodCards
@@ -1259,7 +1343,7 @@ function HomeDashboardContent() {
           hasBalanceSnapshot={hasBalanceSnapshot}
           todayIso={todayIso}
           displayCurrency={displayCurrency}
-          incomeAmount={hasIncomeAmount ? Number(displayIncome.amount) : 0}
+          incomeAmount={0}
           additionalIncomeEvents={incomeEvents}
         />
       </CollapsibleSection>
@@ -1298,7 +1382,7 @@ function HomeDashboardContent() {
           planSummary={largeCostPlans.summary}
           planningContext={{
             currentBalance: hasBalanceSnapshot ? dashboard.currentBalance : 0,
-            incomeAmount: hasIncomeAmount ? Number(displayIncome.amount) : 0,
+            incomeAmount: 0,
             additionalIncomeEvents: incomeEvents,
             paydayDate: dashboard.paydayDate,
             savingsAvailable: generalProtectedSavings,

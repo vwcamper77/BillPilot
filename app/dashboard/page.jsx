@@ -59,6 +59,7 @@ import { getStoredAttributionBundle } from "@/lib/analytics/attribution";
 import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clientSecurity";
 import { safeError, safeWarn } from "@/lib/security/safeLog";
 import { postDashboardSettingsAction } from "@/app/dashboard/lib/dashboardApi";
+import HomeDashboard from "./HomeDashboard";
 
 const IMAGE_IMPORT_FETCH_TIMEOUT_MS = 70000;
 
@@ -3078,6 +3079,14 @@ export default function DashboardPage() {
         </section>
       </main>
     );
+  }
+
+  // Preserve the authoritative entitlement/trial states above and the secure
+  // claim banner for anonymous trial users. Signed-in customers with resolved
+  // access use the modular dashboard; everyone else keeps the completed-result
+  // and single-CTA path below.
+  if (user && !user.isAnonymous && billingStatusReady && hasPremiumAccess) {
+    return <HomeDashboard />;
   }
 
   return (

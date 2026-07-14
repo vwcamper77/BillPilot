@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { mergeLegacySalary, REGULAR_SALARY_SOURCE_ID } from "@/lib/incomeSchedule";
 
 export const runtime = "nodejs";
 
@@ -36,7 +37,7 @@ export async function POST(request) {
     ] = await Promise.all([
       userRef.collection("settings").doc("balance").get(),
       userRef.collection("income").doc("main").get(),
-      userRef.collection("incomeEvents").where("active", "==", true).get(),
+      userRef.collection("incomeEvents").get(),
       userRef.collection("settings").doc("savings").get(),
       userRef.collection("settings").doc("preferences").get(),
       userRef.collection("bills").where("active", "==", true).get(),
@@ -44,12 +45,22 @@ export async function POST(request) {
       userRef.collection("reminders").orderBy("createdAt", "desc").limit(5).get(),
     ]);
 
+    const legacyIncome = incomeSnapshot.exists ? serialiseDoc(incomeSnapshot) : null;
+    const storedIncomeSources = incomeEventsSnapshot.docs.map(serialiseDoc);
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const incomeEvents = mergeLegacySalary(storedIncomeSources, legacyIncome, todayIso);
+    const migratedSalary = incomeEvents.find((source) => source.id === REGULAR_SALARY_SOURCE_ID);
+    if (migratedSalary && !storedIncomeSources.some((source) => source.id === REGULAR_SALARY_SOURCE_ID)) {
+      const { id, ...fields } = migratedSalary;
+      await userRef.collection("incomeEvents").doc(id).set(fields, { merge: true });
+    }
+
     return NextResponse.json({
       ok: true,
       action,
       balance: balanceSnapshot.exists ? serialiseDoc(balanceSnapshot) : null,
-      income: incomeSnapshot.exists ? serialiseDoc(incomeSnapshot) : null,
-      incomeEvents: incomeEventsSnapshot.docs.map(serialiseDoc),
+      income: legacyIncome,
+      incomeEvents,
       savings: savingsSnapshot.exists ? serialiseDoc(savingsSnapshot) : null,
       preferences: preferencesSnapshot.exists ? serialiseDoc(preferencesSnapshot) : null,
       bills: billsSnapshot.docs.map(serialiseDoc),

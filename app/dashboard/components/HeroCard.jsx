@@ -5,6 +5,7 @@ export default function HeroCard({
   status,
   hasBalanceSnapshot,
   hasPayday,
+  rollingForecast = false,
   spendingRoomUntilPayday,
   dailySpendingRoom,
   daysTillPayday,
@@ -16,10 +17,10 @@ export default function HeroCard({
 }) {
   const headline = (() => {
     if (!hasBalanceSnapshot) return "Add your current available money to get started";
-    if (!hasPayday || spendingRoomUntilPayday === null) return "Set your payday to get started";
-    if (status === "negative") return `You're short: ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed before payday`;
+    if (!hasPayday || spendingRoomUntilPayday === null) return "Add an income schedule to get started";
+    if (status === "negative") return `You're short: ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} needed ${rollingForecast ? "in the next four weeks" : "before payday"}`;
     if (status === "low") return `Almost clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left`;
-    return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left till payday`;
+    return `You're clear: ${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left ${rollingForecast ? "for the next four weeks" : "till payday"}`;
   })();
 
   const showDailyLine = hasBalanceSnapshot && hasPayday
@@ -27,7 +28,7 @@ export default function HeroCard({
     && dailySpendingRoom !== null;
 
   const contextLine = hasPayday && paydayDate
-    ? `${daysTillPayday} day${daysTillPayday === 1 ? "" : "s"} · payday ${formatDisplayDate(paydayDate)}`
+    ? rollingForecast ? "Rolling four-week forecast" : `${daysTillPayday} day${daysTillPayday === 1 ? "" : "s"} · payday ${formatDisplayDate(paydayDate)}`
     : null;
 
   const canExplain = hasBalanceSnapshot && hasPayday && spendingRoomUntilPayday !== null;
@@ -53,10 +54,10 @@ export default function HeroCard({
       {canExplain ? (
         <div className="hero-calculation" aria-label="Today's calculation">
           <div className="financial-disclosure-static"><span>Current bank balance</span><strong>{formatCurrency(breakdownProps.currentBalance, displayCurrency)}</strong></div>
-          <FinancialDisclosure label="Income arriving before payday" amount={breakdownProps.additionalIncomeBeforePayday} items={breakdownProps.incomeItems} displayCurrency={displayCurrency} sign="+" testId="hero-income" />
-          <FinancialDisclosure label="Reserved for bills before payday" amount={breakdownProps.totalBeforePayday} items={breakdownProps.billItems} displayCurrency={displayCurrency} testId="hero-bills" />
-          <FinancialDisclosure label="Large costs before payday" amount={breakdownProps.bigCostsDueBeforePayday} items={breakdownProps.largeCostItems} displayCurrency={displayCurrency} testId="hero-large-costs" />
-          <div className="financial-disclosure-static hero-calculation-total"><span>Free cash until payday</span><strong>{formatCurrency(Math.max(0, spendingRoomUntilPayday), displayCurrency)}</strong></div>
+          <FinancialDisclosure label={rollingForecast ? "Confirmed income arriving" : "Income arriving before payday"} amount={breakdownProps.additionalIncomeBeforePayday} items={breakdownProps.incomeItems} displayCurrency={displayCurrency} sign="+" testId="hero-income" />
+          <FinancialDisclosure label={rollingForecast ? "Reserved for bills" : "Reserved for bills before payday"} amount={breakdownProps.totalBeforePayday} items={breakdownProps.billItems} displayCurrency={displayCurrency} testId="hero-bills" />
+          <FinancialDisclosure label={rollingForecast ? "Large costs" : "Large costs before payday"} amount={breakdownProps.bigCostsDueBeforePayday} items={breakdownProps.largeCostItems} displayCurrency={displayCurrency} testId="hero-large-costs" />
+          <div className="financial-disclosure-static hero-calculation-total"><span>{rollingForecast ? "Free cash for four weeks" : "Free cash until payday"}</span><strong>{formatCurrency(Math.max(0, spendingRoomUntilPayday), displayCurrency)}</strong></div>
         </div>
       ) : null}
 
