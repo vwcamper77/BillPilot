@@ -522,6 +522,11 @@ function HomeDashboardContent() {
   ]);
   const spendingRoomUntilPayday = safeSpendingPlan?.spendingRoom ?? null;
   const dailySpendingRoom = safeSpendingPlan?.safeDailyAmount ?? null;
+  const estimatedIncomeOccurrences = useMemo(() => (
+    expandIncomeEvents(incomeEvents, todayIso, forecastHorizonDate, { confirmedOnly: false })
+      .filter((item) => item.confidence === "estimated" && item.date < forecastHorizonDate)
+  ), [forecastHorizonDate, incomeEvents, todayIso]);
+  const estimatedIncomeTotal = estimatedIncomeOccurrences.reduce((total, item) => total + (Number(item.amount) || 0), 0);
 
   useEffect(() => {
     if (!pendingBalanceResult) return;
@@ -634,11 +639,6 @@ function HomeDashboardContent() {
   const currentPeriodIncome = dashboard.paydayDate
     ? upcomingIncome.filter((item) => item.date < dashboard.paydayDate)
     : upcomingIncome;
-  const estimatedIncomeOccurrences = useMemo(() => (
-    expandIncomeEvents(incomeEvents, todayIso, forecastHorizonDate, { confirmedOnly: false })
-      .filter((item) => item.confidence === "estimated" && item.date < forecastHorizonDate)
-  ), [forecastHorizonDate, incomeEvents, todayIso]);
-  const estimatedIncomeTotal = estimatedIncomeOccurrences.reduce((total, item) => total + (Number(item.amount) || 0), 0);
   const currentIncomeTotal = sumItemAmounts(currentPeriodIncome);
   const nextPeriodIncome = [
     ...upcomingIncome.filter((item) => item.date >= dashboard.paydayDate && item.date < nextPaydayDate),
