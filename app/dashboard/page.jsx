@@ -820,6 +820,7 @@ export default function DashboardPage() {
   const setupMessage = getSetupMessage(setupStep);
   const showSetupCard = setupStep < 4 || !setupDismissed;
   const shouldShowGuestFallback = showGuestAuthFallback || shouldUseDirectAuthEntry;
+  const directAuthIsSignIn = shouldUseDirectAuthEntry && authMode === "signin";
   const firestoreDiagnostics = {
     uid: auth?.currentUser?.uid || user?.uid || "none",
     envProjectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
@@ -854,7 +855,7 @@ export default function DashboardPage() {
       return;
     }
 
-    const linkingAnonymousAccount = Boolean(auth.currentUser?.isAnonymous);
+    const linkingAnonymousAccount = Boolean(auth.currentUser?.isAnonymous && authMode === "signup");
     if (linkingAnonymousAccount) {
       setAccountLinking(true);
       setEmailMismatchWarning("");
@@ -867,7 +868,7 @@ export default function DashboardPage() {
     try {
       await authPersistenceReady;
 
-      if (auth.currentUser?.isAnonymous) {
+      if (linkingAnonymousAccount) {
         const anonymousUid = auth.currentUser.uid;
         const credential = await linkWithPopup(auth.currentUser, googleProvider);
         completeAnonymousAccountLink(credential.user, anonymousUid);
@@ -914,7 +915,7 @@ export default function DashboardPage() {
       return;
     }
 
-    const linkingAnonymousAccount = Boolean(auth.currentUser?.isAnonymous);
+    const linkingAnonymousAccount = Boolean(auth.currentUser?.isAnonymous && authMode === "signup");
     const normalisedEmail = email.toLowerCase();
     const stripeCustomerEmail = String(billingSubscription?.customerEmail || "").trim();
     if (
@@ -942,7 +943,7 @@ export default function DashboardPage() {
       await authPersistenceReady;
 
       let credential;
-      if (auth.currentUser?.isAnonymous) {
+      if (linkingAnonymousAccount) {
         const anonymousUid = auth.currentUser.uid;
         const emailCredential = EmailAuthProvider.credential(email, password);
         const linkedCredential = await linkWithCredential(auth.currentUser, emailCredential);
@@ -2946,10 +2947,12 @@ export default function DashboardPage() {
       <main className="dashboard-shell">
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
-          <h1>{shouldUseDirectAuthEntry ? "Create your ClearTill account" : "Preparing your free pay-date forecast…"}</h1>
+          <h1>{shouldUseDirectAuthEntry ? directAuthIsSignIn ? "Sign in to ClearTill" : "Create your ClearTill account" : "Preparing your free pay-date forecast…"}</h1>
           <p>
             {shouldUseDirectAuthEntry
-              ? "Save your result, then continue to Stripe to enter your card. You pay £0 today, then £1.99 after 7 days and monthly after that unless you cancel."
+              ? directAuthIsSignIn
+                ? "Return to your saved pay-date forecast and account."
+                : "Save your result, then continue to Stripe to enter your card. You pay £0 today, then £1.99 after 7 days and monthly after that unless you cancel."
               : "ClearTill is opening a private guest session so you can see your first result before any payment step."}
           </p>
           <TrustShield className="auth-trust-banner" compact />
@@ -2965,7 +2968,9 @@ export default function DashboardPage() {
                 <div className="auth-panel auth-panel-inline" style={{ marginTop: "16px" }}>
                   <p>
                     {shouldUseDirectAuthEntry
-                      ? "Use Google or email to create your account and carry on to your free trial."
+                      ? directAuthIsSignIn
+                        ? "Use Google or email to return to your ClearTill dashboard."
+                        : "Use Google or email to create your account and carry on to your free trial."
                       : "Guest access is unavailable right now. Continue with Google or email so you can still get your first ClearTill result."}
                   </p>
                   <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
@@ -3023,7 +3028,9 @@ export default function DashboardPage() {
                 <p>
                   {entryIntent === "trial"
                     ? "Create your account first, then Stripe will securely collect your card for the free 7-day trial."
-                    : "Continue with Google or email to get into ClearTill."}
+                    : directAuthIsSignIn
+                      ? "Use Google or email to return to your ClearTill dashboard."
+                      : "Create your account with Google or email to get into ClearTill."}
                 </p>
                 <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
                   {signingIn ? "Opening Google..." : "Continue with Google"}

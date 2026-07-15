@@ -37,7 +37,7 @@ test("dashboard URL state remains hydration-stable", () => {
 test("trial route shows an email-only screen before Checkout", () => {
   const source = read("app/dashboard/page.jsx");
   const trialRender = between(source, 'if (entryIntent === "trial")', "if (!authReady)");
-  const emailScreen = between(trialRender, "if (!trialCheckoutRequested)", "return (\n      <main");
+  const emailScreen = between(trialRender, "if (!trialCheckoutRequested)", "Opening your secure 7-day free trial");
   assert.match(emailScreen, /Email address/);
   assert.match(emailScreen, /Continue to secure checkout/);
   assert.match(emailScreen, /£0 today\. £1\.99 after 7 days, then monthly\. We&apos;ll email your secure ClearTill access link\./);
@@ -57,6 +57,21 @@ test("anonymous Firebase setup stays invisible and waits for parsed entry parame
   assert.match(source, /entryIntent !== "trial"\s*&& \(entryAuthMode === "signup" \|\| entryAuthMode === "signin"\)/);
   const trialRender = between(source, 'if (entryIntent === "trial")', "if (!authReady)");
   assert.doesNotMatch(trialRender, /Guest session/);
+});
+
+test("returning sign-in does not link a persisted anonymous trial session", () => {
+  const source = read("app/dashboard/page.jsx");
+  const googleAuth = between(source, "async function handleGoogleSignIn", "async function handleEmailAuth");
+  const emailAuth = between(source, "async function handleEmailAuth", "function completeAnonymousAccountLink");
+
+  assert.match(googleAuth, /auth\.currentUser\?\.isAnonymous && authMode === "signup"/);
+  assert.match(googleAuth, /if \(linkingAnonymousAccount\) \{[\s\S]*?linkWithPopup/);
+  assert.match(googleAuth, /const credential = await signInWithPopup/);
+  assert.match(emailAuth, /auth\.currentUser\?\.isAnonymous && authMode === "signup"/);
+  assert.match(emailAuth, /if \(linkingAnonymousAccount\) \{[\s\S]*?linkWithCredential/);
+  assert.match(emailAuth, /else if \(authMode === "signup"\)[\s\S]*?createUserWithEmailAndPassword/);
+  assert.match(emailAuth, /else \{[\s\S]*?signInWithEmailAndPassword/);
+  assert.match(source, /directAuthIsSignIn \? "Sign in to ClearTill"/);
 });
 
 test("validated email and anonymous ID token start Checkout exactly once", () => {
