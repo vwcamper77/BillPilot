@@ -21,20 +21,13 @@ export default function HeroCard({
   balanceFreshness,
   balanceIsStale = false,
   estimatedIncome = 0,
+  timingConstrained = false,
 }) {
   const [breakdownOpen, setBreakdownOpen] = useState(false);
   const hasResult = hasBalanceSnapshot && hasPayday && spendingRoomUntilPayday !== null;
-  const safeAvailable = Number(spendingRoomUntilPayday) || 0;
+  const available = Number(spendingRoomUntilPayday) || 0;
   const committed = Math.max(0, Number(breakdownProps.totalBeforePayday) || 0)
     + Math.max(0, Number(breakdownProps.bigCostsDueBeforePayday) || 0);
-  // Keep the headline and visible equation mathematically identical. The
-  // timing-aware safe amount can be lower when bills leave before income lands;
-  // that value still drives the per-day guidance below.
-  const available = Math.round((
-    (Number(breakdownProps.currentBalance) || 0)
-    + (Number(breakdownProps.additionalIncomeBeforePayday) || 0)
-    - committed
-  ) * 100) / 100;
   const allocationTotal = Math.max(0, available) + committed;
   const availableShare = allocationTotal > 0 ? Math.max(0, available) / allocationTotal * 100 : 0;
   const statusLabel = !hasResult ? "Set up your forecast" : status === "negative" || status === "attention" ? "Needs attention" : status === "low" ? "Keep an eye on this" : "On track";
@@ -50,8 +43,7 @@ export default function HeroCard({
         : rollingForecast
           ? `${formatCurrency(available, displayCurrency)} available for the next four weeks`
           : `${formatCurrency(available, displayCurrency)} available before ${horizonLabel}`;
-  const showDaily = hasResult && safeAvailable >= 0 && dailySpendingRoom !== null;
-  const hasTimingConstraint = hasResult && available > safeAvailable + 0.005;
+  const showDaily = hasResult && available >= 0 && dailySpendingRoom !== null;
 
   return (
     <article className={`hero-card hero-card-${status || "setup"}`} aria-labelledby="dashboard-result">
@@ -62,8 +54,8 @@ export default function HeroCard({
           {showDaily ? (
             <p className="hero-daily">{formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)} per day for the next {daysTillPayday} day{daysTillPayday === 1 ? "" : "s"}</p>
           ) : null}
-          {hasTimingConstraint ? (
-            <p className="hero-confidence-note">Some commitments leave before confirmed income arrives, so the daily guidance stays lower.</p>
+          {timingConstrained ? (
+            <p className="hero-confidence-note">Some commitments leave before confirmed income arrives. Check the dates before spending the daily average.</p>
           ) : null}
           {estimatedIncome > 0 ? (
             <p className="hero-confidence-note">Estimated income of {formatCurrency(estimatedIncome, displayCurrency)} is visible below but not counted as reliable cash.</p>

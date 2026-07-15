@@ -520,8 +520,12 @@ function HomeDashboardContent() {
     largeCostPlans.chartAllocations,
     todayIso,
   ]);
-  const spendingRoomUntilPayday = safeSpendingPlan?.spendingRoom ?? null;
-  const dailySpendingRoom = safeSpendingPlan?.safeDailyAmount ?? null;
+  // The overview must use one definition everywhere: balance + confirmed
+  // income - commitments. Timing-sensitive safety remains available on the
+  // plan for warnings and detailed cash-flow views, but must not overwrite the
+  // headline, daily average, or pay-cycle summary with a different number.
+  const spendingRoomUntilPayday = safeSpendingPlan?.availableBeforeHorizon ?? null;
+  const dailySpendingRoom = safeSpendingPlan?.dailyAvailableAmount ?? null;
   const estimatedIncomeOccurrences = useMemo(() => (
     expandIncomeEvents(incomeEvents, todayIso, forecastHorizonDate, { confirmedOnly: false })
       .filter((item) => item.confidence === "estimated" && item.date < forecastHorizonDate)
@@ -1270,6 +1274,10 @@ function HomeDashboardContent() {
           balanceFreshness={balanceFreshness}
           balanceIsStale={balanceIsStale}
           estimatedIncome={estimatedIncomeTotal}
+          timingConstrained={Boolean(
+            safeSpendingPlan
+            && safeSpendingPlan.spendingRoom < safeSpendingPlan.availableBeforeHorizon - 0.005
+          )}
           breakdownProps={{
             hasBalanceSnapshot,
             currentBalance: dashboard.currentBalance,

@@ -28,10 +28,35 @@ test("confirmed future income raises the daily amount only after chronological c
   expect(result).toMatchObject({
     confirmedAdditionalIncome: 350,
     projectedClosingBalance: 200,
+    availableBeforeHorizon: 200,
+    dailyAvailableAmount: 20,
     safeDailyAmount: 20,
     spendingRoom: 200,
     safeToSpendToday: 100,
   });
+});
+
+test("period availability stays arithmetically consistent when income timing constrains safe spending", () => {
+  const result = calculateSafeSpendingPlan({
+    todayIso: "2026-07-15",
+    horizonDate: "2026-07-25",
+    currentBalance: 1500,
+    bills: [
+      { id: "large", amount: 355, nextDueDate: "2026-07-15" },
+      { id: "water", amount: 45, nextDueDate: "2026-07-15" },
+      { id: "rent", amount: 1100, nextDueDate: "2026-07-20" },
+      { id: "phone", amount: 35, nextDueDate: "2026-07-22" },
+    ],
+    additionalIncomeEvents: [{
+      ...confirmedIncome,
+      amount: 400,
+      expectedDate: "2026-07-21",
+    }],
+  });
+
+  expect(result.spendingRoom).toBe(0);
+  expect(result.availableBeforeHorizon).toBe(365);
+  expect(result.dailyAvailableAmount).toBe(36.5);
 });
 
 test("estimated income never affects safe spending", () => {
