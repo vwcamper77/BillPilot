@@ -15,11 +15,12 @@ function between(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
-test("homepage trial CTAs enter the email-first trial flow without requesting signup", () => {
+test("homepage CTAs enter the no-card live preview without requesting signup", () => {
   const interactiveCta = read("app/HomeTryNow.jsx");
   const homepage = read("app/page.jsx");
-  assert.match(interactiveCta, /TRIAL_CHECKOUT_PATH = "\/dashboard\?intent=trial"/);
-  assert.match(homepage, /TRIAL_CHECKOUT_HREF = "\/dashboard\?intent=trial"/);
+  assert.match(interactiveCta, /window\.location\.href = "\/dashboard\?intent=preview"/);
+  assert.match(homepage, /PREVIEW_HREF = "\/dashboard\?intent=preview"/);
+  assert.match(`${interactiveCta}\n${homepage}`, /No card required/);
   assert.doesNotMatch(`${interactiveCta}\n${homepage}`, /auth=signup/);
 });
 

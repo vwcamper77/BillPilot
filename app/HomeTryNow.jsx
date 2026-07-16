@@ -5,12 +5,11 @@ import { trackClientAnalyticsEvent } from "@/lib/clientAnalytics";
 import { formatCurrency, getTodayIso } from "@/lib/billMath";
 
 const GBP = "GBP";
-const TRIAL_CHECKOUT_PATH = "/dashboard?intent=trial";
 
 export default function HomeTryNow() {
   const panelRef = useRef(null);
   const firstResultTrackedRef = useRef(false);
-  const trialOfferTrackedRef = useRef(false);
+  const previewOfferTrackedRef = useRef(false);
   const [expanded, setExpanded] = useState(false);
   const [balance, setBalance] = useState(500);
   const [payInfo, setPayInfo] = useState(() => ({ payDate: defaultPayDate(), amount: 2300 }));
@@ -55,9 +54,9 @@ export default function HomeTryNow() {
   }, [expanded]);
 
   useEffect(() => {
-    if (expanded && !trialOfferTrackedRef.current) {
-      trialOfferTrackedRef.current = true;
-      void trackClientAnalyticsEvent("trial_offer_viewed", {});
+    if (expanded && !previewOfferTrackedRef.current) {
+      previewOfferTrackedRef.current = true;
+      void trackClientAnalyticsEvent("preview_offer_viewed", {});
     }
   }, [expanded]);
 
@@ -89,9 +88,9 @@ export default function HomeTryNow() {
     void trackClientAnalyticsEvent("result_edited", { action: "remove_large_cost" });
   }
 
-  function startTrial() {
-    void trackClientAnalyticsEvent("trial_checkout_started", { source: "sample_demo" });
-    window.location.href = TRIAL_CHECKOUT_PATH;
+  function openPreview() {
+    void trackClientAnalyticsEvent("preview_started", { source: "sample_demo" });
+    window.location.href = "/dashboard?intent=preview";
   }
 
   return (
@@ -217,10 +216,10 @@ export default function HomeTryNow() {
 
               <section className="try-subscription-offer try-subscription-offer-compact">
                 <p className="eyebrow">Keep your real ClearTill up to date</p>
-                <h3>7 days free, then £1.99*</h3>
-                <p>Start free today. Cancel anytime.</p>
-                <button className="primary-button" type="button" onClick={startTrial}>Start my free 7-day trial</button>
-                <p className="helper-text">* Founding member monthly price. This sample is not saved unless you start your trial.</p>
+                <h3>Know what&apos;s really left before payday</h3>
+                <p>No bank connection. No card required.</p>
+                <button className="primary-button" type="button" onClick={openPreview}>Check my position free</button>
+                <p className="helper-text">Go straight into ClearTill and build your own position.</p>
               </section>
             </div>
           </>

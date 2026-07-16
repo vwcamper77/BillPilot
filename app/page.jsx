@@ -1,255 +1,159 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import HomeAuthLink from "@/components/HomeAuthLink";
-import HomeTryNow from "@/app/HomeTryNow";
 
-const TRIAL_CHECKOUT_HREF = "/dashboard?intent=trial";
+const PREVIEW_HREF = "/dashboard?intent=preview";
 
-const SIMPLE_VIEW_ITEMS = [
-  "what is in your account now",
-  "what bills are due before you're paid",
-  "how many days you need to stretch it",
-  "what money is actually clear to spend",
-];
+export const metadata = {
+  title: "ClearTill — Know what’s really left before payday",
+  description: "Add your balance, payday and upcoming bills to see what remains. No bank connection. No card required.",
+};
 
-const REAL_LIFE_ITEMS = [
-  "feel fine when you're paid but tight before the next one",
-  "forget which bills are still due",
-  "have rent, utilities, council tax and subscriptions",
-  "are separated parents or managing child costs",
-  "do not want another complicated finance app",
-  "want clarity without handing over bank access",
-];
-
-const INPUT_METHODS = [
-  "typing them in",
-  "pasting messy notes",
-  "uploading a screenshot",
-  "importing a CSV statement",
-];
-
-const FOUNDING_ITEMS = [
-  "7 days free to try ClearTill properly",
-  "founding member pricing at £1.99/month while subscribed",
-  "direct input into what gets built next",
-  "early supporter status before wider launch",
-];
+const CTA = ({ className = "" }) => (
+  <Link className={`live-home-button live-home-button-primary ${className}`.trim()} href={PREVIEW_HREF}>
+    Check my position free
+  </Link>
+);
 
 export default function HomePage() {
   return (
-    <main className="home-shell">
-      <section className="home-panel">
-        <HomeAuthLink />
+    <main className="live-home">
+      <header className="live-home-container live-home-header">
+        <Logo className="live-home-logo" height={42} />
+        <Link className="live-home-signin" href="/dashboard?auth=signin">Sign in</Link>
+      </header>
 
-        <div className="home-hero">
-          <div className="home-hero-copy">
-            <Logo className="home-brand-logo" height={64} />
-            <p className="eyebrow home-hero-eyebrow">Clarity before you&apos;re paid without bank access</p>
-            <h1>Will your money last until you&apos;re paid?</h1>
-            <p className="home-hero-copy-text">
-              ClearTill shows what&apos;s actually clear to spend after bills before
-              the next time you&apos;re paid, without connecting your bank.
-            </p>
-            <div className="home-trust-stack" aria-label="ClearTill trust">
-              <span className="trust-pill">No bank login</span>
-              <span className="trust-pill">No Open Banking</span>
-              <span className="trust-pill">No complicated budget spreadsheets</span>
-            </div>
-            <div className="home-simple-view">
-              <p className="home-simple-view-title">Just a simple view of:</p>
-              <ul className="home-bullet-list">
-                {SIMPLE_VIEW_ITEMS.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="home-cta-row">
-              <HomeTryNow />
-              <Link className="secondary-button home-price-button" href={TRIAL_CHECKOUT_HREF}>
-                7 days free, then £1.99*
-              </Link>
-            </div>
-            <p className="home-price-note">
-              * Founding member monthly price. Early supporters keep this rate while subscribed.
-            </p>
-            <p className="home-founder-line">
-              <strong>29</strong> of <strong>50</strong> founding member places remaining.
-            </p>
-            <p className="home-signin-line">
-              Already joined? <Link href="/dashboard?auth=signin">Sign in</Link>
-            </p>
-          </div>
-
-          <div className="home-feature-panel" aria-label="Paid-date view preview">
-            <div className="home-paid-view">
-              <div className="home-paid-view-top">
-                <p className="eyebrow">Paid-date view</p>
-                <span className="home-paid-badge">12 days until you&apos;re paid</span>
-              </div>
-              <h2>What is actually clear to spend?</h2>
-              <div className="home-paid-hero-card">
-                <p>Clear to spend before you&apos;re paid</p>
-                <strong>£148</strong>
-                <span>After bills due before 31 Jul, that leaves about £12 per day.</span>
-              </div>
-              <div className="home-paid-metrics">
-                <article className="home-paid-metric">
-                  <span>In your account now</span>
-                  <strong>£521</strong>
-                </article>
-                <article className="home-paid-metric">
-                  <span>Due before you&apos;re paid</span>
-                  <strong>£373</strong>
-                </article>
-              </div>
-              <div className="home-paid-list">
-                <div className="home-paid-list-head">Bills still to land before you&apos;re paid</div>
-                <article className="home-paid-list-item">
-                  <div>
-                    <strong>Council tax</strong>
-                    <span>11 Jul</span>
-                  </div>
-                  <strong>£186</strong>
-                </article>
-                <article className="home-paid-list-item">
-                  <div>
-                    <strong>Broadband</strong>
-                    <span>14 Jul</span>
-                  </div>
-                  <strong>£32</strong>
-                </article>
-                <article className="home-paid-list-item">
-                  <div>
-                    <strong>Energy</strong>
-                    <span>18 Jul</span>
-                  </div>
-                  <strong>£94</strong>
-                </article>
-                <article className="home-paid-list-item">
-                  <div>
-                    <strong>Car insurance</strong>
-                    <span>22 Jul</span>
-                  </div>
-                  <strong>£61</strong>
-                </article>
-              </div>
-            </div>
+      <section className="live-home-container live-home-hero">
+        <div>
+          <p className="live-home-eyebrow">No bank connection. No card required.</p>
+          <h1>Know what&apos;s really left before payday</h1>
+          <p className="live-home-hero-copy">
+            Add your current balance, next payday and the bills still to come. ClearTill shows what
+            remains after those costs — and an estimated daily spending amount.
+          </p>
+          <div className="live-home-cta-row"><CTA /></div>
+          <p className="live-home-microcopy">
+            <strong>Your live preview starts when your first position is saved.</strong> It pauses
+            automatically after seven days. Nothing is charged and no card is requested.
+          </p>
+          <div className="live-home-trust-row">
+            <span>No bank login</span><span>No Open Banking</span><span>You control the numbers</span>
           </div>
         </div>
 
-        <section className="home-story-section">
-          <p className="eyebrow">The problem</p>
-          <h2>Your bank balance lies.</h2>
-          <div className="home-story-grid">
-            <article className="home-story-card">
-              <p>You get paid.</p>
-              <p>For a few days, everything feels okay.</p>
-              <p>Then the bills keep landing.</p>
-              <p>
-                Council tax. Energy. Phone. Broadband. Subscriptions. Rent. Car
-                insurance. School costs. Random direct debits you forgot about.
-              </p>
-            </article>
-            <article className="home-story-card">
-              <p>The problem is not always that you are bad with money.</p>
-              <p>The problem is that your bank balance lies.</p>
-              <p>It shows what is there today.</p>
-              <p>It does not clearly show what is already spoken for before you&apos;re paid.</p>
-            </article>
-          </div>
-        </section>
-
-        <section className="home-story-section">
-          <p className="eyebrow">ClearTill fixes that</p>
-          <h2>One simple question: am I clear to spend this before you&apos;re paid?</h2>
-          <p className="home-section-copy">
-            You add when you get paid, your current balance and regular bills.
-            ClearTill then shows bills due before you&apos;re paid, money left after
-            those bills, daily spending room until you&apos;re paid, upcoming large
-            costs and a simple paid-date forecast.
-          </p>
-          <div className="home-steps-grid">
-            <article className="home-step-card">
-              <span className="home-step-badge">01</span>
-              <h3>Add the basics</h3>
-              <p>Current balance, when you get paid, and regular bills without linking your bank.</p>
-            </article>
-            <article className="home-step-card">
-              <span className="home-step-badge">02</span>
-              <h3>See what is spoken for</h3>
-              <p>Spot the bills that land before you&apos;re paid instead of guessing from your balance.</p>
-            </article>
-            <article className="home-step-card">
-              <span className="home-step-badge">03</span>
-              <h3>Know your real runway</h3>
-              <p>See what is left, what that means per day and whether a big cost still fits.</p>
-            </article>
-          </div>
-        </section>
-
-        <section className="home-control-panel">
-          <p className="eyebrow">No bank login</p>
-          <h2>You stay in control.</h2>
-          <p className="home-section-copy">
-            ClearTill is designed for people who do not want to connect their bank.
-            You can add bills by:
-          </p>
-          <div className="home-methods-row">
-            {INPUT_METHODS.map((item) => (
-              <span className="home-method-pill" key={item}>{item}</span>
-            ))}
-          </div>
-          <p className="home-section-copy home-control-note">
-            ClearTill helps clean it up and turn it into a simple paid-date view.
-          </p>
-        </section>
-
-        <section className="home-story-section">
-          <p className="eyebrow">Built for real life</p>
-          <h2>For people who want clarity, not another finance app.</h2>
-          <div className="home-real-life-grid">
-            {REAL_LIFE_ITEMS.map((item) => (
-              <article className="home-real-life-item" key={item}>
-                <span aria-hidden="true">•</span>
-                <p>{item}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="home-offer-panel" id="beta-offer">
-          <div className="home-offer-copy">
-            <p className="eyebrow">Founding member offer</p>
-            <h2>7 days free, then £1.99* to keep your paid-date view up to date.</h2>
-            <p className="home-section-copy">
-              This is an early version, so founding users get the free trial, early
-              founder pricing if ClearTill launches fully, direct input into what
-              gets built next, and early access before the wider launch.
+        <div className="live-home-product-shell" aria-label="Example ClearTill result">
+          <div className="live-home-product-card">
+            <div className="live-home-product-head">
+              <div><p className="live-home-eyebrow">Example position</p><strong>12 days until payday</strong></div>
+              <span className="live-home-status">Updated today</span>
+            </div>
+            <div className="live-home-result">
+              <p>Clear after your listed bills</p><strong>£148</strong>
+              <span>Estimated £12 per day</span>
+            </div>
+            <div className="live-home-metrics">
+              <div><span>Current balance</span><strong>£521</strong></div>
+              <div><span>Bills before payday</span><strong>£373</strong></div>
+            </div>
+            <p className="live-home-product-foot">
+              Based on four listed bills. ClearTill uses the figures you enter and does not connect to your bank.
             </p>
-            <ul className="home-bullet-list home-bullet-list-wide">
-              {FOUNDING_ITEMS.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
           </div>
-          <aside className="home-offer-card">
-            <strong className="home-offer-price">£1.99*</strong>
-            <p className="eyebrow home-offer-subhead">Founding member monthly price</p>
-            <p>
-              Try ClearTill free for 7 days. See what bills are due before you&apos;re
-              paid and know what money is really clear to spend.
-            </p>
-            <Link className="primary-button home-offer-button" href={TRIAL_CHECKOUT_HREF}>
-              Start 7-day free trial
-            </Link>
-          </aside>
-        </section>
-
-        <p className="home-disclaimer">
-          * Founding member price while subscribed. ClearTill isn&apos;t financial advice.
-          It&apos;s simple arithmetic on numbers you enter.
-        </p>
+        </div>
       </section>
+
+      <section className="live-home-container live-home-proof" aria-label="ClearTill preview summary">
+        <article><strong>See a complete first position</strong><p>Add every bill and one-off cost needed for an honest result.</p></article>
+        <article><strong>Keep it live for seven days</strong><p>Update your balance as real life changes and watch the position recalculate.</p></article>
+        <article><strong>Receive useful check-ins</strong><p>Get prompts to update stale figures or add a cost you may have missed.</p></article>
+      </section>
+
+      <section className="live-home-band live-home-dark">
+        <div className="live-home-container">
+          <p className="live-home-eyebrow">The problem</p>
+          <h2>Your balance shows what is there. Not what is already spoken for.</h2>
+          <p className="live-home-section-copy">A bank balance can look healthy while rent, council tax, energy and subscriptions are still waiting to land. ClearTill makes the subtraction visible.</p>
+          <div className="live-home-three-grid live-home-problem-grid">
+            <article><span>In the account</span><strong>£521</strong><p>The number you can see today.</p></article>
+            <article><span>Still due before payday</span><strong>− £373</strong><p>The bills and one-off costs you have listed.</p></article>
+            <article><span>Actually clear</span><strong className="live-home-green">£148</strong><p>An estimated £12 per day for the next 12 days.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="live-home-band" id="how-it-works">
+        <div className="live-home-container">
+          <p className="live-home-eyebrow">How ClearTill works</p>
+          <h2>Three steps. No bank login.</h2>
+          <p className="live-home-section-copy">ClearTill is deliberately manual: you decide what goes in, and you can see exactly how the result was calculated.</p>
+          <div className="live-home-three-grid live-home-steps">
+            <article><span>01</span><h3>Add the basics</h3><p>Enter your current balance and the date you are next paid.</p></article>
+            <article><span>02</span><h3>Add what is still coming</h3><p>Include regular bills, subscriptions and any one-off costs before payday.</p></article>
+            <article><span>03</span><h3>Keep the position current</h3><p>Update your balance when you spend or a bill clears. ClearTill recalculates the result.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="live-home-band live-home-reminders">
+        <div className="live-home-container">
+          <p className="live-home-eyebrow">More than a one-off calculator</p>
+          <h2>Reminders help the number stay useful.</h2>
+          <p className="live-home-section-copy">The preview gives ClearTill time to prove its value: not only with the first calculation, but by helping you keep it accurate as the week changes.</p>
+          <div className="live-home-three-grid live-home-reminder-grid">
+            <article><div><span>● ClearTill</span><span>Day 2</span></div><h3>Has your balance changed?</h3><p>Your position was last updated two days ago. Refresh it and add any new costs.</p></article>
+            <article><div><span>● ClearTill</span><span>Day 4</span></div><h3>Anything still to add?</h3><p>Check for one-off costs, subscriptions or bills you did not include the first time.</p></article>
+            <article><div><span>● ClearTill</span><span>Day 6</span></div><h3>Your live preview ends tomorrow</h3><p>Your result stays visible, but live updates and reminders pause unless you continue.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="live-home-band">
+        <div className="live-home-container live-home-privacy">
+          <div><p className="live-home-eyebrow">Privacy by design</p><h2>You stay in control.</h2><p className="live-home-section-copy">ClearTill does not need your online banking password or an Open Banking connection. Its estimate is based only on the figures you choose to enter.</p></div>
+          <div className="live-home-privacy-list">
+            <article><span>✓</span><p><strong>No bank login</strong><br />ClearTill does not ask for online banking credentials.</p></article>
+            <article><span>✓</span><p><strong>No automatic charges in the preview</strong><br />There is no card entry and nothing renews automatically.</p></article>
+            <article><span>✓</span><p><strong>Amounts can stay out of email previews</strong><br />Exact figures appear in the app unless you explicitly choose otherwise.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="live-home-band live-home-preview">
+        <div className="live-home-container">
+          <p className="live-home-eyebrow">See value before choosing a plan</p>
+          <h2>A seven-day live preview. No card required.</h2>
+          <p className="live-home-section-copy">The first result is not artificially limited. Add the bills needed for an accurate position, update it throughout the week and receive the reminder sequence. After day seven, the result becomes read-only unless you subscribe.</p>
+          <div className="live-home-pricing">
+            <article>
+              <p className="live-home-eyebrow">Live preview</p><div className="live-home-price">£0</div><p>No card. No automatic charge.</p>
+              <ul><li>One complete cash position</li><li>All bills and one-off costs</li><li>Unlimited balance updates for seven days</li><li>Useful preview reminders</li><li>Read-only result after expiry</li></ul>
+            </article>
+            <article className="live-home-featured">
+              <span className="live-home-recommended">Best value</span><p className="live-home-eyebrow">Keep ClearTill live</p><div className="live-home-price">£24.99 <small>/ year</small></div><p>Or £2.99 monthly. The annual plan is equivalent to about £2.08 per month.</p>
+              <ul><li>Continuous balance updates and recalculation</li><li>Recurring bills carried into future payday cycles</li><li>Ongoing reminders and bill check-ins</li><li>Position history as it is developed</li><li>Cancel from your account</li></ul>
+              <CTA className="live-home-card-cta" />
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="live-home-band">
+        <div className="live-home-container live-home-faq">
+          <div><p className="live-home-eyebrow">Questions</p><h2>Clear terms before you begin.</h2></div>
+          <div>
+            <details open><summary>Will ClearTill connect to my bank?</summary><p>No. You enter the balance, payday and costs that ClearTill uses. That keeps the calculation transparent, but it also means you need to keep the figures current.</p></details>
+            <details><summary>When does the seven-day preview begin?</summary><p>When you save your first complete position — not when you first land on the site.</p></details>
+            <details><summary>What happens after seven days?</summary><p>Live updates and reminders pause. Your last result remains visible as read-only and is clearly marked as out of date. Nothing is charged.</p></details>
+            <details><summary>Is the result guaranteed?</summary><p>No. It is an estimate based on the amounts and dates you enter. Missing or outdated costs will change the result.</p></details>
+            <details><summary>Is ClearTill financial advice?</summary><p>No. ClearTill performs straightforward arithmetic on the information you provide. It does not recommend financial products or make decisions for you.</p></details>
+          </div>
+        </div>
+      </section>
+
+      <section className="live-home-container live-home-final">
+        <p className="live-home-eyebrow">Your first position costs nothing</p><h2>Stop guessing what your balance has to cover.</h2>
+        <p>See the bills still in front of you, the money left afterwards and an estimated amount per day — without connecting your bank or entering a card.</p><CTA />
+      </section>
+
     </main>
   );
 }

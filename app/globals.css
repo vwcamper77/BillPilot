@@ -7478,3 +7478,119 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Homepage: live-preview landing page */
+.live-home {
+  --lh-dark: #143c3a;
+  --lh-green: #37c48e;
+  --lh-mint: #e9f8f2;
+  --lh-cream: #fbf7ef;
+  --lh-text: #173431;
+  --lh-muted: #60726f;
+  --lh-border: #d7e8e1;
+  min-height: 100vh;
+  color: var(--lh-text);
+  background: radial-gradient(circle at 90% 4%, rgba(55,196,142,.18), transparent 30rem), radial-gradient(circle at 5% 26%, rgba(241,201,108,.14), transparent 24rem), var(--lh-cream);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.55;
+}
+.live-home *, .live-home *::before, .live-home *::after { box-sizing: border-box; }
+.live-home-container { width: min(1160px, calc(100% - 36px)); margin-inline: auto; }
+.live-home-header { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; padding-block: 22px; }
+.live-home-logo { width: 170px !important; height: auto !important; }
+.live-home-signin { color: inherit; font-weight: 750; text-decoration: none; border-bottom: 1px solid rgba(20,60,58,.35); }
+.live-home-hero { display: grid; grid-template-columns: 1.04fr .96fr; gap: 64px; align-items: center; padding-block: 62px 88px; }
+.live-home h1, .live-home h2, .live-home h3 { margin-top: 0; line-height: 1.05; letter-spacing: -.035em; }
+.live-home h1 { max-width: 830px; margin-bottom: 25px; font-size: clamp(3.2rem, 7vw, 6.25rem); }
+.live-home h2 { margin-bottom: 22px; font-size: clamp(2.25rem, 4.5vw, 4.25rem); }
+.live-home h3 { margin-bottom: 10px; font-size: 1.35rem; }
+.live-home-eyebrow { display: inline-flex; align-items: center; gap: 9px; margin: 0 0 18px; color: var(--lh-dark); font-size: .83rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+.live-home-eyebrow::before { content: ""; width: 30px; height: 3px; border-radius: 99px; background: var(--lh-green); }
+.live-home-hero-copy { max-width: 670px; margin: 0 0 30px; color: #415b58; font-size: 1.18rem; }
+.live-home-cta-row { display: flex; gap: 13px; flex-wrap: wrap; align-items: center; }
+.live-home-button { display: inline-flex; align-items: center; justify-content: center; min-height: 56px; padding-inline: 26px; border: 1px solid transparent; border-radius: 999px; font-weight: 850; text-decoration: none; transition: transform .2s, box-shadow .2s; }
+.live-home-button:hover { transform: translateY(-2px); }
+.live-home-button-primary { color: #fff; background: var(--lh-dark); box-shadow: 0 14px 30px rgba(20,60,58,.22); }
+.live-home-microcopy { max-width: 680px; margin: 17px 0 0; color: var(--lh-muted); font-size: .92rem; }
+.live-home-trust-row { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 24px; }
+.live-home-trust-row span { padding: 9px 13px; color: var(--lh-dark); border: 1px solid var(--lh-border); border-radius: 999px; background: rgba(255,255,255,.72); font-size: .9rem; font-weight: 720; }
+.live-home-product-shell { padding: 22px; border: 1px solid rgba(55,196,142,.35); border-radius: 38px; background: linear-gradient(145deg, rgba(55,196,142,.28), rgba(255,255,255,.86)); box-shadow: 0 24px 70px rgba(20,60,58,.14); }
+.live-home-product-card { overflow: hidden; border: 1px solid var(--lh-border); border-radius: 26px; background: #fff; }
+.live-home-product-head { display: flex; justify-content: space-between; gap: 20px; padding: 22px 24px; border-bottom: 1px solid var(--lh-border); background: linear-gradient(100deg, #effbf6, #fbfffd); }
+.live-home-product-head > div { display: flex; flex-direction: column; align-items: flex-start; }
+.live-home-product-head p { margin-bottom: 6px; }
+.live-home-status { align-self: flex-start; padding: 7px 10px; color: #fff; border-radius: 999px; background: var(--lh-dark); font-size: .75rem; font-weight: 800; }
+.live-home-result { padding: 26px 24px 22px; }
+.live-home-result p { margin: 0; color: var(--lh-muted); font-weight: 700; }
+.live-home-result strong { display: block; margin: 8px 0 10px; color: var(--lh-dark); font-size: 4.5rem; line-height: 1; letter-spacing: -.06em; }
+.live-home-result span { display: inline-flex; padding: 9px 12px; color: var(--lh-dark); border-radius: 12px; background: var(--lh-mint); font-weight: 850; }
+.live-home-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 24px 18px; }
+.live-home-metrics div { padding: 18px; border: 1px solid var(--lh-border); border-radius: 17px; background: #f8fbfa; }
+.live-home-metrics span { display: block; margin-bottom: 5px; color: var(--lh-muted); font-size: .78rem; }
+.live-home-metrics strong { font-size: 1.5rem; }
+.live-home-product-foot { margin: 0; padding: 16px 24px 22px; color: var(--lh-muted); border-top: 1px solid var(--lh-border); font-size: .82rem; }
+.live-home-proof { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 96px; }
+.live-home-proof article { padding: 24px; border: 1px solid var(--lh-border); border-radius: 20px; background: rgba(255,255,255,.72); }
+.live-home-proof strong { display: block; margin-bottom: 6px; font-size: 1.1rem; }
+.live-home-proof p, .live-home-steps p, .live-home-reminder-grid p { margin-bottom: 0; color: var(--lh-muted); }
+.live-home-band { padding-block: 94px; }
+.live-home-dark { color: #fff; background: var(--lh-dark); }
+.live-home-dark .live-home-eyebrow { color: #fff; }
+.live-home-section-copy { max-width: 760px; margin: 0 0 38px; color: var(--lh-muted); font-size: 1.12rem; }
+.live-home-dark .live-home-section-copy, .live-home-dark .live-home-problem-grid p { color: #c7dbd6; }
+.live-home-three-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.live-home-problem-grid article { padding: 26px; border: 1px solid rgba(255,255,255,.16); border-radius: 24px; background: rgba(255,255,255,.08); }
+.live-home-problem-grid strong { display: block; margin: 8px 0; font-size: 2.6rem; font-weight: 900; }
+.live-home-green { color: var(--lh-green); }
+.live-home-steps article { padding: 26px; border: 1px solid var(--lh-border); border-radius: 24px; background: #fff; }
+.live-home-steps article > span { display: inline-grid; width: 42px; height: 42px; margin-bottom: 28px; place-items: center; border-radius: 14px; background: var(--lh-mint); font-weight: 900; }
+.live-home-reminders { background: #f4fbf8; }
+.live-home-reminder-grid article { padding: 26px; border: 1px solid var(--lh-border); border-radius: 24px; background: #fff; box-shadow: 0 12px 34px rgba(20,60,58,.08); }
+.live-home-reminder-grid article > div { display: flex; justify-content: space-between; margin-bottom: 18px; color: var(--lh-muted); font-size: .75rem; }
+.live-home-reminder-grid article > div span:first-child { color: var(--lh-green); }
+.live-home-privacy { display: grid; grid-template-columns: .8fr 1.2fr; gap: 40px; align-items: center; padding: 46px; border: 1px solid var(--lh-border); border-radius: 34px; background: linear-gradient(130deg, var(--lh-mint), #fff); }
+.live-home-privacy .live-home-section-copy { margin-bottom: 0; }
+.live-home-privacy-list { display: grid; gap: 12px; }
+.live-home-privacy-list article { display: flex; gap: 13px; align-items: flex-start; padding: 16px; border: 1px solid var(--lh-border); border-radius: 16px; background: #fff; }
+.live-home-privacy-list article > span { display: grid; width: 25px; height: 25px; flex: 0 0 25px; color: #fff; border-radius: 50%; place-items: center; background: var(--lh-green); font-weight: 900; }
+.live-home-privacy-list p { margin: 0; color: var(--lh-muted); }
+.live-home-privacy-list strong { color: var(--lh-text); }
+.live-home-preview { border-block: 1px solid var(--lh-border); background: #effaf5; }
+.live-home-pricing { display: grid; grid-template-columns: .9fr 1.1fr; gap: 18px; }
+.live-home-pricing > article { padding: 26px; border: 1px solid var(--lh-border); border-radius: 24px; background: #fff; }
+.live-home-pricing .live-home-featured { position: relative; border: 2px solid var(--lh-green); box-shadow: 0 24px 70px rgba(20,60,58,.14); }
+.live-home-recommended { position: absolute; top: 20px; right: 22px; padding: 7px 10px; color: #fff; border-radius: 999px; background: var(--lh-dark); font-size: .72rem; font-weight: 850; }
+.live-home-price { font-size: 3.3rem; font-weight: 950; letter-spacing: -.06em; }
+.live-home-price small { color: var(--lh-muted); font-size: 1rem; letter-spacing: 0; }
+.live-home-pricing ul { display: grid; gap: 11px; margin: 22px 0 0; padding: 0; list-style: none; }
+.live-home-pricing li::before { content: "✓"; margin-right: 9px; color: var(--lh-green); font-weight: 950; }
+.live-home-card-cta { margin-top: 24px; }
+.live-home-faq { display: grid; grid-template-columns: .8fr 1.2fr; gap: 55px; }
+.live-home-faq details { padding: 19px 0; border-bottom: 1px solid var(--lh-border); }
+.live-home-faq summary { cursor: pointer; font-weight: 850; }
+.live-home-faq details p { color: var(--lh-muted); }
+.live-home-final { margin-bottom: 40px; padding: 80px 20px; color: #fff; border-radius: 36px; background: var(--lh-dark); text-align: center; }
+.live-home-final .live-home-eyebrow { color: #fff; }
+.live-home-final > p:not(.live-home-eyebrow) { max-width: 670px; margin: 0 auto 24px; color: #c7dbd6; font-size: 1.1rem; }
+.live-home-final .live-home-button { color: var(--lh-dark); background: var(--lh-green); box-shadow: none; }
+
+@media (max-width: 860px) {
+  .live-home-hero, .live-home-privacy, .live-home-faq { grid-template-columns: 1fr; }
+  .live-home-hero { gap: 38px; padding-top: 34px; }
+  .live-home-proof, .live-home-three-grid, .live-home-pricing { grid-template-columns: 1fr; }
+  .live-home h1 { font-size: clamp(3rem, 14vw, 5rem); }
+  .live-home-privacy { padding: 28px; }
+  .live-home-header { padding-top: 16px; }
+  .live-home-logo { width: 145px !important; }
+}
+
+@media (max-width: 520px) {
+  .live-home-container { width: min(100% - 24px, 1160px); }
+  .live-home-band { padding-block: 70px; }
+  .live-home-hero { padding-bottom: 64px; }
+  .live-home-product-shell { padding: 12px; border-radius: 28px; }
+  .live-home-product-head, .live-home-result { padding-inline: 18px; }
+  .live-home-result strong { font-size: 3.6rem; }
+  .live-home-metrics { grid-template-columns: 1fr; padding-inline: 18px; }
+  .live-home-final { width: calc(100% - 24px); padding: 60px 18px; }
+}
