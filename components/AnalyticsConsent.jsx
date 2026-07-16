@@ -15,6 +15,7 @@ import {
   initMixpanel,
   revokeAnalyticsConsent,
 } from "@/lib/analytics/mixpanel";
+import { trackEvent } from "@/lib/analytics/track";
 
 export default function AnalyticsConsent() {
   const [needsChoice, setNeedsChoice] = useState(false);
@@ -53,6 +54,11 @@ export default function AnalyticsConsent() {
           className="consent-btn consent-btn-primary"
           onClick={() => {
             grantAnalyticsConsent();
+            // The initial landing event occurs before consent and is therefore
+            // intentionally suppressed by Mixpanel. Emit the first product
+            // event only after opt-in so a consenting visitor is observable
+            // even if their next action is an untracked navigation.
+            trackEvent("analytics_consent_granted");
             setNeedsChoice(false);
           }}
         >

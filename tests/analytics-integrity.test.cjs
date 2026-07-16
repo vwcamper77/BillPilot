@@ -64,6 +64,16 @@ test("UTM attribution is independent from suppression and first touch is immutab
   assert.doesNotMatch(read("lib/analytics/internal.server.js"), /utm_|fbclid|location|city|ip/i);
 });
 
+test("Mixpanel emits its first product event only after analytics consent", () => {
+  const consent = read("components/AnalyticsConsent.jsx");
+  const constants = read("lib/analytics/constants.js");
+  assert.match(consent, /grantAnalyticsConsent\(\);[\s\S]*trackEvent\("analytics_consent_granted"\)/);
+  assert.match(constants, /"analytics_consent_granted"/);
+  const mixpanel = read("lib/analytics/mixpanel.js");
+  assert.match(mixpanel, /opt_out_tracking_by_default: !alreadyConsented/);
+  assert.match(mixpanel, /https:\/\/api-eu\.mixpanel\.com/);
+});
+
 test("sensitive financial fields are rejected from analytics/attribution contracts", () => {
   assert.equal(containsSensitiveFields({ balance: 10 }), true);
   assert.equal(containsSensitiveFields({ nested: { spokenBillText: "rent" } }), true);
