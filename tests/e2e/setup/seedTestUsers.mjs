@@ -105,6 +105,14 @@ export async function grantTestAccess(uid, email = "") {
       updatedAt: FieldValue.serverTimestamp(),
       createdAt: FieldValue.serverTimestamp(),
     }, { merge: true }),
+    // The unified entitlement resolver gives subscription state precedence.
+    // Keep this shared browser fixture explicitly active so stale trial data
+    // from another e2e flow cannot unexpectedly lock the dashboard.
+    db.collection("users").doc(uid).collection("billing").doc("subscription").set({
+      subscriptionStatus: "active",
+      accessSource: "e2e",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true }),
   ]);
 }
 

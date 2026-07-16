@@ -25,6 +25,7 @@ async function signIn(page) {
   await page.goto("/");
   await page.waitForFunction(() => typeof window.__cleartillTestSignIn === "function");
   await page.evaluate((value) => window.__cleartillTestSignIn(value), token);
+  await page.evaluate(() => window.localStorage.setItem("ct.setup.completedAt", new Date().toISOString()));
   await page.goto("/dashboard");
   await page.getByTestId("four-week-forecast").waitFor({ state: "visible", timeout: 20000 });
 }
@@ -106,10 +107,9 @@ for (const width of [320, 375, 390, 430]) {
 
     const chart = page.getByTestId("four-week-forecast");
     await expect(chart.getByTestId("weekly-spend-card")).toHaveCount(4);
-    await expect(chart.getByText("This week", { exact: true })).toBeVisible();
-    await expect(chart.getByText("Next week", { exact: true })).toBeAttached();
-    await expect(chart.getByText("Week 3", { exact: true })).toBeAttached();
-    await expect(chart.getByText("Week 4", { exact: true })).toBeAttached();
+    const cards = chart.getByTestId("weekly-spend-card");
+    await expect(cards.first().locator(".weekly-spend-week-label")).toContainText("WC");
+    await expect(cards.nth(3).locator(".weekly-spend-week-label")).toContainText("WC");
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
     if (width === 390) await page.screenshot({ path: "output/playwright/four-week-forecast-390.png", fullPage: true });

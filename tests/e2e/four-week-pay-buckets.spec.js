@@ -232,3 +232,11 @@ test.describe("buildFourWeekCashflowWaterfall", () => {
     expect(futurePayWeek.payDateLabel).toBe("Pay date 24 Aug");
   });
 });
+
+test.describe("buildWeeklySafeSpendingPlan precision", () => {
+  test("63p divided across six days remains 63p available, not 66p", () => {
+    const points = buildWeeklySafeSpendingPlan("2026-07-14", "2026-07-20", 0.63, [], [], 800);
+    expect(points[0].preDays).toBe(6);
+    expect(points[0].availableToSpend).toBe(0.63);
+  });
+});
