@@ -54,6 +54,7 @@ import {
   normaliseLargeCostFundingStatus,
 } from "@/lib/billMath";
 import { analyseCsvText } from "@/lib/csvBillFinder";
+import { calculateCashPosition } from "@/lib/cashflowTimeline";
 import { trackClientAnalyticsEvent } from "@/lib/clientAnalytics";
 import { getStoredAttributionBundle } from "@/lib/analytics/attribution";
 import { logSecurityEventClient, storeImportArchive } from "@/lib/security/clientSecurity";
@@ -679,19 +680,28 @@ export default function DashboardPage() {
     () => calculateLargeCostImpact(largeCosts, generalProtectedSavings, dashboard.dailyLimitTillPayday || 0, dashboard.daysTillPayday || 0, todayIso),
     [dashboard.dailyLimitTillPayday, dashboard.daysTillPayday, largeCosts, generalProtectedSavings, todayIso],
   );
-  const bigCostsDueBeforePayday = useMemo(() => {
-    if (!dashboard.paydayDate) {
-      return 0;
-    }
-
-    return largeCostImpact.costs.reduce((total, cost) => {
-      if (!cost.nextDueDate || cost.nextDueDate >= dashboard.paydayDate) {
-        return total;
-      }
-
-      return total + (Number(cost.currentAccountAmount) || 0);
-    }, 0);
-  }, [dashboard.paydayDate, largeCostImpact.costs]);
+  const legacyForecastHorizon = useMemo(() => {
+    if (dashboard.paydayDate) return dashboard.paydayDate;
+    const date = new Date(`${todayIso}T12:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + 28);
+    return date.toISOString().slice(0, 10);
+  }, [dashboard.paydayDate, todayIso]);
+  const cashPosition = useMemo(() => hasBalanceSnapshot ? calculateCashPosition({
+    todayIso,
+    horizonDate: legacyForecastHorizon,
+    currentBalance: dashboard.currentBalance,
+    bills,
+    largeCostAllocations: largeCostImpact.costs.map((cost) => ({
+      id: cost.id,
+      name: `${cost.name || "Large cost"} funding`,
+      currentAccountAmount: cost.currentAccountAmount,
+      nextDueDate: cost.nextDueDate,
+      frequency: "one_off",
+    })),
+    paydayDate: dashboard.paydayDate,
+    incomeAmount: Number(displayIncome?.amount) || 0,
+  }) : null, [bills, dashboard.currentBalance, dashboard.paydayDate, displayIncome?.amount, hasBalanceSnapshot, largeCostImpact.costs, legacyForecastHorizon, todayIso]);
+  const bigCostsDueBeforePayday = cashPosition?.protectedBeforeNextIncomeTotal || 0;
   const unassignedCostsBeforePayday = useMemo(() => {
     if (!dashboard.paydayDate) {
       return 0;
@@ -708,12 +718,8 @@ export default function DashboardPage() {
     }, 0);
   }, [dashboard.paydayDate, largeCostImpact.costs]);
   const totalProtectedSavings = largeCostImpact.totalProtectedSavings;
-  const spendingRoomUntilPayday = hasBalanceSnapshot
-    ? dashboard.currentBalance - dashboard.totalBeforePayday - bigCostsDueBeforePayday
-    : null;
-  const dailySpendingRoom = hasPayday && dashboard.daysTillPayday && spendingRoomUntilPayday !== null
-    ? spendingRoomUntilPayday / dashboard.daysTillPayday
-    : null;
+  const spendingRoomUntilPayday = cashPosition?.safeUntilNextIncome ?? null;
+  const dailySpendingRoom = cashPosition?.safePerDayUntilNextIncome ?? null;
   const spendingRoomStatus = (() => {
     if (!hasBalanceSnapshot || !hasPayday || spendingRoomUntilPayday === null) return "";
     if (spendingRoomUntilPayday < 0) return "negative";

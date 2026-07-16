@@ -31,7 +31,7 @@ test("confirmed future income raises the daily amount only after chronological c
     availableBeforeHorizon: 200,
     dailyAvailableAmount: 20,
     safeDailyAmount: 20,
-    spendingRoom: 200,
+    spendingRoom: 100,
     safeToSpendToday: 100,
   });
 });
@@ -56,7 +56,7 @@ test("period availability stays arithmetically consistent when income timing con
 
   expect(result.spendingRoom).toBe(0);
   expect(result.availableBeforeHorizon).toBe(365);
-  expect(result.dailyAvailableAmount).toBe(36.5);
+  expect(result.dailyAvailableAmount).toBe(0);
 });
 
 test("estimated income never affects safe spending", () => {

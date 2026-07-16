@@ -4,6 +4,15 @@ import { useRef, useState } from "react";
 import { buildWeeklySafeSpendingPlan, formatCurrency } from "@/lib/billMath";
 import FinancialDisclosure from "./FinancialDisclosure";
 
+function ordinaryWeekLabel(week, index) {
+  const start = new Date(`${week.weekStart}T12:00:00Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  const startLabel = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: start.getUTCMonth() === end.getUTCMonth() ? undefined : "short", timeZone: "UTC" }).format(start);
+  const endLabel = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }).format(end);
+  return `${index === 0 ? "This week · " : ""}${startLabel}–${endLabel}`;
+}
+
 export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, spendingRoomUntilPayday = null, hasBalanceSnapshot, todayIso, displayCurrency, incomeAmount = 0, additionalIncomeEvents = [] }) {
   const [activeTab, setActiveTab] = useState("spending");
   const [selectedWeek, setSelectedWeek] = useState(0);
@@ -35,8 +44,8 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
     <section className="spend-curve-card" data-testid="four-week-forecast">
       <div className="forecast-heading-row">
         <div>
-          <h2 className="spend-curve-title">Four-week cash forecast</h2>
-          <p>Safe discretionary spending, after bills and planned costs are set aside.</p>
+          <h2 className="spend-curve-title">Next four weeks</h2>
+          <p>Estimated spending room after bills and planned costs are set aside.</p>
         </div>
         {preShortfall ? <p className="spend-curve-warning">You may go below £0 before payday.</p> : null}
       </div>
@@ -57,18 +66,18 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
               return (
                 <article className={`weekly-spend-card${i === 0 ? " is-current" : ""}${isShort ? " is-short" : ""}`} data-testid="weekly-spend-card" data-week-index={i} key={week.weekStart} onClick={() => selectWeek(i, true)}>
                   <div className="weekly-spend-card-header">
-                    <span className="weekly-spend-week-label">{week.weekLabel}</span>
+                    <span className="weekly-spend-week-label">{ordinaryWeekLabel(week, i)}</span>
                     {i === 0 ? <span className="weekly-today-badge">Today</span> : null}
                   </div>
                   <div className="timeline-rail" aria-hidden="true"><span className="timeline-node" /></div>
                   <div className="weekly-payday-marker-slot">
-                    {week.containsPayDate ? <span className="weekly-spend-payday-badge">{week.payDateLabel}</span> : <span className="timeline-period-label">Period {i + 1}</span>}
+                    {week.containsPayDate ? <span className="weekly-spend-payday-badge">{String(week.payDateLabel || "Payday").replace(/^Pay date/i, "Payday ·")}</span> : null}
                   </div>
                   <div className="weekly-spend-value" data-testid="available-to-spend" data-week-index={i}>
                     {isShort ? `${formatCurrency(Math.abs(week.availableToSpend), displayCurrency)} short` : `${formatCurrency(week.availableToSpend, displayCurrency)} available`}
                   </div>
                   <div className="weekly-spend-rate">
-                    {isShort ? "No safe spending allowance" : `${formatCurrency(week.dailyRate ?? (week.availableToSpend / Math.max(1, applicableDays)), displayCurrency)} per day`}
+                    {isShort ? "No estimated spending room" : `${formatCurrency(week.dailyRate ?? (week.availableToSpend / Math.max(1, applicableDays)), displayCurrency)} per day`}
                     <span>{applicableDays} spending day{applicableDays === 1 ? "" : "s"}</span>
                   </div>
                   {!isShort ? <span className="timeline-available-meter" data-testid="weekly-spend-bar" data-value={week.availableToSpend} /> : <p className="timeline-warning">Needs attention</p>}
@@ -86,7 +95,7 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
                       <span>After payday <strong data-testid="available-after-payday">{formatCurrency(week.postAvailableToSpend, displayCurrency)} available</strong></span>
                     </div>
                   ) : null}
-                  <p className="weekly-summary-line">Closes at {formatCurrency(week.projectedClosingBalance, displayCurrency)}</p>
+                  <p className="weekly-summary-line">Estimated week-end balance {formatCurrency(week.projectedClosingBalance, displayCurrency)}</p>
                   <button type="button" className="weekly-view-breakdown" onClick={(event) => { event.stopPropagation(); selectWeek(i, true); }}>View breakdown</button>
                 </article>
               );
@@ -109,7 +118,7 @@ export default function FourWeekChart({ dashboard, dueBeforePaydayLargeCosts, sp
             <FinancialDisclosure label="Income arriving" amount={point.incomeReceived} items={income} displayCurrency={displayCurrency} sign="+" testId="detail-income" open={openRow === "income"} onToggle={(open) => setOpenRow(open ? "income" : null)} />
             <FinancialDisclosure label="Bills due" amount={point.billsDue} items={bills} displayCurrency={displayCurrency} testId="detail-bills" open={openRow === "bills"} onToggle={(open) => setOpenRow(open ? "bills" : null)} />
             <FinancialDisclosure label="Large-cost allocations" amount={point.largeCostAllocations} items={costs} displayCurrency={displayCurrency} testId="detail-large-costs" open={openRow === "costs"} onToggle={(open) => setOpenRow(open ? "costs" : null)} />
-            <div className="cashflow-detail-row is-primary"><span>Safe spending allowance</span><strong className={point.availableToSpend < 0 ? "curve-negative" : ""}>{point.availableToSpend < 0 ? `${formatCurrency(Math.abs(point.availableToSpend), displayCurrency)} short` : formatCurrency(point.availableToSpend, displayCurrency)}</strong></div>
+            <div className="cashflow-detail-row is-primary"><span>Estimated spending room</span><strong className={point.availableToSpend < 0 ? "curve-negative" : ""}>{point.availableToSpend < 0 ? `${formatCurrency(Math.abs(point.availableToSpend), displayCurrency)} short` : formatCurrency(point.availableToSpend, displayCurrency)}</strong></div>
             <div className="cashflow-detail-row"><span>Projected closing balance</span><strong data-testid="projected-closing-balance">{formatCurrency(point.projectedClosingBalance, displayCurrency)}</strong></div>
           </div>
           <div className="cashflow-details-nav">

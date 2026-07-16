@@ -27,7 +27,9 @@ async function signIn(page, uid) {
   await page.goto("/");
   await page.waitForFunction(() => typeof window.__cleartillTestSignIn === "function");
   await page.evaluate((customToken) => window.__cleartillTestSignIn(customToken), token);
+  await page.evaluate(() => window.localStorage.setItem("ct.setup.completedAt", new Date().toISOString()));
   await page.goto("/dashboard");
+  await page.locator(".hero-daily").waitFor({ state: "visible", timeout: 20000 });
 }
 
 async function openSection(page, key, section) {
@@ -37,11 +39,13 @@ async function openSection(page, key, section) {
 
 async function openIncomeSettings(page) {
   const action = page.getByRole("button", { name: "Update pay or income" });
-  if (!await action.isVisible()) {
-    const cycle = page.getByRole("button", { name: /Current pay cycle/ });
-    if (await cycle.getAttribute("aria-expanded") === "false") await cycle.click();
+  if (await action.isVisible()) {
+    await action.click();
+    return;
   }
-  await action.click();
+  const future = page.locator(".after-income-disclosure");
+  if (!await future.getAttribute("open")) await future.locator("summary").click();
+  await future.getByRole("button", { name: "Manage pay and income" }).click();
 }
 
 let user;
@@ -93,11 +97,11 @@ test("secondary income updates safe daily, graph and Large Cost chronology witho
 
   await expect(editor).toContainText("2 active income schedules");
   await expect(page.locator(".hero-daily")).toContainText("£20");
-  const heroIncome = page.getByTestId("hero-income");
-  await heroIncome.getByRole("button").click();
-  await expect(heroIncome).toContainText("Freelance payment");
-  await expect(heroIncome).toContainText("£100");
   await page.locator(".balance-editor").getByRole("button", { name: "Close" }).click();
+  const futureIncome = page.locator(".after-income-disclosure");
+  if (!await futureIncome.getAttribute("open")) await futureIncome.locator("summary").click();
+  await expect(futureIncome).toContainText("Freelance payment");
+  await expect(futureIncome).toContainText("£100");
 
   const largeCosts = page.locator(".forecast-large-costs");
   await openSection(page, "largecosts", largeCosts);

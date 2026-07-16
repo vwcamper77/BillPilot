@@ -2,39 +2,44 @@ import { formatDisplayDate } from "@/lib/billMath";
 
 export const STALE_BALANCE_DAYS = 7;
 
-export default function AttentionStrip({ reminders, billsDueSoon, staleBalanceDays, issues = [] }) {
-  const items = [];
+export function isBalanceSnapshotStale({ hasBalanceSnapshot, optimisticBalance, balanceSnapshotDate, staleBalanceDays, threshold = STALE_BALANCE_DAYS }) {
+  if (!hasBalanceSnapshot || optimisticBalance !== null) return false;
+  if (staleBalanceDays === null || staleBalanceDays === undefined) return !balanceSnapshotDate;
+  return staleBalanceDays >= threshold;
+}
 
-  issues.filter(Boolean).forEach((text, index) => items.push({ key: `issue-${index}`, text }));
-
-  (reminders || []).forEach((reminder) => {
-    if (!reminder?.message) return;
-    items.push({ key: `reminder-${reminder.id}`, text: reminder.message });
-  });
-
-  (billsDueSoon || []).forEach((bill) => {
-    items.push({
-      key: `due-${bill.id}`,
-      text: `${bill.name} due ${formatDisplayDate(bill.nextDueDate)}`,
-    });
-  });
+export default function AttentionStrip({ reminders, billsDueSoon, staleBalanceDays, issues = [], onUpdateBalance, onReviewPosition, onAddCost }) {
+  let item = null;
 
   if (staleBalanceDays !== null && staleBalanceDays !== undefined && staleBalanceDays >= STALE_BALANCE_DAYS) {
-    items.push({
-      key: "stale-balance",
-      text: `Balance last updated ${staleBalanceDays} days ago — update it for an accurate forecast.`,
-    });
+    item = {
+      text: `Your balance was last updated ${staleBalanceDays} days ago. Update it to keep this position useful.`,
+      action: "Update balance",
+      onClick: onUpdateBalance,
+    };
+  } else if (billsDueSoon?.length) {
+    const bill = billsDueSoon[0];
+    item = {
+      text: `${bill.name} is due ${formatDisplayDate(bill.nextDueDate)}. Review what remains before payday.`,
+      action: "Review position",
+      onClick: onReviewPosition,
+    };
+  } else if (issues.filter(Boolean).length || reminders?.length) {
+    item = {
+      text: issues.find(Boolean) || reminders.find((reminder) => reminder?.message)?.message || "Have any new costs appeared? Add them before relying on this estimate.",
+      action: "Add a cost",
+      onClick: onAddCost,
+    };
   }
 
-  if (!items.length) {
-    return null;
-  }
+  if (!item) return null;
 
   return (
     <div className="attention-strip" role="status" aria-live="polite">
-      {items.map((item) => (
-        <div key={item.key} className="attention-strip-item">{item.text}</div>
-      ))}
+      <div className="attention-strip-item">
+        <span>{item.text}</span>
+        <button type="button" onClick={item.onClick}>{item.action}</button>
+      </div>
     </div>
   );
 }

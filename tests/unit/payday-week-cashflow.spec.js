@@ -93,7 +93,7 @@ test.describe("payday-week chronological cashflow", () => {
     expect(paydayWeek.steps.map((step) => step.name)).toEqual(["Small bill", "Pay", "Rent"]);
   });
 
-  test("bill due exactly on payday and income are both applied, with income landing first", () => {
+  test("bill due exactly on payday is conservatively applied before income", () => {
     const bills = [{ id: "same-day", name: "Same-day bill", amount: 200, dueDay: 16, active: true, nextDueDate: PAYDAY }];
     const income = { payDay: 16, amount: INCOME, active: true };
     const dashboard = calculateDashboard(bills, income, { currentBalance: BALANCE }, TODAY);
@@ -107,8 +107,9 @@ test.describe("payday-week chronological cashflow", () => {
       [],
     );
     const paydayWeek = waterfall.find((point) => point.containsPayDate);
-    expect(paydayWeek.steps.map((step) => step.type)).toEqual(["primary_pay", "bill"]);
-    expect(paydayWeek.paydayMomentBalance).toBe(BALANCE + INCOME);
+    expect(paydayWeek.steps.map((step) => step.type)).toEqual(["bill", "primary_pay"]);
+    expect(paydayWeek.steps[0].balanceAfter).toBe(BALANCE - 200);
+    expect(paydayWeek.paydayMomentBalance).toBe(BALANCE + INCOME - 200);
     expect(paydayWeek.closingBalance).toBe(BALANCE + INCOME - 200);
   });
 
@@ -163,8 +164,9 @@ test.describe("payday-week chronological cashflow", () => {
       }],
     });
     expect(result.minimumProjectedBalance).toBeLessThan(0);
-    // The reported shortfall must equal the true worst dip, not a £0 floor.
-    expect(result.spendingRoom).toBe(result.minimumProjectedBalance);
-    expect(result.spendingRoom).toBeLessThan(0);
+    // Immediate safety stops at the first confirmed income; the later ledger
+    // floor remains separately visible for the horizon forecast.
+    expect(result.spendingRoom).toBe(-185);
+    expect(result.minimumProjectedBalance).toBe(-285);
   });
 });

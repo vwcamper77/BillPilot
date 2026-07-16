@@ -142,7 +142,7 @@ test.describe("payday week chronology", () => {
     expect(amountOf(await preAvailable.textContent())).toBeLessThan(2483);
   });
 
-  test("multiple transactions on payday itself are all applied, income first", async ({ page }) => {
+  test("multiple transactions on payday itself are all applied, outflows first", async ({ page }) => {
     const today = todayIsoLondon();
     const { paydayOffset } = nextWeekOffsets();
     const paydayDate = addDaysIso(today, paydayOffset);
@@ -154,8 +154,8 @@ test.describe("payday week chronology", () => {
     await gotoDashboardChart(page);
 
     const paydayWeekCard = page.locator('[data-testid="weekly-spend-card"][data-week-index="1"]');
-    // Income clears before a same-day bill, so the £200 subscription is billed
-    // and the closing balance reflects it — 1000 + 3000 - 200 = 3800.
+    // The conservative ledger applies the same-day bill before income. Both are
+    // still applied exactly once, so the closing balance is 1000 - 200 + 3000.
     expect(amountOf(await paydayWeekCard.locator('[data-testid="projected-closing-balance"]').textContent())).toBe(3800);
     expect(amountOf(await paydayWeekCard.locator('[data-testid="bills-due"]').textContent())).toBe(200);
   });

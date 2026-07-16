@@ -11,7 +11,12 @@ export default function CollapsibleSection({
 }) {
   const storageId = storageKey ? `ct.ui.sections.${storageKey}` : null;
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [highlighted, setHighlighted] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const sectionRef = useRef(null);
+  const headerRef = useRef(null);
   const bodyRef = useRef(null);
+  const highlightTimerRef = useRef(null);
 
   useEffect(() => {
     if (!storageId || typeof window === "undefined") return;
@@ -28,11 +33,31 @@ export default function CollapsibleSection({
       // Programmatic open (from a quick action or the hero) is transient —
       // it must not overwrite the user's own collapse preference.
       setCollapsed(false);
+
+      if (event.detail?.focusHeading) {
+        // Clear first so repeated activations announce again in live regions.
+        setAnnouncement("");
+        window.requestAnimationFrame(() => {
+          setAnnouncement(event.detail.announcement || `${title} opened.`);
+          window.requestAnimationFrame(() => {
+            headerRef.current?.focus({ preventScroll: true });
+            sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        });
+      }
+
+      if (event.detail?.highlight) {
+        setHighlighted(true);
+        window.clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = window.setTimeout(() => setHighlighted(false), 1800);
+      }
     }
 
     window.addEventListener("ct:open-section", handleOpenRequest);
     return () => window.removeEventListener("ct:open-section", handleOpenRequest);
-  }, [storageKey]);
+  }, [storageKey, title]);
+
+  useEffect(() => () => window.clearTimeout(highlightTimerRef.current), []);
 
   function toggle() {
     setCollapsed((current) => {
@@ -45,8 +70,13 @@ export default function CollapsibleSection({
   }
 
   return (
-    <section className="collapsible-section">
+    <section
+      ref={sectionRef}
+      className={`collapsible-section${highlighted ? " is-targeted" : ""}`}
+      data-section-key={storageKey || undefined}
+    >
       <button
+        ref={headerRef}
         type="button"
         className="collapsible-section-header"
         aria-expanded={!collapsed}
@@ -65,6 +95,7 @@ export default function CollapsibleSection({
       >
         <div className="collapsible-section-inner">{children}</div>
       </div>
+      <span className="sr-only" role="status" aria-live="polite">{announcement}</span>
     </section>
   );
 }

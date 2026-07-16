@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
-import AccessLockPanel from "@/components/AccessLockPanel";
 import RepairAccessButton from "@/app/billing/success/RepairAccessButton";
 import {
   createUserWithEmailAndPassword,
@@ -35,7 +34,7 @@ import {
   isValidDueDay,
 } from "@/lib/billMath";
 import { calculateLargeCostAffordabilityPlans } from "@/lib/largeCostPlanner";
-import { calculateSafeSpendingPlan, expandIncomeEvents } from "@/lib/cashflowTimeline";
+import { calculateCashPosition, expandIncomeEvents } from "@/lib/cashflowTimeline";
 import { hasActiveIncomeSchedule } from "@/lib/incomeSchedule";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
@@ -45,8 +44,9 @@ import { postDashboardSettingsAction, postDashboardStateAction, saveIncome as sa
 import { friendlyAuthError, friendlyGoogleAuthError, friendlySettingsError } from "./lib/friendlyErrors";
 import CollapsibleSection from "./components/CollapsibleSection";
 import HeroCard from "./components/HeroCard";
+import AfterNextIncome from "./components/AfterNextIncome";
 import { triggerQuickAction } from "./components/QuickActions";
-import AttentionStrip, { STALE_BALANCE_DAYS } from "./components/AttentionStrip";
+import AttentionStrip, { isBalanceSnapshotStale, STALE_BALANCE_DAYS } from "./components/AttentionStrip";
 import BalanceEditor from "./components/BalanceEditor";
 import AddBills from "./components/AddBills";
 import BillList from "./components/BillList";
@@ -54,12 +54,10 @@ import LargeCostForm from "./components/LargeCostForm";
 import SavingsEditor from "./components/SavingsEditor";
 import UtilitiesTracker, { buildTrackerChecks } from "./components/UtilitiesTracker";
 import FourWeekChart from "./components/FourWeekChart";
-import PayPeriodCards from "./components/PayPeriodCards";
 import SetupWizard from "./components/SetupWizard";
 
 const RECENT_SESSION_STORAGE_KEY = "cleartill_recent_checkout_session_id";
 const SETUP_COMPLETED_STORAGE_KEY = "ct.setup.completedAt";
-const JUST_FINISHED_ONBOARDING_KEY = "ct.onboarding.justFinishedBills";
 
 function isValidIncomeAmount(value) {
   const amount = Number(value);
@@ -70,6 +68,13 @@ function toDateMaybe(value) {
   if (!value) return null;
   if (typeof value.toDate === "function") return value.toDate();
   if (value instanceof Date) return value;
+  if (typeof value === "object" && Number.isFinite(Number(value.seconds))) {
+    return new Date(Number(value.seconds) * 1000);
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
   return null;
 }
 
@@ -114,6 +119,7 @@ function HomeDashboardContent() {
     accessActive: false,
     accessUntil: null,
     stripeCheckoutSessionId: null,
+    entitlement: null,
   });
   const [reminders, setReminders] = useState([]);
   const [accountLoaded, setAccountLoaded] = useState(false);
@@ -271,6 +277,7 @@ function HomeDashboardContent() {
           accessActive: Boolean(payload?.accessActive),
           accessUntil: payload?.accessUntil || null,
           stripeCheckoutSessionId: payload?.stripeCheckoutSessionId || null,
+          entitlement: payload?.entitlement || null,
         });
 
         if (payload?.stripeCheckoutSessionId && typeof window !== "undefined") {
@@ -410,42 +417,41 @@ function HomeDashboardContent() {
   const hasIncomeAmount = isValidIncomeAmount(incomeForDashboard?.amount);
   const hasIncomeSchedule = hasActiveIncomeSchedule(incomeEvents);
   const hasBills = bills.length > 0;
-  // First-time onboarding shouldn't bounce someone out of "add your bills"
-  // the instant they add one — let them keep going until they say they're
-  // done. Returning users (who've completed setup before) skip this: as
-  // soon as they have a bill again, they're back on the full dashboard.
+  // Setup completion is sticky: established users remain in the operational
+  // dashboard even if their entries later become incomplete.
   const hasCompletedSetupBefore = typeof window !== "undefined" && Boolean(window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY));
-  const [billsStepConfirmed, setBillsStepConfirmed] = useState(false);
-  const setupStep = !hasBalanceSnapshot
-    ? 1
-    : !hasIncomeSchedule
-      ? 2
-      : (!hasCompletedSetupBefore && !billsStepConfirmed)
-        ? 3
-        : 4;
+  const [positionConfirmed, setPositionConfirmed] = useState(false);
+  const setupStep = hasCompletedSetupBefore || positionConfirmed
+    ? 5
+    : !hasBalanceSnapshot
+      ? 1
+      : !hasIncomeSchedule
+        ? 2
+        : !hasBills
+          ? 3
+          : 4;
+  const experienceMode = setupStep < 5 ? "onboarding" : "bau";
+  const accessState = accessCheck.state === "access_expired"
+    ? "preview_expired"
+    : accessCheck.entitlement?.trialStatus === "active"
+      ? "preview_active"
+      : "paid";
+  const previewDaysLeft = accessState === "preview_active" && accessCheck.entitlement?.trialEndsAt
+    ? Math.max(0, diffDays(todayIso, String(accessCheck.entitlement.trialEndsAt).slice(0, 10)))
+    : null;
 
   useEffect(() => {
-    if (setupStep === 4 && typeof window !== "undefined" && !window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY)) {
+    if (setupStep === 5 && typeof window !== "undefined" && !window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY)) {
       window.localStorage.setItem(SETUP_COMPLETED_STORAGE_KEY, new Date().toISOString());
     }
   }, [setupStep]);
 
-  function handleFinishBillsStep() {
+  function handleCompleteFirstPosition() {
     if (typeof window !== "undefined") {
-      window.sessionStorage.setItem(JUST_FINISHED_ONBOARDING_KEY, "1");
+      window.localStorage.setItem(SETUP_COMPLETED_STORAGE_KEY, new Date().toISOString());
     }
-    setBillsStepConfirmed(true);
+    setPositionConfirmed(true);
   }
-
-  // Land on the Bills section, already open and scrolled into view, the
-  // moment someone finishes onboarding — instead of a fully collapsed
-  // dashboard they'd have to go hunting through.
-  useEffect(() => {
-    if (setupStep !== 4 || typeof window === "undefined") return;
-    if (window.sessionStorage.getItem(JUST_FINISHED_ONBOARDING_KEY) !== "1") return;
-    window.sessionStorage.removeItem(JUST_FINISHED_ONBOARDING_KEY);
-    triggerQuickAction("bills", "add-bills");
-  }, [setupStep]);
 
   const totalMonthlyBills = bills.reduce((sum, b) => sum + (b.amount || 0), 0);
   const monthlySpendingRoomValue = (() => {
@@ -482,7 +488,6 @@ function HomeDashboardContent() {
     largeCostImpact.totalProtectedSavings,
     todayIso,
   ]);
-  const bigCostsDueBeforePayday = largeCostPlans.summary.currentPeriodProtected;
   const unassignedCostsBeforePayday = useMemo(() => {
     if (!dashboard.paydayDate) return 0;
     return largeCostImpact.costs.reduce((total, cost) => {
@@ -498,34 +503,33 @@ function HomeDashboardContent() {
     return date.toISOString().slice(0, 10);
   }, [todayIso]);
   const forecastHorizonDate = dashboard.paydayDate || rollingHorizonDate;
-  const forecastBills = dashboard.paydayDate ? dashboard.beforePayday : dashboard.afterPayday;
-  const safeSpendingPlan = useMemo(() => (
-    hasBalanceSnapshot && hasIncomeSchedule
-      ? calculateSafeSpendingPlan({
-        todayIso,
-        horizonDate: forecastHorizonDate,
-        currentBalance: dashboard.currentBalance,
-        bills: forecastBills,
-        largeCostAllocations: largeCostPlans.chartAllocations,
-        additionalIncomeEvents: incomeEvents,
-      })
-      : null
-  ), [
-    dashboard.currentBalance,
-    forecastBills,
-    forecastHorizonDate,
-    hasBalanceSnapshot,
-    hasIncomeSchedule,
-    incomeEvents,
-    largeCostPlans.chartAllocations,
+  const largeCostLedgerAllocations = useMemo(() => largeCostPlans.plans.flatMap((plan) => [
+    plan.currentPeriodAllocation > 0 ? {
+      id: `${plan.costId}-current`,
+      name: `${plan.name} funding`,
+      currentAccountAmount: plan.currentPeriodAllocation,
+      nextDueDate: todayIso,
+      frequency: "one_off",
+    } : null,
+    ...plan.futurePeriodAllocations.map((allocation, index) => ({
+      id: `${plan.costId}-future-${index}`,
+      name: `${plan.name} funding`,
+      currentAccountAmount: allocation.amount,
+      nextDueDate: allocation.payDate,
+      frequency: "one_off",
+    })),
+  ].filter(Boolean)), [largeCostPlans.plans, todayIso]);
+  const cashPosition = useMemo(() => hasBalanceSnapshot ? calculateCashPosition({
     todayIso,
-  ]);
-  // The overview must use one definition everywhere: balance + confirmed
-  // income - commitments. Timing-sensitive safety remains available on the
-  // plan for warnings and detailed cash-flow views, but must not overwrite the
-  // headline, daily average, or pay-cycle summary with a different number.
-  const spendingRoomUntilPayday = safeSpendingPlan?.availableBeforeHorizon ?? null;
-  const dailySpendingRoom = safeSpendingPlan?.dailyAvailableAmount ?? null;
+    horizonDate: forecastHorizonDate,
+    currentBalance: dashboard.currentBalance,
+    bills: [...dashboard.beforePayday, ...dashboard.afterPayday],
+    largeCostAllocations: largeCostLedgerAllocations,
+    additionalIncomeEvents: incomeEvents,
+  }) : null, [dashboard.afterPayday, dashboard.beforePayday, dashboard.currentBalance, forecastHorizonDate, hasBalanceSnapshot, incomeEvents, largeCostLedgerAllocations, todayIso]);
+  const bigCostsDueBeforePayday = cashPosition?.protectedBeforeNextIncomeTotal || 0;
+  const spendingRoomUntilPayday = cashPosition?.safeUntilNextIncome ?? null;
+  const dailySpendingRoom = cashPosition?.safePerDayUntilNextIncome ?? null;
   const estimatedIncomeOccurrences = useMemo(() => (
     expandIncomeEvents(incomeEvents, todayIso, forecastHorizonDate, { confirmedOnly: false })
       .filter((item) => item.confidence === "estimated" && item.date < forecastHorizonDate)
@@ -595,15 +599,11 @@ function HomeDashboardContent() {
     id: item.id || `${type}-${index}`,
     name: item.name || fallbackName,
     date: item.nextDueDate || item.date,
-    amount: Number(item.currentAccountAmount ?? item.amount) || 0,
+    amount: Math.abs(Number(item.currentAccountAmount ?? item.amount) || 0),
     type,
   })).filter((item) => item.date && item.amount > 0);
-  const beforePaydayBillItems = toDisclosureItems(forecastBills, "Bill", "bill");
-  const beforePaydayLargeCostItems = toDisclosureItems(
-    largeCostPlans.chartAllocations.filter((item) => (item.nextDueDate || item.date) < forecastHorizonDate),
-    "Large-cost funding",
-    "large_cost",
-  );
+  const beforePaydayBillItems = toDisclosureItems(cashPosition?.billsBeforeNextIncome, "Bill", "bill");
+  const beforePaydayLargeCostItems = toDisclosureItems(cashPosition?.protectedBeforeNextIncome, "Large-cost funding", "large_cost");
 
   const nextPaydayDate = useMemo(() => {
     if (!dashboard.paydayDate) return null;
@@ -634,7 +634,7 @@ function HomeDashboardContent() {
   );
   const scheduledIncomeOccurrences = dashboard.paydayDate && nextPaydayDate
     ? expandIncomeEvents(incomeEvents, todayIso, nextPaydayDate).filter((item) => item.date < nextPaydayDate)
-    : (safeSpendingPlan?.incomeOccurrences || []);
+    : (cashPosition?.incomeEvents || []);
   const upcomingIncome = [
     ...scheduledIncomeOccurrences.map((item) => ({ ...item, id: item.occurrenceId, type: "income" })),
   ].filter((item) => item.date >= todayIso)
@@ -697,9 +697,12 @@ function HomeDashboardContent() {
     : balanceSnapshotDate
       ? `Updated ${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: balanceSnapshotDate.getFullYear() === new Date().getFullYear() ? undefined : "numeric", timeZone: "Europe/London" }).format(balanceSnapshotDate)}`
       : "Update time unavailable";
-  const balanceIsStale = hasBalanceSnapshot && (staleBalanceDaysForStrip === null
-    ? !balanceSnapshotDate
-    : staleBalanceDaysForStrip >= STALE_BALANCE_DAYS);
+  const balanceIsStale = isBalanceSnapshotStale({
+    hasBalanceSnapshot,
+    optimisticBalance,
+    balanceSnapshotDate,
+    staleBalanceDays: staleBalanceDaysForStrip,
+  });
 
   const billsDueSoon = useMemo(() => {
     const candidates = dashboard.paydayDate
@@ -722,7 +725,7 @@ function HomeDashboardContent() {
   const trackerChecks = useMemo(() => buildTrackerChecks(bills), [bills]);
   const utilitiesSummaryValue = `${trackerChecks.filter((c) => c.found).length} of ${trackerChecks.length}`;
   const nextCommitments = [...beforePaydayBillItems, ...beforePaydayLargeCostItems]
-    .filter((item) => item.date >= todayIso && item.date < forecastHorizonDate)
+    .filter((item) => item.date >= todayIso && item.date <= (cashPosition?.nextConfirmedIncome?.date || forecastHorizonDate))
     .sort((a, b) => a.date.localeCompare(b.date) || b.amount - a.amount);
 
   function trackAccountCreated(method) {
@@ -1156,10 +1159,6 @@ function HomeDashboardContent() {
     );
   }
 
-  if (accessCheck.state === "access_expired") {
-    return <AccessLockPanel shellClassName="dashboard-shell" />;
-  }
-
   if (!accountLoaded) {
     return (
       <main className="dashboard-shell">
@@ -1171,7 +1170,7 @@ function HomeDashboardContent() {
     );
   }
 
-  if (setupStep < 4) {
+  if (experienceMode === "onboarding" && accessState !== "preview_expired") {
     return (
       <SetupWizard
         setupStep={setupStep}
@@ -1204,21 +1203,31 @@ function HomeDashboardContent() {
         bills={bills}
         onBillsChange={setBills}
         hasIncome={Boolean(displayIncome)}
-        onFinishBillsStep={handleFinishBillsStep}
+        paydayDate={forecastHorizonDate}
+        nextIncomeDate={cashPosition?.nextConfirmedIncome?.date || forecastHorizonDate}
+        spendingRoomUntilPayday={spendingRoomUntilPayday}
+        dailySpendingRoom={dailySpendingRoom}
+        daysTillPayday={dashboard.daysTillPayday || 1}
+        confirmedIncomeThroughHorizon={cashPosition?.confirmedIncomeThroughHorizon || 0}
+        forecastAtHorizon={cashPosition?.forecastAtHorizon || 0}
+        onComplete={handleCompleteFirstPosition}
       />
     );
   }
 
   return (
-    <main className="dashboard-shell">
+    <main className={`dashboard-shell${accessState === "preview_expired" ? " dashboard-readonly" : ""}`} data-experience-mode="bau" data-access-state={accessState}>
       <header className="topbar">
         <div>
           <Link className="brand-link" href="/" aria-label="ClearTill home">
             <Logo className="eyebrow-logo" />
           </Link>
-          <p className="brand">Your cash runway</p>
+          <p className="brand">Your payday position</p>
         </div>
         <div className="topbar-actions">
+          <span className="access-badge">
+            {accessState === "preview_active" ? `Live preview · ${previewDaysLeft ?? 0} days left` : accessState === "paid" ? "Member" : "Preview ended"}
+          </span>
           <span className="user-id">
             {user?.isAnonymous
               ? "Guest session"
@@ -1236,6 +1245,19 @@ function HomeDashboardContent() {
         </div>
       </header>
 
+      {accessState === "preview_expired" ? (
+        <section className="expired-preview-banner" role="status">
+          <div>
+            <strong>Your live preview has ended.</strong>
+            <p>This position was last updated {balanceFreshness.replace(/^Updated /, "").toLowerCase()} and may now be out of date.</p>
+          </div>
+          <div className="expired-preview-actions">
+            <Link className="primary-link upgrade-action" href="/billing?plan=monthly">Continue monthly</Link>
+            <Link className="secondary-button upgrade-action" href="/billing?plan=annual">Continue annually</Link>
+          </div>
+        </section>
+      ) : null}
+
       {pageNotice ? (
         <section className="page-notice" aria-live="polite">
           {pageNotice}
@@ -1246,6 +1268,9 @@ function HomeDashboardContent() {
         reminders={reminders}
         billsDueSoon={billsDueSoon}
         staleBalanceDays={staleBalanceDaysForStrip}
+        onUpdateBalance={() => openBalanceEditor(false)}
+        onReviewPosition={() => primaryResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        onAddCost={() => triggerQuickAction("bills", "add-bills")}
         issues={[
           unassignedCostsBeforePayday > 0 ? `${formatCurrency(unassignedCostsBeforePayday, displayCurrency)} of planned costs still needs a funding choice.` : "",
           estimatedIncomeTotal > 0 ? `${formatCurrency(estimatedIncomeTotal, displayCurrency)} of estimated income is not counted in the available amount.` : "",
@@ -1265,35 +1290,42 @@ function HomeDashboardContent() {
           rollingForecast={!hasPayday}
           spendingRoomUntilPayday={spendingRoomUntilPayday}
           dailySpendingRoom={dailySpendingRoom}
-          daysTillPayday={dashboard.daysTillPayday || 28}
-          paydayDate={forecastHorizonDate}
+          daysTillPayday={cashPosition?.daysUntilNextIncome || dashboard.daysTillPayday || 28}
           displayCurrency={displayCurrency}
           onUpdateBalance={() => openBalanceEditor(false)}
-          onEditPaydaySettings={() => openBalanceEditor(true)}
           nextCommitments={nextCommitments}
           balanceFreshness={balanceFreshness}
           balanceIsStale={balanceIsStale}
           estimatedIncome={estimatedIncomeTotal}
-          timingConstrained={Boolean(
-            safeSpendingPlan
-            && safeSpendingPlan.spendingRoom < safeSpendingPlan.availableBeforeHorizon - 0.005
-          )}
+          timingConstrained={Boolean(cashPosition?.sameDayDependencies.length)}
           breakdownProps={{
             hasBalanceSnapshot,
             currentBalance: dashboard.currentBalance,
             hasPayday: hasIncomeSchedule,
-            totalBeforePayday: forecastBills.reduce((total, bill) => total + (Number(bill.amount) || 0), 0),
+            totalBeforePayday: cashPosition?.billsBeforeNextIncomeTotal || 0,
             bigCostsDueBeforePayday,
-            additionalIncomeBeforePayday: safeSpendingPlan?.confirmedAdditionalIncome || 0,
+            totalCommittedBeforeIncome: cashPosition?.outflowBeforeNextIncomeTotal || 0,
+            nextIncome: cashPosition?.nextConfirmedIncome || null,
+            horizonDate: forecastHorizonDate,
             spendingRoomValue,
             displayCurrency,
             billItems: beforePaydayBillItems,
             largeCostItems: beforePaydayLargeCostItems,
-            incomeItems: currentPeriodIncome,
           }}
         />
         {balanceImpact ? <p className="balance-impact" role="status">{balanceImpact}</p> : null}
       </div>
+
+      <AfterNextIncome
+        confirmedIncome={cashPosition?.confirmedIncomeThroughHorizon || 0}
+        displayCurrency={displayCurrency}
+        events={cashPosition?.events || []}
+        forecastAtHorizon={cashPosition?.forecastAtHorizon || 0}
+        horizonDate={forecastHorizonDate}
+        nextIncome={cashPosition?.nextConfirmedIncome || null}
+        sameDayDependencies={cashPosition?.sameDayDependencies || []}
+        onEditPaydaySettings={() => openBalanceEditor(true)}
+      />
 
       <BalanceEditor
         open={balanceEditorOpen}
@@ -1328,76 +1360,13 @@ function HomeDashboardContent() {
         onCurrencySelect={handleCurrencySave}
       />
 
-      {dashboard.paydayDate && nextPaydayDate ? (
-        <>
-          <CollapsibleSection
-            title="Current pay cycle"
-            summaryValue={`${formatCurrency(Math.max(0, spendingRoomUntilPayday || 0), displayCurrency)} available · to ${formatDisplayDate(dashboard.paydayDate)}`}
-            storageKey="current-cycle"
-          >
-            <PayPeriodCards
-              show="current"
-              displayCurrency={displayCurrency}
-              current={{
-                endDate: dashboard.paydayDate,
-                startingBalance: dashboard.currentBalance,
-                incomeTotal: currentIncomeTotal,
-                income: currentPeriodIncome,
-                billTotal: dashboard.totalBeforePayday,
-                bills: beforePaydayBillItems,
-                largeCostTotal: bigCostsDueBeforePayday,
-                largeCosts: beforePaydayLargeCostItems,
-                freeCash: Math.max(0, spendingRoomUntilPayday || 0),
-                dailyAllowance: Math.max(0, dailySpendingRoom || 0),
-              }}
-              next={{
-                startDate: dashboard.paydayDate,
-                endDate: nextPaydayDate,
-                incomeTotal: nextIncomeTotal,
-                income: nextPeriodIncome,
-                billTotal: nextBillTotal,
-                bills: nextPeriodBills,
-                largeCostTotal: nextLargeCostTotal,
-                largeCosts: nextPeriodLargeCosts,
-                freeCash: Math.max(0, nextFreeCash),
-                dailyAllowance: Math.max(0, nextFreeCash / nextPeriodDays),
-              }}
-            />
-            <button className="secondary-button cycle-income-action" type="button" onClick={() => openBalanceEditor(true)}>Update pay or income</button>
-          </CollapsibleSection>
-          <CollapsibleSection
-            title="Next pay cycle"
-            summaryValue={`${formatCurrency(Math.max(0, nextFreeCash), displayCurrency)} expected · from ${formatDisplayDate(dashboard.paydayDate)}`}
-            storageKey="next-cycle"
-          >
-            <PayPeriodCards
-              show="next"
-              displayCurrency={displayCurrency}
-              current={{}}
-              next={{
-                startDate: dashboard.paydayDate,
-                endDate: nextPaydayDate,
-                incomeTotal: nextIncomeTotal,
-                income: nextPeriodIncome,
-                billTotal: nextBillTotal,
-                bills: nextPeriodBills,
-                largeCostTotal: nextLargeCostTotal,
-                largeCosts: nextPeriodLargeCosts,
-                freeCash: Math.max(0, nextFreeCash),
-                dailyAllowance: Math.max(0, nextFreeCash / nextPeriodDays),
-              }}
-            />
-          </CollapsibleSection>
-        </>
-      ) : null}
-
-      <CollapsibleSection title="Four-week outlook" summaryValue={`${nextCommitments.length} upcoming event${nextCommitments.length === 1 ? "" : "s"}`} defaultCollapsed={false} storageKey="chart">
+      <CollapsibleSection title="Looking ahead" summaryValue={`Next four weeks · Payday ${formatDisplayDate(forecastHorizonDate)}${nextCommitments[0] ? ` · next cost ${formatCurrency(nextCommitments[0].amount, displayCurrency)}` : ""}`} defaultCollapsed storageKey="chart">
         <FourWeekChart
           dashboard={dashboard}
-          dueBeforePaydayLargeCosts={largeCostPlans.chartAllocations}
+          dueBeforePaydayLargeCosts={largeCostLedgerAllocations}
           dailySpendingRoom={dailySpendingRoom}
           spendingRoomUntilPayday={spendingRoomUntilPayday}
-          minimumProjectedBalance={safeSpendingPlan?.minimumProjectedBalance}
+          minimumProjectedBalance={cashPosition?.lowestProjectedBalance}
           hasBalanceSnapshot={hasBalanceSnapshot}
           todayIso={todayIso}
           displayCurrency={displayCurrency}
@@ -1406,7 +1375,7 @@ function HomeDashboardContent() {
         />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Bills" summaryValue={billsSummaryValue} storageKey="bills">
+      <CollapsibleSection title="Bills and regular income" summaryValue={billsSummaryValue} storageKey="bills">
         <BillList
           bills={bills}
           dashboard={dashboard}
@@ -1428,7 +1397,7 @@ function HomeDashboardContent() {
         />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Large costs" summaryValue={largeCostsSummaryValue} storageKey="largecosts">
+      <CollapsibleSection title="One-off costs" summaryValue={largeCostsSummaryValue} storageKey="largecosts">
         <LargeCostForm
           onLargeCostsChange={setLargeCosts}
           displayCurrency={displayCurrency}
@@ -1451,7 +1420,7 @@ function HomeDashboardContent() {
         />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Savings" summaryValue={formatCurrency(generalProtectedSavings, displayCurrency)} storageKey="savings">
+      <CollapsibleSection title="Savings and protected money" summaryValue={`${formatCurrency(generalProtectedSavings, displayCurrency)} currently protected`} storageKey="savings">
         <SavingsEditor
           savings={savings}
           onSavingsChange={setSavings}
@@ -1465,9 +1434,10 @@ function HomeDashboardContent() {
         />
       </CollapsibleSection>
 
-      <CollapsibleSection title="Utilities in forecast" summaryValue={utilitiesSummaryValue} storageKey="utilities">
+      <CollapsibleSection title="Reminder settings" summaryValue="Balance checks and upcoming-cost reminders" storageKey="utilities">
         <UtilitiesTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} />
       </CollapsibleSection>
+      {accessState !== "preview_expired" ? <button className="mobile-balance-action" type="button" onClick={() => openBalanceEditor(false)}>Update balance</button> : null}
     </main>
   );
 }

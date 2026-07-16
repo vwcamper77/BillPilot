@@ -1,30 +1,13 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import Logo from "@/components/Logo";
-import TrustShield from "@/components/TrustShield";
+import { formatCurrency, formatDisplayDate } from "@/lib/billMath";
 import BalanceEditor from "./BalanceEditor";
 import AddBills from "./AddBills";
 
-function getSetupChipState(stepNumber, setupStep) {
-  if (setupStep > stepNumber) return "complete";
-  if (setupStep === stepNumber) return "current";
-  return "waiting";
-}
-
-const STEP_META = {
-  1: {
-    title: "Add your current available money",
-    detail: "Start with your current available money so ClearTill can calculate today’s cash runway.",
-  },
-  2: {
-    title: "Add an income schedule",
-    detail: "Add at least one active income source. It can be monthly, weekly, fortnightly, four-weekly or irregular.",
-  },
-  3: {
-    title: "Add your bills",
-    detail: "Bills are optional, but adding them makes your forecast more useful.",
-  },
-};
+const STEPS = ["Balance", "Payday", "Upcoming costs", "Your position"];
 
 export default function SetupWizard({
   setupStep,
@@ -57,23 +40,50 @@ export default function SetupWizard({
   bills,
   onBillsChange,
   hasIncome,
-  onFinishBillsStep,
+  paydayDate,
+  nextIncomeDate,
+  spendingRoomUntilPayday,
+  dailySpendingRoom,
+  daysTillPayday,
+  confirmedIncomeThroughHorizon,
+  forecastAtHorizon,
+  onComplete,
 }) {
-  const meta = STEP_META[setupStep] || STEP_META[3];
+  const [reviewingCosts, setReviewingCosts] = useState(false);
   const billCount = bills?.length || 0;
+  const committed = Math.max(0, Number(currentBalance) - Number(spendingRoomUntilPayday));
+  const title = setupStep === 1
+    ? "What money is available right now?"
+    : setupStep === 2
+      ? "When are you next paid?"
+      : setupStep === 3
+        ? "What still needs to come out before then?"
+        : "Your first ClearTill position";
 
   return (
-    <main className="dashboard-shell setup-wizard-shell">
+    <main className={`dashboard-shell setup-wizard-shell setup-step-${setupStep}`}>
+      <header className="setup-header">
+        <Link href="/" aria-label="ClearTill home"><Logo className="eyebrow-logo" /></Link>
+        <Link className="setup-sign-in" href="/dashboard?auth=signin">Sign in</Link>
+      </header>
+
+      <nav className="setup-progress" aria-label="Setup progress">
+        {STEPS.map((label, index) => {
+          const number = index + 1;
+          return (
+            <div className={`setup-progress-step${number === setupStep ? " is-current" : ""}${number < setupStep ? " is-complete" : ""}`} key={label} aria-current={number === setupStep ? "step" : undefined}>
+              <span>{number < setupStep ? "✓" : number}</span><strong>{label}</strong>
+            </div>
+          );
+        })}
+      </nav>
+
       <section className="setup-wizard">
-        <Logo className="eyebrow-logo" />
-        <TrustShield className="setup-trust-banner" compact />
-        <div className="setup-wizard-progress" aria-label="Setup progress">
-          <span className={`setup-chip ${getSetupChipState(1, setupStep)}`}>1</span>
-          <span className={`setup-chip ${getSetupChipState(2, setupStep)}`}>2</span>
-          <span className={`setup-chip ${getSetupChipState(3, setupStep)}`}>3</span>
-        </div>
-        <h1>{meta.title}</h1>
-        <p className="helper-text">{meta.detail}</p>
+        {setupStep < 4 ? <p className="setup-eyebrow">Step {setupStep} of 3</p> : <p className="setup-eyebrow">Your first ClearTill position</p>}
+        <h1>{title}</h1>
+        {setupStep === 1 ? <p className="helper-text">Enter the amount currently available to use. You can update this whenever it changes.</p> : null}
+        {setupStep === 2 ? <p className="helper-text">Add your next pay date and the amount you expect, where known.</p> : null}
+        {setupStep === 3 ? <p className="helper-text">Add regular bills and one-off costs that will leave your account before payday.</p> : null}
 
         {setupStep <= 2 ? (
           <BalanceEditor
@@ -106,8 +116,9 @@ export default function SetupWizard({
             displayCurrency={displayCurrency}
             onCurrencySelect={onCurrencySelect}
           />
-        ) : (
+        ) : setupStep === 3 ? (
           <>
+            <div className="setup-cost-groups"><span>Regular bills</span><span>One-off costs</span></div>
             <AddBills
               bills={bills}
               onBillsChange={onBillsChange}
@@ -117,21 +128,39 @@ export default function SetupWizard({
               displayCurrency={displayCurrency}
               autoFocusOnMount
             />
-            <div className="setup-wizard-bills-progress">
-              {billCount > 0 ? <>
-                <p className="helper-text setup-wizard-bills-tally">
-                  {billCount} bill{billCount === 1 ? "" : "s"} added
-                  {billCount === 1 ? " — add another, or continue when you're ready." : "."}
-                </p>
-                <ul className="setup-wizard-bills-list">
-                  {bills.map((bill) => (
-                    <li key={bill.id}>{bill.name}</li>
-                  ))}
-                </ul>
-              </> : <p className="helper-text">You can add bills later from the dashboard.</p>}
-              <button className="primary-button" type="button" onClick={onFinishBillsStep}>Continue to dashboard</button>
-            </div>
+            <p className="setup-completeness-prompt">Have you included subscriptions, travel, childcare, school costs and anything unusual this month?</p>
+            {!billCount ? <p className="helper-text">Add at least one cost to see your first position.</p> : null}
           </>
+        ) : reviewingCosts ? (
+          <div className="first-position-review">
+            <AddBills bills={bills} onBillsChange={onBillsChange} hasIncome={hasIncome} hasBalanceSnapshot={hasBalanceSnapshot} hasPayday={hasPayday} displayCurrency={displayCurrency} autoFocusOnMount />
+            <button className="primary-button" type="button" onClick={() => setReviewingCosts(false)}>Return to my position</button>
+          </div>
+        ) : (
+          <div className="first-position">
+            <div className="first-position-result">
+              <small>Available now</small>
+              <strong>{formatCurrency(currentBalance, displayCurrency)}</strong>
+              <span>{spendingRoomUntilPayday < 0 ? `You’re ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)} short before your next income.` : `${formatCurrency(spendingRoomUntilPayday, displayCurrency)} is safe until your next income.`}</span>
+              <span>{formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)} per day until {formatDisplayDate(nextIncomeDate)}</span>
+            </div>
+            <div className="first-position-calculation" aria-label="Your first position calculation">
+              <span><small>Available now</small><strong>{formatCurrency(currentBalance, displayCurrency)}</strong></span>
+              <span><small>Bills and planned costs</small><strong>− {formatCurrency(committed, displayCurrency)}</strong></span>
+              <span><small>Safe until next income</small><strong>{spendingRoomUntilPayday < 0 ? `− ${formatCurrency(Math.abs(spendingRoomUntilPayday), displayCurrency)}` : formatCurrency(spendingRoomUntilPayday, displayCurrency)}</strong></span>
+            </div>
+            <div className="forecast-summary"><span><small>Confirmed income coming</small><strong>{formatCurrency(confirmedIncomeThroughHorizon, displayCurrency)}</strong></span><span><small>Forecast left by {formatDisplayDate(paydayDate)}</small><strong>{forecastAtHorizon < 0 ? `− ${formatCurrency(Math.abs(forecastAtHorizon), displayCurrency)}` : formatCurrency(forecastAtHorizon, displayCurrency)}</strong></span></div>
+            <div className="first-position-check">
+              <strong>Based on:</strong>
+              <span>✓ Balance updated today</span>
+              <span>✓ Payday on {formatDisplayDate(paydayDate)}</span>
+              <span>✓ {billCount} listed cost{billCount === 1 ? "" : "s"}</span>
+              <p>Is anything missing?</p>
+              <button className="text-button" type="button" onClick={() => setReviewingCosts(true)}>Review my costs</button>
+            </div>
+            <button className="primary-button setup-complete-button" type="button" onClick={onComplete}>Save this position and start my 7-day live preview</button>
+            <p className="setup-supporting-copy">No bank connection. No card required. Nothing is charged when the preview ends.</p>
+          </div>
         )}
       </section>
     </main>

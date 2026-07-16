@@ -214,6 +214,33 @@ export async function clearUserLargeCosts(uid) {
   await batch.commit();
 }
 
+export async function seedUserLargeCost(uid, {
+  id = "e2e-large-cost",
+  name = "Planned cost",
+  amount = 100,
+  dueDate,
+  fundingStatus = "current_account",
+  currentBalanceContribution = amount,
+  savingsContribution = 0,
+} = {}) {
+  const db = getFirestore(getFirebaseAdminApp());
+  await db.collection("users").doc(uid).collection("largeCosts").doc(id).set({
+    type: "large_cost",
+    name,
+    amount,
+    amountAlreadySaved: savingsContribution,
+    currentBalanceContribution,
+    savingsContribution,
+    currency: "GBP",
+    dueDate,
+    frequency: "one_off",
+    category: "other",
+    fundingStatus,
+    active: true,
+    updatedAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+}
+
 export async function clearUserIncomeEvents(uid) {
   const db = getFirestore(getFirebaseAdminApp());
   const snapshot = await db.collection("users").doc(uid).collection("incomeEvents").get();
@@ -221,6 +248,11 @@ export async function clearUserIncomeEvents(uid) {
   const batch = db.batch();
   snapshot.docs.forEach((doc) => batch.delete(doc.ref));
   await batch.commit();
+}
+
+export async function clearUserPrimaryIncome(uid) {
+  const db = getFirestore(getFirebaseAdminApp());
+  await db.collection("users").doc(uid).collection("income").doc("main").delete();
 }
 
 export async function mintCustomToken(uid) {
