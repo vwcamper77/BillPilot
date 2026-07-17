@@ -6,34 +6,102 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == userId;
     }
 
+    function subscriptionIsActive(userId) {
+      let path = /databases/$(database)/documents/users/$(userId)/billing/subscription;
+      return exists(path)
+        && get(path).data.subscriptionStatus in ["active", "trialing"];
+    }
+
+    function entitlementIsActive(userId) {
+      let path = /databases/$(database)/documents/users/$(userId)/access/entitlement;
+      return exists(path)
+        && (get(path).data.hasFullAccess == true
+          || get(path).data.entitlementStatus in ["active", "legacy", "claimed", "granted"]);
+    }
+
+    function legacyBillingIsActive(userId) {
+      let path = /databases/$(database)/documents/users/$(userId)/settings/billing;
+      return exists(path)
+        && (get(path).data.paid == true
+          || get(path).data.status in ["active", "legacy", "claimed", "granted"]);
+    }
+
+    function previewExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)/access/preview);
+    }
+
+    function previewIsActive(userId) {
+      let path = /databases/$(database)/documents/users/$(userId)/access/preview;
+      return exists(path)
+        && get(path).data.status == "active"
+        && get(path).data.endsAt > request.time;
+    }
+
+    function onboardingIsOpen(userId) {
+      let path = /databases/$(database)/documents/users/$(userId)/access/onboarding;
+      return exists(path)
+        && get(path).data.status == "incomplete"
+        && get(path).data.writeEndsAt > request.time;
+    }
+
+    function hasPaidOrGrantedAccess(userId) {
+      return subscriptionIsActive(userId)
+        || entitlementIsActive(userId)
+        || legacyBillingIsActive(userId);
+    }
+
+    function canWriteFinancialData(userId) {
+      return isOwner(userId)
+        && (hasPaidOrGrantedAccess(userId)
+          || previewIsActive(userId)
+          || (!previewExists(userId) && onboardingIsOpen(userId)));
+    }
+
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow write: if false;
     }
 
     match /users/{userId}/settings/{settingId} {
-      allow read, write: if isOwner(userId)
-        && settingId in ["balance", "preferences", "savings"];
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+        && (settingId in ["preferences", "emailPreferences"]
+          || (settingId in ["balance", "savings"] && canWriteFinancialData(userId)));
     }
 
-    match /users/{userId}/settings/billing {
+    match /users/{userId}/billing/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/access/{documentId} {
       allow read: if isOwner(userId);
       allow write: if false;
     }
 
     match /users/{userId}/income/{incomeId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow write: if canWriteFinancialData(userId);
+    }
+
+    match /users/{userId}/incomeEvents/{incomeId} {
+      allow read: if isOwner(userId);
+      allow write: if canWriteFinancialData(userId);
     }
 
     match /users/{userId}/bills/{billId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow write: if canWriteFinancialData(userId);
     }
 
     match /users/{userId}/largeCosts/{largeCostId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow write: if canWriteFinancialData(userId);
     }
 
     match /users/{userId}/reminders/{reminderId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isOwner(userId);
+      allow write: if false;
     }
 
     match /pendingEntitlements/{entitlementId} {
@@ -41,6 +109,10 @@ service cloud.firestore {
     }
 
     match /stripeEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /emailDeliveries/{deliveryId} {
       allow read, write: if false;
     }
   }

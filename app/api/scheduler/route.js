@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import { claimEmailDelivery, markEmailDelivery, buildEmailPreview, buildUnsubscribeUrl, sendResendEmail, shouldSuppressOptionalEmail } from "@/lib/email";
+import { claimEmailDelivery, emailFailureStatus, markEmailDelivery, buildEmailPreview, buildUnsubscribeUrl, sendResendEmail, shouldSuppressOptionalEmail } from "@/lib/email";
 import { FieldValue, getAdminDb } from "@/lib/firebaseAdmin";
 import { getAppBaseUrl } from "@/lib/billing/config";
 import { trackServerAnalyticsEvent } from "@/lib/analytics";
+import { firstIncompleteOnboardingStep, hasCompletePosition, previewScheduleState } from "@/lib/previewLifecycle.server";
+import { sendPreviewLifecycleEmail } from "@/lib/previewEmails.server";
 
 export const runtime = "nodejs";
 
@@ -27,10 +29,14 @@ export async function POST(request) {
   for (const userDoc of usersSnapshot.docs) {
     const user = userDoc.data();
     const userId = userDoc.id;
-    const [subscriptionSnap, billsSnapshot, balanceSnapshot] = await Promise.all([
+    const [subscriptionSnap, billsSnapshot, balanceSnapshot, incomeSnapshot, costsSnapshot, previewSnapshot, emailPreferencesSnapshot] = await Promise.all([
       userDoc.ref.collection("billing").doc("subscription").get(),
       userDoc.ref.collection("bills").where("active", "==", true).get(),
       userDoc.ref.collection("settings").doc("balance").get(),
+      userDoc.ref.collection("income").doc("main").get(),
+      userDoc.ref.collection("largeCosts").where("active", "==", true).get(),
+      userDoc.ref.collection("access").doc("preview").get(),
+      userDoc.ref.collection("settings").doc("emailPreferences").get(),
     ]);
     const subscription = subscriptionSnap.exists ? subscriptionSnap.data() : {};
     const email = user.email || subscription.customerEmail || "";
@@ -42,10 +48,75 @@ export async function POST(request) {
 
     const billCount = billsSnapshot.size;
     const billsTotal = billsSnapshot.docs.reduce((sum, doc) => sum + (Number(doc.data().amount) || 0), 0);
-    const preview = buildEmailPreview({ billCount, billsTotal });
+    const includeAmountsInEmail = emailPreferencesSnapshot.data()?.includeAmountsInEmail === true;
+    const preview = buildEmailPreview({ billCount, billsTotal, includeAmounts: includeAmountsInEmail });
     const balanceLink = `${getAppBaseUrl()}/dashboard?focus=balance`;
 
-    if (weekday === 0 || weekday === 1) {
+    const balance = balanceSnapshot.exists ? balanceSnapshot.data() : null;
+    const income = incomeSnapshot.exists ? incomeSnapshot.data() : null;
+    const costs = costsSnapshot.docs.map((doc) => doc.data());
+    const bills = billsSnapshot.docs.map((doc) => doc.data());
+    const completeness = hasCompletePosition({ balance, income, bills, largeCosts: costs });
+    const accountCreatedAt = user.accountCreatedAt?.toDate?.() || null;
+    // Accounts created after the no-card lifecycle launched receive that
+    // sequence instead of the older weekly reminder programme.
+    const usesPreviewLifecycle = Boolean(accountCreatedAt);
+
+    if (usesPreviewLifecycle) {
+      summary.attempted += 1;
+      const result = await sendPreviewLifecycleEmail({
+        userId,
+        email,
+        type: "account_created",
+        period: "account-created",
+        onboardingStep: "balance",
+      });
+      applyReminderSummary(summary, result);
+    }
+
+    if (!previewSnapshot.exists && accountCreatedAt && today.getTime() - accountCreatedAt.getTime() >= 24 * 60 * 60 * 1000 && !completeness.complete) {
+      summary.attempted += 1;
+      const step = firstIncompleteOnboardingStep({ balance: completeness.validBalance, income: completeness.validPayday, hasCost: completeness.hasCost });
+      const result = await sendPreviewLifecycleEmail({ userId, email, type: "onboarding_incomplete", period: "first-24-hours", onboardingStep: step });
+      applyReminderSummary(summary, result);
+    }
+
+    if (previewSnapshot.exists) {
+      const storedPreview = previewSnapshot.data();
+      if (storedPreview.status === "active" && storedPreview.startedAt) {
+        summary.attempted += 1;
+        const startedAt = storedPreview.startedAt?.toDate?.()?.toISOString?.() || String(storedPreview.startedAt);
+        const startResult = await sendPreviewLifecycleEmail({
+          userId,
+          email,
+          type: "preview_started",
+          period: startedAt,
+          endDate: storedPreview.endsAt,
+        });
+        applyReminderSummary(summary, startResult);
+      }
+      const schedule = previewScheduleState(storedPreview, { now: today, balanceUpdatedAt: balance?.snapshotEnteredAt || balance?.updatedAt });
+      if (schedule.type) {
+        summary.attempted += 1;
+        if (schedule.type === "preview_expired" && storedPreview.status === "active") {
+          await previewSnapshot.ref.set({ status: "expired", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+        }
+        const result = await sendPreviewLifecycleEmail({
+          userId,
+          email,
+          type: schedule.type,
+          period: `${schedule.normalized.startedAt}:${schedule.type}`,
+          endDate: schedule.normalized.endsAt,
+          includeAmounts: includeAmountsInEmail,
+        });
+        applyReminderSummary(summary, result);
+        if (result.status === "sent") {
+          await trackServerAnalyticsEvent(schedule.type === "preview_expired" ? "preview_expired" : "preview_reminder_sent", { uid: userId, source: schedule.type });
+        }
+      }
+    }
+
+    if (!usesPreviewLifecycle && (weekday === 0 || weekday === 1)) {
       summary.attempted += 1;
       const result = await sendOptionalReminder({
         userId,
@@ -64,7 +135,7 @@ export async function POST(request) {
       applyReminderSummary(summary, result);
     }
 
-    if (weekday === 3) {
+    if (!usesPreviewLifecycle && weekday === 3) {
       summary.attempted += 1;
       const result = await sendOptionalReminder({
         userId,
@@ -133,7 +204,7 @@ async function sendOptionalReminder({ userId, email, type, period, subject, text
     });
 
     if (response.skipped) {
-      await markEmailDelivery(claimed.ref, { status: "skipped", reason: response.error });
+      await markEmailDelivery(claimed.ref, { status: emailFailureStatus(claimed.attempts), reason: response.error }, { claimToken: claimed.claimToken });
       return { status: "skipped" };
     }
 
@@ -141,11 +212,11 @@ async function sendOptionalReminder({ userId, email, type, period, subject, text
       status: "sent",
       sentAt: FieldValue.serverTimestamp(),
       providerMessageId: response.providerMessageId || null,
-    });
+    }, { claimToken: claimed.claimToken });
     await trackServerAnalyticsEvent("trial_reminder_sent", { uid: userId, reminderType: type });
     return { status: "sent" };
   } catch (error) {
-    await markEmailDelivery(claimed.ref, { status: "failed", reason: String(error?.message || "send_failed").slice(0, 120) });
+    await markEmailDelivery(claimed.ref, { status: emailFailureStatus(claimed.attempts), reason: String(error?.message || "send_failed").slice(0, 120) }, { claimToken: claimed.claimToken });
     return { status: "failed" };
   }
 }

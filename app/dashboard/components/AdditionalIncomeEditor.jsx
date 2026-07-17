@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DateField from "@/app/components/forms/DateField";
 import { formatCurrency, formatDisplayDate } from "@/lib/billMath";
 import { expandIncomeEvents } from "@/lib/cashflowTimeline";
 import { postDashboardIncomeEventAction, runWithTimeout } from "../lib/dashboardApi";
@@ -16,6 +17,8 @@ export default function AdditionalIncomeEditor({ incomeEvents = [], onIncomeEven
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const sources = [...incomeEvents].sort((a, b) => String(a.firstPaymentDate || a.expectedDate).localeCompare(String(b.firstPaymentDate || b.expectedDate)));
+  const firstPaymentDateError = error === "Choose the first payment date." ? error : "";
+  const endDateError = error === "The end date must be after the first payment." ? error : "";
 
   function startAdd(frequency = "one_off") {
     setEditingId("");
@@ -149,18 +152,24 @@ export default function AdditionalIncomeEditor({ incomeEvents = [], onIncomeEven
           </li>;
         })}</ul> : null}
         {!showingForm ? <button className="secondary-button small-button" type="button" onClick={() => startAdd()}>Add income</button> : <form className="additional-income-form" onSubmit={saveEvent}>
-          <label className="field-label" htmlFor="additional-income-name">Name</label>
-          <input id="additional-income-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Weekly wages or invoice" />
+          <div className="additional-income-form-head">
+            <h3>{editingId ? "Edit income" : "Income details"}</h3>
+            <p className="helper-text">Add the first payment date and ClearTill will place later payments in the forecast.</p>
+          </div>
+          <div className="field-row">
+            <label className="field-label" htmlFor="additional-income-name">Name</label>
+            <input id="additional-income-name" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Weekly wages or invoice" />
+          </div>
           <div className="additional-income-form-grid">
-            <div className="field-row"><label className="field-label" htmlFor="additional-income-amount">Amount</label><input id="additional-income-amount" inputMode="decimal" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></div>
-            <div className="field-row"><label className="field-label" htmlFor="additional-income-date">First payment date</label><input id="additional-income-date" type="date" value={form.firstPaymentDate} onChange={(event) => setForm((current) => ({ ...current, firstPaymentDate: event.target.value }))} /></div>
+            <div className="field-row"><label className="field-label" htmlFor="additional-income-amount">Amount</label><input id="additional-income-amount" inputMode="decimal" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} placeholder="0.00" /></div>
+            <DateField id="additional-income-date" label="First payment date" required value={form.firstPaymentDate} onChange={(event) => setForm((current) => ({ ...current, firstPaymentDate: event.target.value }))} error={firstPaymentDateError} />
             <div className="field-row"><label className="field-label" htmlFor="additional-income-frequency">Repeats</label><select id="additional-income-frequency" value={form.frequency} onChange={(event) => setForm((current) => ({ ...current, frequency: event.target.value }))}>{Object.entries(FREQUENCY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-            <div className="field-row"><label className="field-label" htmlFor="additional-income-end-date">End date (optional)</label><input id="additional-income-end-date" type="date" min={form.firstPaymentDate || undefined} value={form.endDate || ""} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} /></div>
+            <DateField id="additional-income-end-date" label="End date (optional)" min={form.firstPaymentDate || undefined} value={form.endDate || ""} onChange={(event) => setForm((current) => ({ ...current, endDate: event.target.value }))} error={endDateError} />
             <div className="field-row"><label className="field-label" htmlFor="additional-income-confidence">Confidence</label><select id="additional-income-confidence" value={form.confidence} onChange={(event) => setForm((current) => ({ ...current, confidence: event.target.value }))}><option value="confirmed">Confirmed</option><option value="estimated">Estimated</option></select></div>
           </div>
           <div className="edit-actions"><button className="primary-button small-button" type="submit" disabled={saving}>{saving ? "Saving..." : editingId ? "Save changes" : "Add income"}</button><button className="secondary-button small-button" type="button" onClick={closeForm}>Cancel</button></div>
         </form>}
-        {error ? <p className="error" role="alert">{error}</p> : null}
+        {error && !firstPaymentDateError && !endDateError ? <p className="error" role="alert">{error}</p> : null}
       </div> : null}
     </div>
   );

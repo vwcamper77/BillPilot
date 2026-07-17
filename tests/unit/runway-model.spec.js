@@ -1,8 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { buildWeeklySafeSpendingPlan } from "../../lib/billMath.js";
-import { buildSixWeekRunwayRows, calculateSpendTest, deriveRunwayStatus } from "../../app/dashboard/lib/runwayModel.js";
+import { buildSixWeekRunwayRows, calculateSpendTest, deriveRunwayStatus, resolveRunwayIncomeBoundary } from "../../app/dashboard/lib/runwayModel.js";
 
 test.describe("six-week runway UI model", () => {
+  test("uses the earliest canonical confirmed income instead of a later legacy payday", () => {
+    expect(resolveRunwayIncomeBoundary({ date: "2026-07-20" }, "2026-07-26")).toBe("2026-07-20");
+    expect(resolveRunwayIncomeBoundary(null, "2026-07-26")).toBe("2026-07-26");
+  });
+
   test("preserves six calculated weeks without horizontal-card pagination", () => {
     const plan = buildWeeklySafeSpendingPlan("2026-07-16", "2026-07-28", 900, [], [], 0, [], 6);
     const rows = buildSixWeekRunwayRows(plan);
@@ -40,6 +45,67 @@ test.describe("six-week runway UI model", () => {
     expect(row.significantOutgoings.map((item) => item.name)).toEqual(["Largest", "Second", "Third"]);
     expect(row.additionalOutgoingCount).toBe(1);
     expect(row.fixedOutgoings).toBe(145);
+  });
+
+  test("does not let payday income inflate the safe rate before that income", () => {
+    const today = "2026-07-17";
+    const payday = "2026-07-20";
+    const plan = buildWeeklySafeSpendingPlan(
+      today,
+      payday,
+      300,
+      [],
+      [{
+        id: "protected-current",
+        name: "Protected contribution",
+        currentAccountAmount: 271,
+        nextDueDate: today,
+        frequency: "one_off",
+      }],
+      0,
+      [{
+        id: "salary",
+        name: "Salary",
+        amount: 4000,
+        firstPaymentDate: payday,
+        frequency: "monthly",
+        confidence: "confirmed",
+      }],
+      6,
+    );
+    const rows = buildSixWeekRunwayRows(plan);
+
+    expect(rows[0].fixedOutgoings).toBe(271);
+    expect(rows[0].projectedClosingBalance).toBe(29);
+    expect(rows[0].dailyRates).toHaveLength(1);
+    expect(rows[0].dailyRates[0]).toBeCloseTo(29 / 3, 8);
+    expect(rows[1].dailyRates[0]).toBeGreaterThan(rows[0].dailyRates[0]);
+  });
+
+  test("keeps payday-funded protected contributions in week 2", () => {
+    const today = "2026-07-17";
+    const payday = "2026-07-20";
+    const plan = buildWeeklySafeSpendingPlan(
+      today,
+      payday,
+      200,
+      [],
+      [
+        { id: "greece", name: "Greece funding", currentAccountAmount: 136, nextDueDate: payday, frequency: "one_off" },
+        { id: "car", name: "Car funding", currentAccountAmount: 135, nextDueDate: payday, frequency: "one_off" },
+      ],
+      0,
+      [{ id: "salary", name: "Salary", amount: 4000, firstPaymentDate: payday, frequency: "monthly", confidence: "confirmed" }],
+      6,
+    );
+    const rows = buildSixWeekRunwayRows(plan);
+
+    expect(rows[0].fixedOutgoings).toBe(0);
+    expect(rows[0].projectedClosingBalance).toBe(200);
+    expect(rows[0].dailyRates).toHaveLength(1);
+    expect(rows[0].dailyRates[0]).toBeCloseTo(200 / 3, 8);
+    expect(rows[1].fixedOutgoings).toBe(271);
+    expect(rows[1].significantOutgoings.map((item) => item.name)).toEqual(["Greece funding", "Car funding"]);
   });
 });
 test.describe("test a spend", () => {

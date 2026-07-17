@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import DayOfMonthField from "@/app/components/forms/DayOfMonthField";
 import {
   buildBillDocument,
   calculateBillSchedule,
@@ -89,13 +90,11 @@ function BillGroup({
                     onChange={(event) => onBillFormChange((current) => ({ ...current, amount: event.target.value }))}
                     placeholder="Amount"
                   />
-                  <label className="field-label" htmlFor={`bill-due-day-${bill.id}`}>Day of month</label>
-                  <input
+                  <DayOfMonthField
                     id={`bill-due-day-${bill.id}`}
-                    inputMode="numeric"
+                    label="Day of month"
                     value={editingBillForm.dueDay}
                     onChange={(event) => onBillFormChange((current) => ({ ...current, dueDay: event.target.value }))}
-                    placeholder="Day of month"
                   />
                   <label className="field-label" htmlFor={`bill-category-${bill.id}`}>Category</label>
                   <select

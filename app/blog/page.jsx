@@ -66,7 +66,7 @@ export default function BlogPage() {
         <nav className="blog-nav" aria-label="Main navigation">
           <Link href="/">Home</Link>
           <Link className="is-active" href="/blog" aria-current="page">Journal</Link>
-          <Link className="blog-nav-cta" href="/dashboard?intent=trial">Try ClearTill</Link>
+          <Link className="blog-nav-cta" href="/start">Try ClearTill</Link>
         </nav>
       </header>
 
@@ -125,7 +125,7 @@ export default function BlogPage() {
           <h2>See what&apos;s actually clear to spend before you&apos;re paid.</h2>
         </div>
         <div className="blog-cta-actions">
-          <Link className="primary-button" href="/dashboard?intent=trial">Try ClearTill free</Link>
+          <Link className="primary-button" href="/start">Start my no-card preview</Link>
           <span>No bank login required</span>
         </div>
       </section>

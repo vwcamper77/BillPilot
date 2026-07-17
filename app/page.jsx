@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 
-const PREVIEW_HREF = "/dashboard?intent=preview";
+const PREVIEW_HREF = "/start";
 
 export const metadata = {
   title: "ClearTill — Know what’s really left before payday",
@@ -19,7 +19,11 @@ export default function HomePage() {
     <main className="live-home">
       <header className="live-home-container live-home-header">
         <Logo className="live-home-logo" height={42} />
-        <Link className="live-home-signin" href="/dashboard?auth=signin">Sign in</Link>
+        <nav className="live-home-nav" aria-label="Main navigation">
+          <Link href="/pricing">Pricing</Link>
+          <Link href="/about">About</Link>
+          <Link className="live-home-signin" href="/signin">Sign in</Link>
+        </nav>
       </header>
 
       <section className="live-home-container live-home-hero">
@@ -128,7 +132,7 @@ export default function HomePage() {
               <ul><li>One complete cash position</li><li>All bills and one-off costs</li><li>Unlimited balance updates for seven days</li><li>Useful preview reminders</li><li>Read-only result after expiry</li></ul>
             </article>
             <article className="live-home-featured">
-              <span className="live-home-recommended">Best value</span><p className="live-home-eyebrow">Keep ClearTill live</p><div className="live-home-price">£24.99 <small>/ year</small></div><p>Or £2.99 monthly. The annual plan is equivalent to about £2.08 per month.</p>
+              <span className="live-home-recommended">Best value</span><p className="live-home-eyebrow">Keep ClearTill live</p><div className="live-home-price">£24.99 <small>/ year</small></div><p>Or £3.99 monthly. The annual plan is equivalent to about £2.08 per month.</p>
               <ul><li>Continuous balance updates and recalculation</li><li>Recurring bills carried into future payday cycles</li><li>Ongoing reminders and bill check-ins</li><li>Position history as it is developed</li><li>Cancel from your account</li></ul>
               <CTA className="live-home-card-cta" />
             </article>

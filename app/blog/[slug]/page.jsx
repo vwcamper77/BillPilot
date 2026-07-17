@@ -142,7 +142,7 @@ export default async function BlogArticlePage({ params }) {
       <header className="blog-header article-header">
         <Link className="blog-logo" href="/" aria-label="ClearTill home"><Logo height={38} /></Link>
         <nav className="blog-nav" aria-label="Main navigation">
-          <Link href="/">Home</Link><Link className="is-active" href="/blog">Journal</Link><Link className="blog-nav-cta" href="/dashboard?intent=trial">Try ClearTill</Link>
+          <Link href="/">Home</Link><Link className="is-active" href="/blog">Journal</Link><Link className="blog-nav-cta" href="/start">Try ClearTill</Link>
         </nav>
       </header>
 
@@ -166,7 +166,7 @@ export default async function BlogArticlePage({ params }) {
         </div>
       </article>
 
-      <section className="article-end-cta"><p className="eyebrow">A clearer view before payday</p><h2>Know what&apos;s spoken for—and what isn&apos;t.</h2><Link className="primary-button" href="/dashboard?intent=trial">Try ClearTill free</Link></section>
+      <section className="article-end-cta"><p className="eyebrow">A clearer view before payday</p><h2>Know what&apos;s spoken for—and what isn&apos;t.</h2><Link className="primary-button" href="/start">Start my no-card preview</Link></section>
       <Link className="article-back-link" href="/blog"><span aria-hidden="true">←</span> Back to all guides</Link>
     </main>
   );

@@ -15,6 +15,16 @@ export default function sitemap() {
       priority: 0.8,
     },
     {
+      url: `${siteUrl}/pricing`,
+      changeFrequency: "monthly",
+      priority: 0.9,
+    },
+    {
+      url: `${siteUrl}/about`,
+      changeFrequency: "yearly",
+      priority: 0.7,
+    },
+    {
       url: `${siteUrl}/blog`,
       changeFrequency: "weekly",
       priority: 0.8,

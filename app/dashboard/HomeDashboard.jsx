@@ -11,7 +11,6 @@ import {
   getAdditionalUserInfo,
   linkWithPopup,
   onAuthStateChanged,
-  signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -44,6 +43,7 @@ import { safeError } from "@/lib/security/safeLog";
 import { postDashboardSettingsAction, postDashboardStateAction, saveIncome as saveIncomeRequest } from "./lib/dashboardApi";
 import { friendlyAuthError, friendlyGoogleAuthError, friendlySettingsError } from "./lib/friendlyErrors";
 import { triggerQuickAction } from "./components/QuickActions";
+import { getScrollBehavior } from "./lib/billHelpers";
 import CollapsibleSection from "./components/CollapsibleSection";
 import HeroCard from "./components/HeroCard";
 import AfterNextIncome from "./components/AfterNextIncome";
@@ -63,7 +63,7 @@ import CurrentPositionCard from "./components/CurrentPositionCard";
 import MoneyRunway from "./components/MoneyRunway";
 import WeekBreakdownDrawer from "./components/WeekBreakdownDrawer";
 import SpendTestDrawer from "./components/SpendTestDrawer";
-import { buildSixWeekRunwayRows } from "./lib/runwayModel";
+import { buildSixWeekRunwayRows, resolveRunwayIncomeBoundary } from "./lib/runwayModel";
 
 const RECENT_SESSION_STORAGE_KEY = "cleartill_recent_checkout_session_id";
 const SETUP_COMPLETED_STORAGE_KEY = "ct.setup.completedAt";
@@ -150,6 +150,8 @@ function HomeDashboardContent({ view = "overview" }) {
   const [selectedRunwayWeek, setSelectedRunwayWeek] = useState(null);
   const [spendTestOpen, setSpendTestOpen] = useState(false);
   const [addBillOpen, setAddBillOpen] = useState(false);
+  const [previewStartBusy, setPreviewStartBusy] = useState(false);
+  const [previewStartError, setPreviewStartError] = useState("");
 
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
@@ -162,6 +164,8 @@ function HomeDashboardContent({ view = "overview" }) {
   const [editError, setEditError] = useState("");
   const balanceSaveRequestRef = useRef(0);
   const primaryResultRef = useRef(null);
+  const incomeSectionRef = useRef(null);
+  const previewAutoStartAttemptedRef = useRef(false);
 
   const requestedAuthMode = searchParams.get("auth") === "signup" ? "signup" : "signin";
   const requestedNextPath = getSafeNextPath(searchParams.get("next"));
@@ -233,6 +237,13 @@ function HomeDashboardContent({ view = "overview" }) {
     setAuthMode(requestedAuthMode);
     setAuthError("");
   }, [requestedAuthMode]);
+
+  useEffect(() => {
+    const reminder = searchParams.get("reminder");
+    if (["preview_balance_check", "preview_cost_check"].includes(reminder)) {
+      trackEvent("preview_reminder_opened", { reminder });
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (!authReady || !user || user.isAnonymous || !requestedNextPath) {
@@ -431,26 +442,34 @@ function HomeDashboardContent({ view = "overview" }) {
   const hasBills = bills.length > 0;
   // Setup completion is sticky: established users remain in the operational
   // dashboard even if their entries later become incomplete.
-  const hasCompletedSetupBefore = typeof window !== "undefined" && Boolean(window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY));
+  const hasCompletedSetupBefore = accessCheck.entitlement?.previewUsed
+    || accessCheck.entitlement?.hasAccess
+    || (!accessCheck.entitlement?.canStartPreview
+      && typeof window !== "undefined"
+      && Boolean(window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY)));
   const [positionConfirmed, setPositionConfirmed] = useState(false);
   const setupStep = hasCompletedSetupBefore || positionConfirmed
     ? 5
     : !hasBalanceSnapshot
       ? 1
-      : !hasIncomeSchedule
+      : !hasPayday
         ? 2
         : !hasBills
           ? 3
           : 4;
   const experienceMode = setupStep < 5 ? "onboarding" : "bau";
-  const accessState = accessCheck.state === "access_expired"
-    ? "preview_expired"
-    : accessCheck.entitlement?.trialStatus === "active"
-      ? "preview_active"
-      : "paid";
-  const previewDaysLeft = accessState === "preview_active" && accessCheck.entitlement?.trialEndsAt
-    ? Math.max(0, diffDays(todayIso, String(accessCheck.entitlement.trialEndsAt).slice(0, 10)))
+  const accessState = accessCheck.entitlement?.accessType === "no_card_preview"
+    ? "preview_active"
+    : accessCheck.entitlement?.previewUsed && !accessCheck.entitlement?.hasAccess
+      ? "preview_expired"
+      : accessCheck.entitlement?.hasAccess ? "paid" : "preview_available";
+  const canEdit = accessCheck.entitlement?.canEdit !== false;
+  const previewDaysLeft = accessState === "preview_active"
+    ? accessCheck.entitlement?.previewDaysRemaining ?? null
     : null;
+  const previewExpiryLabel = accessCheck.entitlement?.previewEndsAt
+    ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(new Date(accessCheck.entitlement.previewEndsAt))
+    : "";
 
   useEffect(() => {
     if (setupStep === 5 && typeof window !== "undefined" && !window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY)) {
@@ -458,11 +477,29 @@ function HomeDashboardContent({ view = "overview" }) {
     }
   }, [setupStep]);
 
-  function handleCompleteFirstPosition() {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(SETUP_COMPLETED_STORAGE_KEY, new Date().toISOString());
+  async function handleCompleteFirstPosition() {
+    if (!auth?.currentUser || previewStartBusy) return;
+    setPreviewStartBusy(true);
+    setPreviewStartError("");
+    trackEvent("position_calculated", { source: "onboarding" });
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const response = await fetch("/api/preview/start", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Could not start your preview.");
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(SETUP_COMPLETED_STORAGE_KEY, new Date().toISOString());
+      }
+      setAccessCheck((current) => ({ ...current, state: "access_active", accessActive: true, entitlement: payload.access || current.entitlement }));
+      setPositionConfirmed(true);
+    } catch (error) {
+      setPreviewStartError(error?.message || "Could not start your preview. Check your position and try again.");
+    } finally {
+      setPreviewStartBusy(false);
     }
-    setPositionConfirmed(true);
   }
 
   const totalMonthlyBills = bills.reduce((sum, b) => sum + (b.amount || 0), 0);
@@ -539,16 +576,20 @@ function HomeDashboardContent({ view = "overview" }) {
     largeCostAllocations: largeCostLedgerAllocations,
     additionalIncomeEvents: incomeEvents,
   }) : null, [dashboard.afterPayday, dashboard.beforePayday, dashboard.currentBalance, forecastHorizonDate, hasBalanceSnapshot, incomeEvents, largeCostLedgerAllocations, todayIso]);
+  const runwayIncomeBoundaryDate = resolveRunwayIncomeBoundary(
+    cashPosition?.nextConfirmedIncome,
+    dashboard.paydayDate,
+  );
   const sixWeekPlan = useMemo(() => hasBalanceSnapshot ? buildWeeklySafeSpendingPlan(
     todayIso,
-    dashboard.paydayDate,
+    runwayIncomeBoundaryDate,
     dashboard.currentBalance,
     [...dashboard.beforePayday, ...dashboard.afterPayday],
     largeCostLedgerAllocations,
     0,
     incomeEvents,
     6,
-  ) : [], [dashboard.afterPayday, dashboard.beforePayday, dashboard.currentBalance, dashboard.paydayDate, hasBalanceSnapshot, incomeEvents, largeCostLedgerAllocations, todayIso]);
+  ) : [], [dashboard.afterPayday, dashboard.beforePayday, dashboard.currentBalance, hasBalanceSnapshot, incomeEvents, largeCostLedgerAllocations, runwayIncomeBoundaryDate, todayIso]);
   const fundingGapDates = useMemo(() => largeCostPlans.plans
     .filter((plan) => Number(plan.shortfall) > 0)
     .map((plan) => plan.dueDate), [largeCostPlans.plans]);
@@ -762,25 +803,6 @@ function HomeDashboardContent({ view = "overview" }) {
     trackEvent("onboarding_started");
   }
 
-  async function handleSignIn() {
-    if (!auth) {
-      setAuthError("Sign-in is not available right now. Try again later.");
-      return;
-    }
-
-    setSigningIn(true);
-    setAuthError("");
-
-    try {
-      await authPersistenceReady;
-      await signInAnonymously(auth);
-    } catch (signInError) {
-      setAuthError(friendlyAuthError(signInError));
-    } finally {
-      setSigningIn(false);
-    }
-  }
-
   async function handleGoogleSignIn() {
     if (!auth || !googleProvider) {
       setAuthError("Sign-in is not available right now. Try again later.");
@@ -928,6 +950,11 @@ function HomeDashboardContent({ view = "overview" }) {
       }
 
       logSecurityEventClient("balance_updated");
+      trackEvent("onboarding_step_completed", { step: "balance" });
+      if (accessState === "preview_active") {
+        trackEvent("balance_updated_during_preview");
+        trackEvent("position_recalculated_during_preview", { source: "balance_update" });
+      }
       setPendingBalanceResult({
         previousBalance,
         previousResult,
@@ -1003,6 +1030,7 @@ function HomeDashboardContent({ view = "overview" }) {
     try {
       await saveIncomeRequest(parsedIncome, Boolean(income));
       trackEvent("payday_added");
+      trackEvent("onboarding_step_completed", { step: "payday" });
       setPageNotice("Forecast settings saved.");
     } catch (saveError) {
       safeError("[firestore-payday-save] failed", { code: saveError?.code });
@@ -1027,6 +1055,31 @@ function HomeDashboardContent({ view = "overview" }) {
   function openBalanceEditor(withFocusPayday) {
     setFocusPayday(Boolean(withFocusPayday));
     setBalanceEditorOpen(true);
+  }
+
+  useEffect(() => {
+    if (setupStep !== 4) {
+      previewAutoStartAttemptedRef.current = false;
+      return;
+    }
+    if (!auth?.currentUser || previewStartBusy || previewAutoStartAttemptedRef.current) return;
+    previewAutoStartAttemptedRef.current = true;
+    void handleCompleteFirstPosition();
+    // The failed state deliberately does not loop. The visible completion
+    // button retries the same idempotent endpoint, and a reload retries once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setupStep]);
+
+  function focusIncomeSection() {
+    const section = incomeSectionRef.current;
+    if (!section || accessState === "preview_expired") return;
+
+    section.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
+    window.requestAnimationFrame(() => {
+      const focusTarget = section.querySelector("#income-pattern:not(:disabled)")
+        || section.querySelector("#income-section-title");
+      focusTarget?.focus({ preventScroll: true });
+    });
   }
 
   if (!authReady) {
@@ -1060,6 +1113,22 @@ function HomeDashboardContent({ view = "overview" }) {
   }
 
   if (!user) {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>Sign in to view your ClearTill dashboard</h1>
+          <p>Your saved position is connected to your account.</p>
+          <div className="auth-button-row">
+            <Link className="primary-button" href="/signin">Sign in</Link>
+            <Link className="secondary-button" href="/start">Create an account</Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (false && !user) {
     return (
       <main className="dashboard-shell">
         <section className="auth-panel">
@@ -1102,11 +1171,6 @@ function HomeDashboardContent({ view = "overview" }) {
               </button>
             </div>
           </form>
-          {process.env.NEXT_PUBLIC_ALLOW_GUEST_LOGIN === "true" ? (
-            <button className="secondary-button auth-guest-button" type="button" onClick={handleSignIn} disabled={signingIn}>
-              Just testing? Continue as guest
-            </button>
-          ) : null}
           {authError ? <p className="error">{authError}</p> : null}
         </section>
       </main>
@@ -1240,6 +1304,8 @@ function HomeDashboardContent({ view = "overview" }) {
         confirmedIncomeThroughHorizon={cashPosition?.confirmedIncomeThroughHorizon || 0}
         forecastAtHorizon={cashPosition?.forecastAtHorizon || 0}
         onComplete={handleCompleteFirstPosition}
+        completing={previewStartBusy}
+        completionError={previewStartError}
       />
     );
   }
@@ -1266,7 +1332,8 @@ function HomeDashboardContent({ view = "overview" }) {
             <p className="brand">{viewTitle}</p>
           </div>
           <div className="topbar-actions">
-            <span className="access-badge">{accessState === "preview_active" ? `Live preview · ${previewDaysLeft ?? 0} days left` : accessState === "paid" ? "Member" : "Preview ended"}</span>
+            <span className="access-badge" title={previewExpiryLabel ? `Live preview ends ${previewExpiryLabel}` : undefined}>{accessState === "preview_active" ? `Live preview · ${previewDaysLeft ?? 0} days left` : accessState === "paid" ? "Member" : "Preview ended"}</span>
+            {accessState === "preview_active" && previewExpiryLabel ? <span className="sr-only">Live preview ends {previewExpiryLabel}</span> : null}
             <span className="user-id">{user?.isAnonymous ? "Guest session" : user?.displayName || user?.email || "Signed in"}</span>
             {user?.isAnonymous ? <button className="secondary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>Save with Google</button> : null}
             {isAnalyticsAdmin ? <Link className="secondary-button" href="/admin/analytics">Analytics</Link> : null}
@@ -1275,10 +1342,13 @@ function HomeDashboardContent({ view = "overview" }) {
 
         <DashboardNav />
 
+        {accessState === "preview_active" && previewDaysLeft === 1 ? (
+          <section className="preview-ending-banner" role="status"><div><strong>Your live preview ends tomorrow</strong><p>No automatic payment will occur. Continue for £24.99 annually — Best value — or £3.99 monthly.</p></div><Link className="primary-link" href="/pricing">View plans</Link></section>
+        ) : null}
         {accessState === "preview_expired" ? (
           <section className="expired-preview-banner" role="status">
-            <div><strong>Your live preview has ended.</strong><p>This position was last updated {balanceFreshness.replace(/^Updated /, "").toLowerCase()} and may now be out of date.</p></div>
-            <div className="expired-preview-actions"><Link className="primary-link upgrade-action" href="/billing?plan=monthly">Continue monthly</Link><Link className="secondary-button upgrade-action" href="/billing?plan=annual">Continue annually</Link></div>
+            <div><strong>Your live ClearTill position is paused</strong><p>This result was last updated on {balanceFreshness.replace(/^Updated /, "").toLowerCase()} and may no longer reflect your current position.</p></div>
+            <div className="expired-preview-actions"><Link className="primary-link upgrade-action" href="/pricing">View monthly and annual plans</Link></div>
           </section>
         ) : null}
         {pageNotice ? <section className="page-notice" aria-live="polite">{pageNotice}</section> : null}
@@ -1331,12 +1401,15 @@ function HomeDashboardContent({ view = "overview" }) {
           <div className="management-page-stack">
             <section className="management-page-intro management-page-intro-action">
               <div><p className="overview-kicker">Money in and out</p><h1>Bills & income</h1><p>Manage regular commitments, imports and every confirmed income source used by your runway.</p></div>
-              <button className="primary-button" type="button" onClick={() => triggerQuickAction("bills", "add-bills")}>Add bill</button>
+              <div className="management-page-actions">
+                <button className="primary-button" type="button" disabled={!canEdit} onClick={() => triggerQuickAction("bills", "add-bills")}>Add bill</button>
+                <button className="secondary-button" type="button" disabled={!canEdit} onClick={focusIncomeSection}>Add income</button>
+              </div>
             </section>
-            <section className="management-panel" aria-labelledby="income-management-title"><h2 id="income-management-title">Income</h2><AdditionalIncomeEditor incomeEvents={incomeEvents} onIncomeEventsChange={setIncomeEvents} todayIso={todayIso} displayCurrency={displayCurrency} onNotice={setPageNotice} defaultExpanded /></section>
             <section className="management-panel" aria-labelledby="bill-management-title"><h2 id="bill-management-title">Bills</h2><BillList bills={bills} dashboard={dashboard} displayCurrency={displayCurrency} hasBalanceSnapshot={hasBalanceSnapshot} importLocked={billsBusy} todayIso={todayIso} onBillsChange={setBills} onNotice={setPageNotice} /></section>
             <section className="management-panel" aria-labelledby="household-utilities-title"><h2 id="household-utilities-title">Household utilities tracker</h2><UtilitiesTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} /></section>
             <section className="management-panel" aria-labelledby="add-bills-title"><h2 id="add-bills-title">Add or import bills</h2><AddBills bills={bills} onBillsChange={setBills} hasIncome={Boolean(displayIncome)} hasBalanceSnapshot={hasBalanceSnapshot} hasPayday={hasPayday} displayCurrency={displayCurrency} onImportingChange={setBillsBusy} /></section>
+            <section ref={incomeSectionRef} id="income-section" className="management-panel" aria-labelledby="income-section-title"><h2 id="income-section-title" tabIndex={-1}>Income</h2><AdditionalIncomeEditor incomeEvents={incomeEvents} onIncomeEventsChange={setIncomeEvents} todayIso={todayIso} displayCurrency={displayCurrency} onNotice={setPageNotice} defaultExpanded /></section>
           </div>
         ) : null}
 
@@ -1362,8 +1435,9 @@ function HomeDashboardContent({ view = "overview" }) {
         </div>
         <div className="topbar-actions">
           <span className="access-badge">
-            {accessState === "preview_active" ? `Live preview · ${previewDaysLeft ?? 0} days left` : accessState === "paid" ? "Member" : "Preview ended"}
+            <span title={previewExpiryLabel ? `Live preview ends ${previewExpiryLabel}` : undefined}>{accessState === "preview_active" ? `Live preview · ${previewDaysLeft ?? 0} days left` : accessState === "paid" ? "Member" : "Preview ended"}</span>
           </span>
+          {accessState === "preview_active" && previewExpiryLabel ? <span className="sr-only">Live preview ends {previewExpiryLabel}</span> : null}
           <span className="user-id">
             {user?.isAnonymous
               ? "Guest session"
@@ -1381,15 +1455,17 @@ function HomeDashboardContent({ view = "overview" }) {
         </div>
       </header>
 
+      {accessState === "preview_active" && previewDaysLeft === 1 ? (
+        <section className="preview-ending-banner" role="status"><div><strong>Your live preview ends tomorrow</strong><p>No automatic payment will occur. Continue for £24.99 annually — Best value — or £3.99 monthly.</p></div><Link className="primary-link" href="/pricing">View plans</Link></section>
+      ) : null}
       {accessState === "preview_expired" ? (
         <section className="expired-preview-banner" role="status">
           <div>
-            <strong>Your live preview has ended.</strong>
-            <p>This position was last updated {balanceFreshness.replace(/^Updated /, "").toLowerCase()} and may now be out of date.</p>
+            <strong>Your live ClearTill position is paused</strong>
+            <p>This result was last updated on {balanceFreshness.replace(/^Updated /, "").toLowerCase()} and may no longer reflect your current position.</p>
           </div>
           <div className="expired-preview-actions">
-            <Link className="primary-link upgrade-action" href="/billing?plan=monthly">Continue monthly</Link>
-            <Link className="secondary-button upgrade-action" href="/billing?plan=annual">Continue annually</Link>
+            <Link className="primary-link upgrade-action" href="/pricing">View monthly and annual plans</Link>
           </div>
         </section>
       ) : null}
@@ -1573,7 +1649,7 @@ function HomeDashboardContent({ view = "overview" }) {
       <CollapsibleSection title="Reminder settings" summaryValue="Balance checks and upcoming-cost reminders" storageKey="utilities">
         <UtilitiesTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} />
       </CollapsibleSection>
-      {accessState !== "preview_expired" ? <button className="mobile-balance-action" type="button" onClick={() => openBalanceEditor(false)}>Update balance</button> : null}
+      {canEdit ? <button className="mobile-balance-action" type="button" onClick={() => openBalanceEditor(false)}>Update balance</button> : null}
     </main>
   );
 }

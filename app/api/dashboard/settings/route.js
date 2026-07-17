@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FieldValue, getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { touchCustomerActivity } from "@/lib/customerProfile.server";
 import { recordFirstSaveAndTutorial } from "@/lib/analytics/onboarding.server";
+import { assertCanEditFinancialData, isReadOnlyAccessError } from "@/lib/financialAccess.server";
 
 export const runtime = "nodejs";
 
@@ -10,6 +11,9 @@ export async function POST(request) {
     const decodedToken = await verifyDashboardSettingsRequest(request);
     const body = await request.json().catch(() => ({}));
     const action = String(body?.action || "").trim();
+    if (action !== "save_preferences") {
+      await assertCanEditFinancialData(decodedToken.uid, { accountEmail: decodedToken.email || null });
+    }
     const db = getAdminDb();
 
     console.info("[dashboard-settings] request", {
@@ -95,6 +99,7 @@ export async function POST(request) {
         );
     }
   } catch (error) {
+    if (isReadOnlyAccessError(error)) return NextResponse.json({ ok: false, error: error.message }, { status: 403 });
     if (
       error?.code === "auth/missing-id-token"
       || error?.code === "auth/invalid-id-token"

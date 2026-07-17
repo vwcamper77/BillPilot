@@ -6,13 +6,14 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
 import AccessLockPanel from "@/components/AccessLockPanel";
+import DateField from "@/app/components/forms/DateField";
+import DayOfMonthField from "@/app/components/forms/DayOfMonthField";
 import RepairAccessButton from "@/app/billing/success/RepairAccessButton";
 import {
   createUserWithEmailAndPassword,
   getAdditionalUserInfo,
   linkWithPopup,
   onAuthStateChanged,
-  signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -832,25 +833,6 @@ function DashboardPageContent() {
   function trackAccountCreated(method) {
     trackEvent("account_created", { method, attribution: getStoredAttribution() });
     trackEvent("onboarding_started");
-  }
-
-  async function handleSignIn() {
-    if (!auth) {
-      setAuthError("Sign-in is not available right now. Try again later.");
-      return;
-    }
-
-    setSigningIn(true);
-    setAuthError("");
-
-    try {
-      await authPersistenceReady;
-      await signInAnonymously(auth);
-    } catch (signInError) {
-      setAuthError(friendlyAuthError(signInError));
-    } finally {
-      setSigningIn(false);
-    }
   }
 
   async function handleGoogleSignIn() {
@@ -2694,6 +2676,22 @@ function DashboardPageContent() {
       <main className="dashboard-shell">
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
+          <h1>Sign in to view your ClearTill dashboard</h1>
+          <p>Your saved position is connected to your account.</p>
+          <div className="auth-button-row">
+            <Link className="primary-button" href="/signin">Sign in</Link>
+            <Link className="secondary-button" href="/start">Create an account</Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (false && !user) {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
           <h1>Know you&apos;re clear till you&apos;re paid.</h1>
           <p>ClearTill helps you plan your money without connecting to your bank.</p>
           <TrustShield className="auth-trust-banner" compact />
@@ -2732,11 +2730,6 @@ function DashboardPageContent() {
               </button>
             </div>
           </form>
-          {process.env.NEXT_PUBLIC_ALLOW_GUEST_LOGIN === "true" ? (
-            <button className="secondary-button auth-guest-button" type="button" onClick={handleSignIn} disabled={signingIn}>
-              Just testing? Continue as guest
-            </button>
-          ) : null}
           {authError ? <p className="error">{authError}</p> : null}
         </section>
       </main>
@@ -3070,14 +3063,12 @@ function DashboardPageContent() {
                   onChange={(event) => setIncomeForm((current) => ({ ...current, amount: event.target.value }))}
                   placeholder="Monthly income"
                 />
-                <label className="field-label" htmlFor="forecast-payday-day">When do you get paid?</label>
-                <input
+                <DayOfMonthField
                   id="forecast-payday-day"
-                  inputMode="numeric"
+                  label="When do you get paid?"
                   disabled={importLocked}
                   value={incomeForm.payDay}
                   onChange={(event) => setIncomeForm((current) => ({ ...current, payDay: event.target.value }))}
-                  placeholder="Day of month"
                 />
                 <div className="edit-actions">
                   <button className="primary-button small-button" type="submit" disabled={savingEdit || importLocked}>
@@ -3288,15 +3279,13 @@ function DashboardPageContent() {
                   onChange={(event) => setIncomeForm((current) => ({ ...current, amount: event.target.value }))}
                   placeholder="Monthly income"
                 />
-                <label className="field-label" htmlFor="payday-day">When do you get paid?</label>
-                <input
+                <DayOfMonthField
                   ref={paydayDayInputRef}
                   id="payday-day"
-                  inputMode="numeric"
+                  label="When do you get paid?"
                   disabled={importLocked}
                   value={incomeForm.payDay}
                   onChange={(event) => setIncomeForm((current) => ({ ...current, payDay: event.target.value }))}
-                  placeholder="Day of month"
                 />
                 <div className="edit-actions">
                   <button className="primary-button" type="submit" disabled={savingEdit || importLocked}>
@@ -3689,10 +3678,7 @@ function DashboardPageContent() {
                                   <label className="field-label" htmlFor={`csv-amount-${s.id}`}>Amount</label>
                                   <input id={`csv-amount-${s.id}`} inputMode="decimal" value={csvEditForm.amount} onChange={(e) => setCsvEditForm((f) => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
                                 </div>
-                                <div className="field-row">
-                                  <label className="field-label" htmlFor={`csv-day-${s.id}`}>Due day (1–31)</label>
-                                  <input id={`csv-day-${s.id}`} inputMode="numeric" value={csvEditForm.dueDay} onChange={(e) => setCsvEditForm((f) => ({ ...f, dueDay: e.target.value }))} placeholder="e.g. 1" />
-                                </div>
+                                <DayOfMonthField id={`csv-day-${s.id}`} label="Due day (1–31)" value={csvEditForm.dueDay} onChange={(e) => setCsvEditForm((f) => ({ ...f, dueDay: e.target.value }))} />
                                 <div className="field-row">
                                   <label className="field-label" htmlFor={`csv-cat-${s.id}`}>Category</label>
                                   <select id={`csv-cat-${s.id}`} className="category-select" value={csvEditForm.category} onChange={(e) => setCsvEditForm((f) => ({ ...f, category: e.target.value }))}>
@@ -4247,15 +4233,12 @@ function BillReviewCard({
               onChange={(event) => onFormChange((current) => ({ ...current, amount: event.target.value }))}
             />
           </div>
-          <div className="field-row">
-            <label className="field-label" htmlFor={`review-dueDay-${draft.id}`}>Due day</label>
-            <input
-              id={`review-dueDay-${draft.id}`}
-              inputMode="numeric"
-              value={form?.dueDay || ""}
-              onChange={(event) => onFormChange((current) => ({ ...current, dueDay: event.target.value }))}
-            />
-          </div>
+          <DayOfMonthField
+            id={`review-dueDay-${draft.id}`}
+            label="Due day"
+            value={form?.dueDay || ""}
+            onChange={(event) => onFormChange((current) => ({ ...current, dueDay: event.target.value }))}
+          />
           <div className="field-row">
             <label className="field-label" htmlFor={`review-category-${draft.id}`}>Category</label>
             <select
@@ -4447,10 +4430,10 @@ function ForecastLargeCostsSection({
             onChange={(event) => onFormChange((current) => ({ ...current, amountAlreadySaved: event.target.value }))}
             placeholder="0"
           />
-          <label className="field-label" htmlFor="large-cost-due-date">Due date</label>
-          <input
+          <DateField
             id="large-cost-due-date"
-            type="date"
+            label="Due date"
+            required
             value={form.dueDate}
             onChange={(event) => onFormChange((current) => ({ ...current, dueDate: event.target.value }))}
           />
@@ -4873,16 +4856,7 @@ function CsvBillFinder({ userId, bills, displayCurrency, onBillSaved }) { // esl
                           placeholder="0.00"
                         />
                       </div>
-                      <div className="field-row">
-                        <label className="field-label" htmlFor={`csv-day-${s.id}`}>Due day (1–31)</label>
-                        <input
-                          id={`csv-day-${s.id}`}
-                          inputMode="numeric"
-                          value={editForm.dueDay}
-                          onChange={(e) => setEditForm((f) => ({ ...f, dueDay: e.target.value }))}
-                          placeholder="e.g. 1"
-                        />
-                      </div>
+                      <DayOfMonthField id={`csv-day-${s.id}`} label="Due day (1–31)" value={editForm.dueDay} onChange={(e) => setEditForm((f) => ({ ...f, dueDay: e.target.value }))} />
                       <div className="field-row">
                         <label className="field-label" htmlFor={`csv-cat-${s.id}`}>Category</label>
                         <select
@@ -5243,13 +5217,11 @@ function BillGroup({
                     onChange={(event) => onBillFormChange((current) => ({ ...current, amount: event.target.value }))}
                     placeholder="Amount"
                   />
-                  <label className="field-label" htmlFor={`bill-due-day-${bill.id}`}>Day of month</label>
-                  <input
+                  <DayOfMonthField
                     id={`bill-due-day-${bill.id}`}
-                    inputMode="numeric"
+                    label="Day of month"
                     value={editingBillForm.dueDay}
                     onChange={(event) => onBillFormChange((current) => ({ ...current, dueDay: event.target.value }))}
-                    placeholder="Day of month"
                   />
                   <label className="field-label" htmlFor={`bill-category-${bill.id}`}>Category</label>
                   <select

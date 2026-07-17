@@ -11,6 +11,7 @@ import { claimPendingEntitlement, createPendingEntitlementFromCheckoutSession, g
 import { recordVerifiedPaidInvoice, recordVerifiedTrial } from "@/lib/billing/commercialOutcomes.server";
 import { attributionFromStripeMetadata } from "@/lib/analytics/attribution.server";
 import { getAdminAuth } from "@/lib/firebaseAdmin";
+import { markPreviewConverted } from "@/lib/previewLifecycle.server";
 
 export const runtime = "nodejs";
 
@@ -124,7 +125,13 @@ async function handleStripeEvent(stripe, event) {
           excludedFromCommercialReporting: internalTest,
         },
       });
-      await recordVerifiedTrial({ uid, sessionId: object.id, subscription, internalTest, attribution, stripeEventId: event.id, customerEmail });
+      const isPaidUpgrade = object.metadata?.flow === "paid_upgrade" || subscription.metadata?.flow === "paid_upgrade";
+      if (isPaidUpgrade) {
+        await markPreviewConverted(uid, { convertedAt: new Date(eventCreated || Date.now()) });
+        if (!internalTest) await trackServerAnalyticsEvent("subscription_started", { uid, source: object.metadata?.planKey || "paid_upgrade" });
+      } else {
+        await recordVerifiedTrial({ uid, sessionId: object.id, subscription, internalTest, attribution, stripeEventId: event.id, customerEmail });
+      }
       return { uid, stripeCheckoutSessionId: object.id, stripeCustomerId, stripeSubscriptionId: subscription.id };
     }
 

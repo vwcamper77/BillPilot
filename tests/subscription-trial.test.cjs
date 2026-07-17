@@ -15,13 +15,12 @@ function between(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
-test("homepage CTAs enter the no-card live preview without requesting signup", () => {
-  const interactiveCta = read("app/HomeTryNow.jsx");
+test("homepage CTAs enter the auth-first free preview", () => {
   const homepage = read("app/page.jsx");
-  assert.match(interactiveCta, /window\.location\.href = "\/dashboard\?intent=preview"/);
-  assert.match(homepage, /PREVIEW_HREF = "\/dashboard\?intent=preview"/);
-  assert.match(`${interactiveCta}\n${homepage}`, /No card required/);
-  assert.doesNotMatch(`${interactiveCta}\n${homepage}`, /auth=signup/);
+  assert.match(homepage, /PREVIEW_HREF = "\/start"/);
+  assert.match(homepage, /Check my position free/);
+  assert.match(homepage, /No card required/);
+  assert.match(homepage, /href="\/signin"/);
 });
 
 test("dashboard URL state remains hydration-stable", () => {
@@ -47,17 +46,16 @@ test("trial route shows an email-only screen before Checkout", () => {
   assert.match(source, /\^\[\^\\s@\]\+@\[\^\\s@\]\+\\\.\[\^\\s@\]\+\$/);
 });
 
-test("anonymous Firebase setup stays invisible and waits for parsed entry parameters", () => {
-  const source = read("app/dashboard/page.jsx");
-  const authEffect = between(
-    source,
-    "if (!entryParamsReady || !authReady || user || !auth)",
-    "}, [authReady, entryParamsReady, shouldUseDirectAuthEntry, user]",
-  );
-  assert.match(authEffect, /signInAnonymously\(auth\)/);
-  assert.match(source, /entryIntent !== "trial"\s*&& \(entryAuthMode === "signup" \|\| entryAuthMode === "signin"\)/);
-  const trialRender = between(source, 'if (entryIntent === "trial")', "if (!authReady)");
-  assert.doesNotMatch(trialRender, /Guest session/);
+test("dashboard acquisition no longer creates an anonymous Firebase session", () => {
+  const acquisitionSources = [
+    "app/dashboard/page.jsx",
+    "app/dashboard/HomeDashboard.jsx",
+    "app/dashboard/HomeLegacy.jsx",
+    "app/components/AuthJourney.jsx",
+  ].map(read).join("\n");
+  assert.doesNotMatch(acquisitionSources, /signInAnonymously/);
+  assert.doesNotMatch(acquisitionSources, /Preparing your free pay-date forecast|private guest session|Try guest access again|Guest access is unavailable/i);
+  assert.match(read("app/dashboard/page.jsx"), /href="\/signin"/);
 });
 
 test("returning sign-in does not link a persisted anonymous trial session", () => {
@@ -86,25 +84,16 @@ test("validated email and anonymous ID token start Checkout exactly once", () =>
   assert.match(source, /startTrialCheckoutForUser\(auth\.currentUser, normalizedEmail\)/);
 });
 
-test("Checkout creates a trusted expiring intent and prefills Stripe email", () => {
+test("legacy card-based trial checkout is retained but cannot create new trials", () => {
   const route = read("app/api/stripe/checkout/route.js");
   const claims = read("lib/billing/trialClaims.server.js");
-  assert.match(route, /normalizeTrialEmail\(body\?\.email\)/);
-  assert.match(route, /createTrialCheckoutIntent/);
-  assert.match(route, /\{ customer_email: email \}/);
-  assert.doesNotMatch(route, /stripe\.customers\.create/);
-  assert.match(route, /mode:\s*"subscription"/);
-  assert.match(route, /payment_method_collection:\s*"always"/);
-  assert.match(route, /trial_period_days:\s*runtime\.config\.trialLengthDays/);
-  assert.match(route, /price:\s*process\.env\.STRIPE_MONTHLY_PRICE_ID/);
-  assert.match(route, /successPath[\s\S]*?\{CHECKOUT_SESSION_ID\}/);
-  assert.equal((route.match(/checkoutIntentId: checkoutIntent\.checkoutIntentId/g) || []).length, 3);
-  assert.equal((route.match(/normalizedEmail: checkoutIntent\.normalizedEmail/g) || []).length, 2);
+  assert.match(route, /legacy_trial_checkout_retired/);
+  assert.match(route, /status: 410/);
+  assert.doesNotMatch(route, /checkout\.sessions\.create|trial_period_days/);
   assert.match(claims, /randomUUID\(\)/);
   assert.match(claims, /status: "checkout_started"/);
   assert.match(claims, /anonymousUid/);
   assert.match(claims, /expiresAt/);
-  assert.doesNotMatch(route, /balance|bills/);
 });
 
 test("Stripe-confirmed subscription creates one pending claim and grants provisional access", () => {
@@ -313,18 +302,16 @@ test("Firebase deployment config points at the checked-in Firestore rules", () =
   assert.deepEqual(config, { firestore: { rules: "firestore.rules" } });
 });
 
-test("Firestore rules allow only the requested owner data paths and protect billing settings", () => {
+test("Firestore rules enforce server-owned preview and access-aware financial writes", () => {
   const rules = read("firestore.rules");
   assert.match(rules, /function isOwner\(userId\)[\s\S]*?request\.auth != null && request\.auth\.uid == userId/);
-  assert.match(rules, /match \/users\/\{userId\} \{[\s\S]*?allow read, write: if isOwner\(userId\)/);
-  assert.match(rules, /match \/users\/\{userId\}\/settings\/\{settingId\}[\s\S]*?\["balance", "preferences", "savings"\]/);
-  for (const collectionName of ["income", "bills", "largeCosts", "reminders"]) {
-    assert.match(rules, new RegExp(`match \\/users\\/\\{userId\\}\\/${collectionName}\\/\\{[^}]+\\} \\{[\\s\\S]*?allow read, write: if isOwner\\(userId\\)`));
+  assert.match(rules, /function canWriteFinancialData[\s\S]*?previewIsActive[\s\S]*?!previewExists/);
+  assert.match(rules, /match \/users\/\{userId\}\/access\/\{documentId\}[\s\S]*?allow write: if false/);
+  for (const collectionName of ["income", "incomeEvents", "bills", "largeCosts"]) {
+    assert.match(rules, new RegExp(`match \\/users\\/\\{userId\\}\\/${collectionName}\\/\\{[^}]+\\} \\{[\\s\\S]*?allow write: if canWriteFinancialData\\(userId\\)`));
   }
-  const billingRule = between(rules, "match /users/{userId}/settings/billing", "match /users/{userId}/income");
-  assert.match(billingRule, /allow read: if isOwner\(userId\)/);
-  assert.match(billingRule, /allow write: if false/);
-  assert.doesNotMatch(billingRule, /allow read, write/);
+  assert.match(rules, /subscriptionStatus in \["active", "trialing"\]/);
+  assert.match(rules, /match \/stripeEvents\/\{eventId\}[\s\S]*?allow read, write: if false/);
 });
 
 test("balance saves use the authenticated UID only after auth identity is stable", () => {

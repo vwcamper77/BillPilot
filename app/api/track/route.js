@@ -3,6 +3,7 @@ import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { ANALYTICS_EVENTS } from "@/lib/analytics/constants";
 import { createOrUpdateCustomerOnAccountCreated, recordAnalyticsEvent } from "@/lib/customerProfile.server";
 import { isInternalAnalyticsRequest } from "@/lib/analytics/internal.server";
+import { sendPreviewLifecycleEmail } from "@/lib/previewEmails.server";
 
 export const runtime = "nodejs";
 
@@ -54,12 +55,24 @@ export async function POST(request) {
     });
 
     if (eventName === "account_created" && uid) {
+      // Observe the Firebase account server-side. Email, creation time and UID
+      // are never accepted from the analytics request body.
+      const authUser = await getAdminAuth().getUser(uid);
+      const accountCreatedAt = authUser.metadata?.creationTime || null;
       await createOrUpdateCustomerOnAccountCreated({
         uid,
-        email: decodedToken.email || null,
-        name: decodedToken.name || null,
+        email: authUser.email || null,
+        name: authUser.displayName || null,
+        accountCreatedAt,
         attribution: sanitizeAttributionBundle(body?.attributionBundle) || { firstTouch: sanitizeAttribution(body?.attribution), lastTouch: sanitizeAttribution(body?.attribution) },
       });
+      await sendPreviewLifecycleEmail({
+        userId: uid,
+        email: authUser.email || null,
+        type: "account_created",
+        period: "account-created",
+        onboardingStep: "balance",
+      }).catch((error) => console.error("[track] account email failed", { uid, code: error?.code || "email_failed" }));
     }
 
     return NextResponse.json({ ok: true });

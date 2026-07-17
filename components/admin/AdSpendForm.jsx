@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import DateField from "@/app/components/forms/DateField";
 import { auth } from "@/lib/firebase";
 
 const PLATFORMS = [
@@ -76,15 +77,14 @@ export default function AdSpendForm({ onSaved }) {
 
   return (
     <form className="ad-spend-form" onSubmit={handleSubmit}>
-      <div className="ad-spend-form-row">
-        <label className="field-label" htmlFor="ad-spend-date">Date</label>
-        <input
-          id="ad-spend-date"
-          type="date"
-          value={form.date}
-          onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))}
-        />
-      </div>
+      <DateField
+        id="ad-spend-date"
+        label="Date"
+        required
+        className="ad-spend-form-row"
+        value={form.date}
+        onChange={(event) => setForm((current) => ({ ...current, date: event.target.value }))}
+      />
 
       <div className="ad-spend-form-row">
         <label className="field-label" htmlFor="ad-spend-platform">Platform</label>

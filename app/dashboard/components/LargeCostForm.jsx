@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import DateField from "@/app/components/forms/DateField";
 import { buildLargeCostDocument, formatCurrency, formatDisplayDate, normaliseLargeCostFundingStatus } from "@/lib/billMath";
 import { getLargeCostFundingSourceLimits, resolveLargeCostContributions, roundCurrency } from "@/lib/largeCostPlanner";
 import { safeError } from "@/lib/security/safeLog";
@@ -492,10 +493,10 @@ export default function LargeCostForm({
             onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))}
             placeholder="5000"
           />
-          <label className="field-label" htmlFor="large-cost-due-date">Due date</label>
-          <input
+          <DateField
             id="large-cost-due-date"
-            type="date"
+            label="Due date"
+            required
             value={form.dueDate}
             onChange={(event) => setForm((current) => ({ ...current, dueDate: event.target.value }))}
           />

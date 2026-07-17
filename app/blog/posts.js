@@ -139,7 +139,7 @@ export const BLOG_POSTS = [
           { text: ". When you update your balance, ClearTill immediately recalculates the bills still due and your new clear-to-spend figure." },
         ],
       },
-      { type: "paragraph", text: "No bank connection, no transaction history, no categories to maintain. It's the calculation above, kept current for you. There's a 7-day free trial, then it's £1.99 a month." },
+      { type: "paragraph", text: "No bank connection, no transaction history, no categories to maintain. Your seven-day live preview needs no card, and nothing is charged automatically when it ends. Continuing costs £3.99 monthly or £24.99 annually." },
       { type: "heading", text: "Frequently asked questions", id: "frequently-asked-questions" },
       { type: "faqs" },
     ],
@@ -285,7 +285,7 @@ export const BLOG_POSTS = [
       { type: "paragraph", text: "ClearTill does not:" },
       { type: "list", items: ["Connect to your bank", "Predict whether a client will pay", "Calculate tax", "Replace business cash-flow forecasting", "Decide how much buffer you should retain", "Automatically track every transaction"] },
       { type: "paragraph", text: "It is a simple way to hold the short-term arithmetic in one place." },
-      { type: "paragraph", text: "There is a seven-day free trial, followed by a £1.99 monthly subscription." },
+      { type: "paragraph", text: "There is a seven-day no-card live preview. Nothing is charged automatically when it ends; continuing costs £3.99 monthly or £24.99 annually." },
 
       { type: "heading", text: "Frequently asked questions", id: "frequently-asked-questions" },
       { type: "faqs" },

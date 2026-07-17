@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { FieldValue, getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { assertCanEditFinancialData, isReadOnlyAccessError } from "@/lib/financialAccess.server";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,7 @@ export async function POST(request) {
     const decodedToken = await verifyDashboardLargeCostsRequest(request);
     const body = await request.json().catch(() => ({}));
     const action = String(body?.action || "").trim();
+    await assertCanEditFinancialData(decodedToken.uid, { accountEmail: decodedToken.email || null });
     const db = getAdminDb();
     const userDocRef = db.collection("users").doc(decodedToken.uid);
     const userRef = userDocRef.collection("largeCosts");
@@ -99,6 +101,7 @@ export async function POST(request) {
         );
     }
   } catch (error) {
+    if (isReadOnlyAccessError(error)) return NextResponse.json({ ok: false, error: error.message }, { status: 403 });
     if (
       error?.code === "auth/missing-id-token"
       || error?.code === "auth/invalid-id-token"

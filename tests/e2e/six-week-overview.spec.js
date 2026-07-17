@@ -96,3 +96,55 @@ test("Overview states that no upcoming income is confirmed", async ({ page }) =>
   await expect(page.getByRole("heading", { name: "No upcoming income confirmed" })).toBeVisible({ timeout: 20000 });
   await expect(page.getByRole("link", { name: "Manage income" })).toHaveAttribute("href", "/dashboard/bills-income");
 });
+
+test("Bills and income keeps routine bill work first and focuses both header actions", async ({ page }) => {
+  const nextIncome = addDays(londonToday(), 10);
+  await seedDashboardState(uid, { currentBalance: 1200, payDay: Number(nextIncome.slice(8, 10)), payAmount: 2200 });
+  await signIn(page);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/dashboard/bills-income");
+  await expect(page.getByRole("heading", { name: "Bills & income", exact: true })).toBeVisible({ timeout: 20000 });
+
+  const sectionHeadings = await page.locator(".management-page-stack > section").evaluateAll((sections) => sections.map((section) => section.querySelector("h1, h2")?.textContent?.trim()));
+  expect(sectionHeadings).toEqual([
+    "Bills & income",
+    "Bills",
+    "Household utilities tracker",
+    "Add or import bills",
+    "Income",
+  ]);
+
+  const header = page.locator(".management-page-intro");
+  const addBill = header.getByRole("button", { name: "Add bill" });
+  const addIncome = header.getByRole("button", { name: "Add income" });
+  await expect(addBill).toHaveClass(/primary-button/);
+  await expect(addIncome).toHaveClass(/secondary-button/);
+
+  await addBill.click();
+  await expect(page.locator("form.chat-form textarea")).toBeFocused();
+
+  await page.evaluate(() => {
+    const section = document.querySelector("#income-section");
+    const scrollIntoView = section.scrollIntoView.bind(section);
+    window.__incomeScrollBehaviors = [];
+    section.scrollIntoView = (options) => {
+      window.__incomeScrollBehaviors.push(options?.behavior);
+      scrollIntoView(options);
+    };
+  });
+
+  await addIncome.click();
+  await expect(page.locator("#income-pattern")).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Income", exact: true })).toBeInViewport();
+  await expect.poll(() => page.evaluate(() => window.__incomeScrollBehaviors.at(-1))).toBe("smooth");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await addIncome.click();
+  await expect(page.locator("#income-pattern")).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Income", exact: true })).toBeInViewport();
+  await expect.poll(() => page.evaluate(() => window.__incomeScrollBehaviors.at(-1))).toBe("instant");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});

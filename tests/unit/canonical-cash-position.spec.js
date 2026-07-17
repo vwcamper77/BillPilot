@@ -51,10 +51,13 @@ test.describe("canonical chronological cash position", () => {
   });
 
   test("no future income uses the selected horizon as the immediate boundary", () => {
-    const result = position({ bills: [{ id: "bill", amount: 50, nextDueDate: "2026-07-12", frequency: "one_off" }] });
+    const result = position({
+      bills: [{ id: "bill", amount: 50, nextDueDate: "2026-07-12", frequency: "one_off" }],
+      largeCostAllocations: [{ id: "horizon-cost", currentAccountAmount: 25, nextDueDate: HORIZON, frequency: "one_off" }],
+    });
     expect(result.nextConfirmedIncome).toBeNull();
-    expect(result.safeUntilNextIncome).toBe(250);
-    expect(result.forecastAtHorizon).toBe(250);
+    expect(result.safeUntilNextIncome).toBe(225);
+    expect(result.forecastAtHorizon).toBe(225);
   });
 
   test("£471 protected before income is committed, never a bill, and leaves £1,529 safe", () => {
@@ -92,6 +95,27 @@ test.describe("canonical chronological cash position", () => {
     expect(result.events[0].balanceAfter).toBe(-200);
     expect(result.safeUntilNextIncome).toBe(-200);
     expect(result.sameDayDependencies).toEqual(["2026-07-12"]);
+  });
+
+  test("same-day protected contributions belong to the new income period", () => {
+    const result = position({
+      currentBalance: 200,
+      horizonDate: "2026-07-20",
+      largeCostAllocations: [
+        { id: "greece", name: "Greece funding", currentAccountAmount: 136, nextDueDate: "2026-07-20", frequency: "one_off" },
+        { id: "car", name: "Car funding", currentAccountAmount: 135, nextDueDate: "2026-07-20", frequency: "one_off" },
+      ],
+      additionalIncomeEvents: [income({ amount: 4000, expectedDate: "2026-07-20" })],
+    });
+
+    expect(result.events.map((event) => event.type)).toEqual(["additional_income", "large_cost", "large_cost"]);
+    expect(result.availableNow).toBe(200);
+    expect(result.protectedBeforeNextIncomeTotal).toBe(0);
+    expect(result.outflowBeforeNextIncomeTotal).toBe(0);
+    expect(result.safeUntilNextIncome).toBe(200);
+    expect(result.safePerDayUntilNextIncome).toBe(20);
+    expect(result.forecastAtHorizon).toBe(3929);
+    expect(result.sameDayDependencies).toEqual([]);
   });
 
   test("bills exceeding cash and a negative starting balance preserve the shortfall", () => {

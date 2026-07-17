@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import DayOfMonthField from "@/app/components/forms/DayOfMonthField";
 import {
   buildBillDocument,
   formatCurrency,
@@ -100,15 +101,12 @@ function BillReviewCard({
               onChange={(event) => onFormChange((current) => ({ ...current, amount: event.target.value }))}
             />
           </div>
-          <div className="field-row">
-            <label className="field-label" htmlFor={`review-dueDay-${draft.id}`}>Due day</label>
-            <input
-              id={`review-dueDay-${draft.id}`}
-              inputMode="numeric"
-              value={form?.dueDay || ""}
-              onChange={(event) => onFormChange((current) => ({ ...current, dueDay: event.target.value }))}
-            />
-          </div>
+          <DayOfMonthField
+            id={`review-dueDay-${draft.id}`}
+            label="Due day"
+            value={form?.dueDay || ""}
+            onChange={(event) => onFormChange((current) => ({ ...current, dueDay: event.target.value }))}
+          />
           <div className="field-row">
             <label className="field-label" htmlFor={`review-category-${draft.id}`}>Category</label>
             <select
@@ -785,6 +783,7 @@ export default function AddBills({
       const result = await postDashboardBillAction("create_bill", { fields: payload });
       logSecurityEventClient("bill_created", { source: "import" });
       trackEvent("bill_added", { source: "import" });
+      trackEvent("onboarding_step_completed", { step: "costs" });
       const savedBill = { ...billDocument, id: result.billId };
 
       billsRef.current = [...currentBills, savedBill];
@@ -973,6 +972,7 @@ export default function AddBills({
       setCsvSavedCount((n) => n + 1);
       logSecurityEventClient("bill_created", { source: "csv" });
       trackEvent("bill_added", { source: "csv" });
+      trackEvent("onboarding_step_completed", { step: "costs" });
     } catch (saveError) {
       setCsvError(friendlyBillSaveError(saveError, "We could not add this bill."));
     } finally {
@@ -1020,6 +1020,7 @@ export default function AddBills({
       setCsvSavedCount((n) => n + 1);
       logSecurityEventClient("bill_created", { source: "csv" });
       trackEvent("bill_added", { source: "csv" });
+      trackEvent("onboarding_step_completed", { step: "costs" });
     } catch (saveError) {
       setCsvError(friendlyBillSaveError(saveError, "We could not add this bill."));
     } finally {
@@ -1289,6 +1290,7 @@ export default function AddBills({
       }
 
       trackEvent("bill_added", { source: "chat" });
+      trackEvent("onboarding_step_completed", { step: "costs" });
       cancelBillReviewDraft(draftId);
       setAssistantMessage(`Added ${draft.name}.`);
 
@@ -1609,10 +1611,7 @@ export default function AddBills({
                             <label className="field-label" htmlFor={`csv-amount-${s.id}`}>Amount</label>
                             <input id={`csv-amount-${s.id}`} inputMode="decimal" value={csvEditForm.amount} onChange={(e) => setCsvEditForm((f) => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
                           </div>
-                          <div className="field-row">
-                            <label className="field-label" htmlFor={`csv-day-${s.id}`}>Due day (1–31)</label>
-                            <input id={`csv-day-${s.id}`} inputMode="numeric" value={csvEditForm.dueDay} onChange={(e) => setCsvEditForm((f) => ({ ...f, dueDay: e.target.value }))} placeholder="e.g. 1" />
-                          </div>
+                          <DayOfMonthField id={`csv-day-${s.id}`} label="Due day (1–31)" value={csvEditForm.dueDay} onChange={(e) => setCsvEditForm((f) => ({ ...f, dueDay: e.target.value }))} />
                           <div className="field-row">
                             <label className="field-label" htmlFor={`csv-cat-${s.id}`}>Category</label>
                             <select id={`csv-cat-${s.id}`} className="category-select" value={csvEditForm.category} onChange={(e) => setCsvEditForm((f) => ({ ...f, category: e.target.value }))}>

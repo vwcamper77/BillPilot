@@ -16,6 +16,12 @@ export default function Footer() {
         <span className="site-footer-meta">&copy; 2026 ClearTill</span>
       </div>
       <div className="site-footer-links">
+        <Link href="/pricing">Pricing</Link>
+        <span aria-hidden="true">&middot;</span>
+        <Link href="/about">About</Link>
+        <span aria-hidden="true">&middot;</span>
+        <Link href="/signin">Sign in</Link>
+        <span aria-hidden="true">&middot;</span>
         <Link href="/blog">Journal</Link>
         <span aria-hidden="true">&middot;</span>
         <Link href="/privacy">Privacy</Link>

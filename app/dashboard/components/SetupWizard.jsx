@@ -48,6 +48,8 @@ export default function SetupWizard({
   confirmedIncomeThroughHorizon,
   forecastAtHorizon,
   onComplete,
+  completing = false,
+  completionError = "",
 }) {
   const [reviewingCosts, setReviewingCosts] = useState(false);
   const billCount = bills?.length || 0;
@@ -158,7 +160,8 @@ export default function SetupWizard({
               <p>Is anything missing?</p>
               <button className="text-button" type="button" onClick={() => setReviewingCosts(true)}>Review my costs</button>
             </div>
-            <button className="primary-button setup-complete-button" type="button" onClick={onComplete}>Save this position and start my 7-day live preview</button>
+            <button className="primary-button setup-complete-button" type="button" onClick={onComplete} disabled={completing}>{completing ? "Starting your live preview…" : "Save this position and start my 7-day live preview"}</button>
+            {completionError ? <p className="error" role="alert">{completionError}</p> : null}
             <p className="setup-supporting-copy">No bank connection. No card required. Nothing is charged when the preview ends.</p>
           </div>
         )}

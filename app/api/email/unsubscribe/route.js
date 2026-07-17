@@ -16,6 +16,7 @@ export async function GET(request) {
 
   await getAdminDb().collection("users").doc(userId).collection("settings").doc("emailPreferences").set({
     weeklyReminders: false,
+    optionalReminders: false,
     unsubscribedAt: new Date().toISOString(),
   }, { merge: true });
 

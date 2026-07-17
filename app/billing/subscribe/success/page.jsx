@@ -2,7 +2,7 @@ import Logo from "@/components/Logo";
 import SubscriptionActivation from "./SubscriptionActivation";
 
 export const metadata = {
-  title: "Trial started | ClearTill",
+  title: "Subscription started | ClearTill",
 };
 
 export default async function SubscriptionSuccessPage({ searchParams }) {

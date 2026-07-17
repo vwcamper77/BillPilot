@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { FieldValue, getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
+import { assertCanEditFinancialData, isReadOnlyAccessError } from "@/lib/financialAccess.server";
 
 export const runtime = "nodejs";
 
@@ -12,6 +13,7 @@ export async function POST(request) {
     const decodedToken = await verifyRequest(request);
     const body = await request.json().catch(() => ({}));
     const action = String(body?.action || "").trim();
+    await assertCanEditFinancialData(decodedToken.uid, { accountEmail: decodedToken.email || null });
     const collectionRef = getAdminDb().collection("users").doc(decodedToken.uid).collection("incomeEvents");
 
     if (action === "save_income_event") {
@@ -61,6 +63,7 @@ export async function POST(request) {
 
     return NextResponse.json({ ok: false, error: "Unsupported income event action." }, { status: 400 });
   } catch (error) {
+    if (isReadOnlyAccessError(error)) return NextResponse.json({ ok: false, error: error.message }, { status: 403 });
     if (String(error?.code || "").startsWith("auth/")) {
       return NextResponse.json({ ok: false, error: "Please sign in again before saving that income." }, { status: 401 });
     }

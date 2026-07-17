@@ -8,9 +8,17 @@ function signedCurrency(value, currency) {
   return amount < 0 ? `−${formatCurrency(Math.abs(amount), currency)}` : formatCurrency(amount, currency);
 }
 
+function commitmentTypeLabel(type) {
+  if (type === "bill") return "Bill";
+  if (type === "large_cost") return "Protected contribution";
+  return "Committed item";
+}
+
 export default function CurrentPositionCard({ cashPosition, displayCurrency, onUpdateBalance, onTestSpend, onAddBill }) {
   const nextIncome = cashPosition?.nextConfirmedIncome || null;
   const hasPosition = cashPosition && nextIncome;
+  const committedItems = [...(cashPosition?.outflowsBeforeNextIncome || [])]
+    .sort((a, b) => a.date.localeCompare(b.date) || Math.abs(b.amount) - Math.abs(a.amount));
 
   return (
     <article className={`current-position-card${cashPosition?.safeUntilNextIncome < 0 ? " is-warning" : ""}`} aria-labelledby="current-position-title">
@@ -36,8 +44,25 @@ export default function CurrentPositionCard({ cashPosition, displayCurrency, onU
             <dd>{formatCurrency(nextIncome.amount, displayCurrency)} on {formatDisplayDate(nextIncome.date)}</dd>
           </div>
           <div>
-            <dt>Fixed outgoings still due</dt>
+            <dt>Committed before next income</dt>
             <dd>{formatCurrency(cashPosition.outflowBeforeNextIncomeTotal, displayCurrency)}</dd>
+            {committedItems.length ? (
+              <details className="current-position-commitments">
+                <summary>See what makes up {formatCurrency(cashPosition.outflowBeforeNextIncomeTotal, displayCurrency)}</summary>
+                <ul>
+                  {committedItems.map((item, index) => (
+                    <li key={`${item.type}-${item.occurrenceId || item.id}-${item.date}-${index}`}>
+                      <span>
+                        <small>{commitmentTypeLabel(item.type)}</small>
+                        <strong>{item.name || commitmentTypeLabel(item.type)}</strong>
+                        <time dateTime={item.date}>{formatDisplayDate(item.date)}</time>
+                      </span>
+                      <strong>{formatCurrency(Math.abs(item.amount), displayCurrency)}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : null}
           </div>
         </dl>
       ) : null}

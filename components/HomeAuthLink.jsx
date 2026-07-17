@@ -45,7 +45,7 @@ export default function HomeAuthLink() {
   }
 
   return (
-    <Link className="secondary-button home-signin-button" href="/dashboard?auth=signin">
+    <Link className="secondary-button home-signin-button" href="/signin">
       Sign in
     </Link>
   );

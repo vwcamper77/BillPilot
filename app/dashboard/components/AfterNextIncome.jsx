@@ -38,7 +38,7 @@ export default function AfterNextIncome({
       <div className="after-income-content">
         {sameDayDependencies.length ? (
           <div className="after-income-warning" role="note">
-            Costs and income share {sameDayDependencies.length === 1 ? "a date" : "dates"}: {sameDayDependencies.map(formatDisplayDate).join(", ")}. Costs are applied first.
+            Bills and income share {sameDayDependencies.length === 1 ? "a date" : "dates"}: {sameDayDependencies.map(formatDisplayDate).join(", ")}. Bills are applied first.
           </div>
         ) : null}
         <ol className="after-income-ledger" aria-label="Chronological forecast after your next income">

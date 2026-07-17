@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import TrustShield from "@/components/TrustShield";
+import DateField from "@/app/components/forms/DateField";
+import DayOfMonthField from "@/app/components/forms/DayOfMonthField";
 import {
   collection,
   deleteDoc,
@@ -24,7 +26,6 @@ import {
   linkWithCredential,
   linkWithPopup,
   onAuthStateChanged,
-  signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
 } from "firebase/auth";
@@ -301,38 +302,6 @@ export default function DashboardPage() {
       unsubscribe();
     };
   }, []);
-
-  useEffect(() => {
-    if (!entryParamsReady || !authReady || user || !auth) {
-      return;
-    }
-
-    if (shouldUseDirectAuthEntry) {
-      return;
-    }
-
-    let cancelled = false;
-    setSigningIn(true);
-    setAuthError("");
-
-    authPersistenceReady
-      .then(() => signInAnonymously(auth))
-      .catch((error) => {
-        if (!cancelled) {
-          setAuthError(friendlyAuthError(error));
-          setShowGuestAuthFallback(true);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setSigningIn(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authReady, entryParamsReady, shouldUseDirectAuthEntry, user]);
 
   useEffect(() => {
     if (entryIntent === "trial" && user?.email && !trialCheckoutEmail) {
@@ -834,25 +803,8 @@ export default function DashboardPage() {
     dbExists: Boolean(db),
   };
 
-  async function handleSignIn() {
-    if (!auth) {
-      setAuthError("Sign-in is not available right now. Try again later.");
-      return;
-    }
-
-    setSigningIn(true);
-    setAuthError("");
-
-    try {
-      await authPersistenceReady;
-      await signInAnonymously(auth);
-      setShowGuestAuthFallback(false);
-    } catch (signInError) {
-      setAuthError(friendlyAuthError(signInError));
-      setShowGuestAuthFallback(true);
-    } finally {
-      setSigningIn(false);
-    }
+  function handleSignIn() {
+    window.location.assign("/signin");
   }
 
   async function handleGoogleSignIn() {
@@ -1041,7 +993,7 @@ export default function DashboardPage() {
   async function handleRetryTrialCheckout() {
     checkoutStartedRef.current = false;
     if (!auth?.currentUser) {
-      await handleSignIn();
+      window.location.assign("/signin");
       return;
     }
     await startTrialCheckoutForUser(auth.currentUser, trialCheckoutEmail.trim().toLowerCase());
@@ -2953,13 +2905,29 @@ export default function DashboardPage() {
       <main className="dashboard-shell">
         <section className="auth-panel">
           <Logo className="eyebrow-logo" />
-          <h1>{shouldUseDirectAuthEntry ? directAuthIsSignIn ? "Sign in to ClearTill" : "Create your ClearTill account" : "Preparing your free pay-date forecast…"}</h1>
+          <h1>Sign in to view your ClearTill dashboard</h1>
+          <p>Your saved balance, payday and upcoming costs stay connected to your account.</p>
+          <div className="auth-button-row">
+            <Link className="primary-button" href="/signin">Sign in</Link>
+            <Link className="secondary-button" href="/start">Create an account</Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
+  if (false && (!user || shouldShowDirectAuth)) {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>{shouldUseDirectAuthEntry ? directAuthIsSignIn ? "Sign in to ClearTill" : "Create your ClearTill account" : "Account required"}</h1>
           <p>
             {shouldUseDirectAuthEntry
               ? directAuthIsSignIn
                 ? "Return to your saved pay-date forecast and account."
                 : "Save your result, then continue to Stripe to enter your card. You pay £0 today, then £1.99 after 7 days and monthly after that unless you cancel."
-              : "ClearTill is opening a private guest session so you can see your first result before any payment step."}
+              : "Create an account to save and update your first result."}
           </p>
           <TrustShield className="auth-trust-banner" compact />
           {authError ? (
@@ -2967,7 +2935,7 @@ export default function DashboardPage() {
               {!shouldUseDirectAuthEntry ? <p className="error">{authError}</p> : null}
               {!shouldUseDirectAuthEntry ? (
                 <button className="secondary-button" type="button" onClick={handleSignIn} disabled={signingIn}>
-                  Try guest access again
+                  Sign in
                 </button>
               ) : null}
               {shouldShowGuestFallback ? (
@@ -2977,7 +2945,7 @@ export default function DashboardPage() {
                       ? directAuthIsSignIn
                         ? "Use Google or email to return to your ClearTill dashboard."
                         : "Use Google or email to create your account and carry on to your free trial."
-                      : "Guest access is unavailable right now. Continue with Google or email so you can still get your first ClearTill result."}
+                      : "Use an account to save your first ClearTill result."}
                   </p>
                   <button className="primary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>
                     {signingIn ? "Opening Google..." : "Continue with Google"}
@@ -3086,7 +3054,7 @@ export default function DashboardPage() {
                 {authError ? <p className="error">{authError}</p> : null}
               </div>
             ) : (
-              <p className="helper-text">{signingIn ? "Starting secure guest access…" : "One moment…"}</p>
+              <p className="helper-text">One moment…</p>
             )
           )}
         </section>
@@ -3098,7 +3066,7 @@ export default function DashboardPage() {
   // claim banner for anonymous trial users. Signed-in customers with resolved
   // access use the modular dashboard; everyone else keeps the completed-result
   // and single-CTA path below.
-  if (user && !user.isAnonymous && billingStatusReady && hasPremiumAccess) {
+  if (user && !user.isAnonymous && billingStatusReady) {
     return <HomeDashboard />;
   }
 
@@ -3541,14 +3509,12 @@ export default function DashboardPage() {
                   onChange={(event) => setIncomeForm((current) => ({ ...current, amount: event.target.value }))}
                   placeholder="Monthly income"
                 />
-                <label className="field-label" htmlFor="forecast-payday-day">Pay date</label>
-                <input
+                <DayOfMonthField
                   id="forecast-payday-day"
-                  inputMode="numeric"
+                  label="Pay date"
                   disabled={importLocked}
                   value={incomeForm.payDay}
                   onChange={(event) => setIncomeForm((current) => ({ ...current, payDay: event.target.value }))}
-                  placeholder="Day of month"
                 />
                 <div className="edit-actions">
                   <button className="primary-button small-button" type="submit" disabled={savingEdit || importLocked}>
@@ -3749,15 +3715,13 @@ export default function DashboardPage() {
                   onChange={(event) => setIncomeForm((current) => ({ ...current, amount: event.target.value }))}
                   placeholder="Monthly income"
                 />
-                <label className="field-label" htmlFor="payday-day">Pay date</label>
-                <input
+                <DayOfMonthField
                   ref={paydayDayInputRef}
                   id="payday-day"
-                  inputMode="numeric"
+                  label="Pay date"
                   disabled={importLocked}
                   value={incomeForm.payDay}
                   onChange={(event) => setIncomeForm((current) => ({ ...current, payDay: event.target.value }))}
-                  placeholder="Day of month"
                 />
                 <div className="edit-actions">
                   <button className="primary-button" type="submit" disabled={savingEdit || importLocked}>
@@ -4129,10 +4093,7 @@ export default function DashboardPage() {
                                   <label className="field-label" htmlFor={`csv-amount-${s.id}`}>Amount</label>
                                   <input id={`csv-amount-${s.id}`} inputMode="decimal" value={csvEditForm.amount} onChange={(e) => setCsvEditForm((f) => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
                                 </div>
-                                <div className="field-row">
-                                  <label className="field-label" htmlFor={`csv-day-${s.id}`}>Due day (1–31)</label>
-                                  <input id={`csv-day-${s.id}`} inputMode="numeric" value={csvEditForm.dueDay} onChange={(e) => setCsvEditForm((f) => ({ ...f, dueDay: e.target.value }))} placeholder="e.g. 1" />
-                                </div>
+                                <DayOfMonthField id={`csv-day-${s.id}`} label="Due day (1–31)" value={csvEditForm.dueDay} onChange={(e) => setCsvEditForm((f) => ({ ...f, dueDay: e.target.value }))} />
                                 <div className="field-row">
                                   <label className="field-label" htmlFor={`csv-cat-${s.id}`}>Category</label>
                                   <select id={`csv-cat-${s.id}`} className="category-select" value={csvEditForm.category} onChange={(e) => setCsvEditForm((f) => ({ ...f, category: e.target.value }))}>
@@ -4535,15 +4496,12 @@ function BillReviewCard({
               onChange={(event) => onFormChange((current) => ({ ...current, amount: event.target.value }))}
             />
           </div>
-          <div className="field-row">
-            <label className="field-label" htmlFor={`review-dueDay-${draft.id}`}>Due day</label>
-            <input
-              id={`review-dueDay-${draft.id}`}
-              inputMode="numeric"
-              value={form?.dueDay || ""}
-              onChange={(event) => onFormChange((current) => ({ ...current, dueDay: event.target.value }))}
-            />
-          </div>
+          <DayOfMonthField
+            id={`review-dueDay-${draft.id}`}
+            label="Due day"
+            value={form?.dueDay || ""}
+            onChange={(event) => onFormChange((current) => ({ ...current, dueDay: event.target.value }))}
+          />
           <div className="field-row">
             <label className="field-label" htmlFor={`review-category-${draft.id}`}>Category</label>
             <select
@@ -4717,10 +4675,10 @@ function ForecastLargeCostsSection({
             onChange={(event) => onFormChange((current) => ({ ...current, amountAlreadySaved: event.target.value }))}
             placeholder="0"
           />
-          <label className="field-label" htmlFor="large-cost-due-date">Due date</label>
-          <input
+          <DateField
             id="large-cost-due-date"
-            type="date"
+            label="Due date"
+            required
             value={form.dueDate}
             onChange={(event) => onFormChange((current) => ({ ...current, dueDate: event.target.value }))}
           />
@@ -5142,16 +5100,7 @@ function CsvBillFinder({ userId, bills, displayCurrency, onBillSaved }) { // esl
                           placeholder="0.00"
                         />
                       </div>
-                      <div className="field-row">
-                        <label className="field-label" htmlFor={`csv-day-${s.id}`}>Due day (1–31)</label>
-                        <input
-                          id={`csv-day-${s.id}`}
-                          inputMode="numeric"
-                          value={editForm.dueDay}
-                          onChange={(e) => setEditForm((f) => ({ ...f, dueDay: e.target.value }))}
-                          placeholder="e.g. 1"
-                        />
-                      </div>
+                      <DayOfMonthField id={`csv-day-${s.id}`} label="Due day (1–31)" value={editForm.dueDay} onChange={(e) => setEditForm((f) => ({ ...f, dueDay: e.target.value }))} />
                       <div className="field-row">
                         <label className="field-label" htmlFor={`csv-cat-${s.id}`}>Category</label>
                         <select
@@ -5497,13 +5446,11 @@ function BillGroup({
                     onChange={(event) => onBillFormChange((current) => ({ ...current, amount: event.target.value }))}
                     placeholder="Amount"
                   />
-                  <label className="field-label" htmlFor={`bill-due-day-${bill.id}`}>Day of month</label>
-                  <input
+                  <DayOfMonthField
                     id={`bill-due-day-${bill.id}`}
-                    inputMode="numeric"
+                    label="Day of month"
                     value={editingBillForm.dueDay}
                     onChange={(event) => onBillFormChange((current) => ({ ...current, dueDay: event.target.value }))}
-                    placeholder="Day of month"
                   />
                   <label className="field-label" htmlFor={`bill-category-${bill.id}`}>Category</label>
                   <select

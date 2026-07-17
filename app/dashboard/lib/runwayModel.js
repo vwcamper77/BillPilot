@@ -3,6 +3,14 @@ function roundMoney(value) {
   return Number.isFinite(number) ? Math.round(number * 100) / 100 : 0;
 }
 
+export function resolveRunwayIncomeBoundary(nextConfirmedIncome, fallbackPaydayDate = null) {
+  const confirmedDate = String(nextConfirmedIncome?.date || "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(confirmedDate)) return confirmedDate;
+
+  const fallbackDate = String(fallbackPaydayDate || "");
+  return /^\d{4}-\d{2}-\d{2}$/.test(fallbackDate) ? fallbackDate : null;
+}
+
 export function deriveRunwayStatus(week, hasFundingGap = false) {
   if (hasFundingGap || Number(week?.weeklyMinimumBalance) < 0 || Number(week?.minimumProjectedBalance) < 0) {
     return "Warning";

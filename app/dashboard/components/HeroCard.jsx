@@ -65,7 +65,7 @@ export default function HeroCard({
           {showDaily ? <p className="hero-daily">{formatCurrency(Math.max(0, dailySpendingRoom), displayCurrency)} per day until {immediateBoundary}</p> : null}
           {safeUntilNextIncome < 0 ? <p className="hero-confidence-note">Your safe daily amount is £0 until the shortfall is covered.</p> : null}
           {hasResult ? <p className="hero-evidence">Based on your {formatCurrency(availableNow, displayCurrency)} balance and {formatCurrency(committedBeforeIncome, displayCurrency)} committed before then.</p> : null}
-          {timingConstrained ? <p className="hero-confidence-note">A cost and income share a date. ClearTill has conservatively counted the cost first.</p> : null}
+          {timingConstrained ? <p className="hero-confidence-note">A bill and income share a date. ClearTill has conservatively counted the bill first.</p> : null}
           {estimatedIncome > 0 ? <p className="hero-confidence-note">Estimated income of {formatCurrency(estimatedIncome, displayCurrency)} is visible below but is not counted.</p> : null}
         </div>
         {hasBalanceSnapshot ? (

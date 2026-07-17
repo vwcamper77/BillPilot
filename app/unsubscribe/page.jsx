@@ -5,10 +5,10 @@ export default async function UnsubscribePage({ searchParams }) {
   return (
     <main className="account-shell">
       <section className="account-panel">
-        <h1>{success ? "Weekly reminders turned off" : "Unsubscribe link expired"}</h1>
+        <h1>{success ? "Optional reminders turned off" : "Unsubscribe link expired"}</h1>
         <p className="helper-text">
           {success
-            ? "Optional weekly planning emails have been switched off for this account."
+            ? "Optional ClearTill reminder emails have been switched off for this account. Essential account and preview-state emails will still be sent."
             : "Open a fresh email from ClearTill and use the latest unsubscribe link."}
         </p>
       </section>
