@@ -470,6 +470,9 @@ function HomeDashboardContent({ view = "overview" }) {
   const previewExpiryLabel = accessCheck.entitlement?.previewEndsAt
     ? new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }).format(new Date(accessCheck.entitlement.previewEndsAt))
     : "";
+  const previewBadgeLabel = accessState === "preview_active"
+    ? `7-day live preview · ${previewDaysLeft ?? 0} ${previewDaysLeft === 1 ? "day" : "days"} remaining${previewExpiryLabel ? ` · Ends ${previewExpiryLabel}` : ""}`
+    : accessState === "paid" ? "Member" : "Preview ended";
 
   useEffect(() => {
     if (setupStep === 5 && typeof window !== "undefined" && !window.localStorage.getItem(SETUP_COMPLETED_STORAGE_KEY)) {
@@ -1332,7 +1335,7 @@ function HomeDashboardContent({ view = "overview" }) {
             <p className="brand">{viewTitle}</p>
           </div>
           <div className="topbar-actions">
-            <span className="access-badge" title={previewExpiryLabel ? `Live preview ends ${previewExpiryLabel}` : undefined}>{accessState === "preview_active" ? `Live preview · ${previewDaysLeft ?? 0} days left` : accessState === "paid" ? "Member" : "Preview ended"}</span>
+            <span className="access-badge" title={previewExpiryLabel ? `Seven-day live preview ends ${previewExpiryLabel}` : undefined}>{previewBadgeLabel}</span>
             {accessState === "preview_active" && previewExpiryLabel ? <span className="sr-only">Live preview ends {previewExpiryLabel}</span> : null}
             <span className="user-id">{user?.isAnonymous ? "Guest session" : user?.displayName || user?.email || "Signed in"}</span>
             {user?.isAnonymous ? <button className="secondary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>Save with Google</button> : null}
@@ -1435,7 +1438,7 @@ function HomeDashboardContent({ view = "overview" }) {
         </div>
         <div className="topbar-actions">
           <span className="access-badge">
-            <span title={previewExpiryLabel ? `Live preview ends ${previewExpiryLabel}` : undefined}>{accessState === "preview_active" ? `Live preview · ${previewDaysLeft ?? 0} days left` : accessState === "paid" ? "Member" : "Preview ended"}</span>
+            <span title={previewExpiryLabel ? `Seven-day live preview ends ${previewExpiryLabel}` : undefined}>{previewBadgeLabel}</span>
           </span>
           {accessState === "preview_active" && previewExpiryLabel ? <span className="sr-only">Live preview ends {previewExpiryLabel}</span> : null}
           <span className="user-id">

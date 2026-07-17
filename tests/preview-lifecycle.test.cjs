@@ -40,6 +40,13 @@ test("server time expires a still-active preview without hiding its data", () =>
   assert.match(rules, /match \/users\/\{userId\}[\s\S]*allow read: if isOwner\(userId\)/);
 });
 
+test("active preview status is explicit and displays remaining days and end date", () => {
+  const dashboard = read("app/dashboard/HomeDashboard.jsx");
+  assert.match(dashboard, /7-day live preview/);
+  assert.match(dashboard, /previewDaysLeft[\s\S]*day[\s\S]*days[\s\S]*remaining/);
+  assert.match(dashboard, /Ends \$\{previewExpiryLabel\}/);
+});
+
 test("paid, founding, manual and legacy access outrank an expired preview", () => {
   const preview = normalizePreviewRecord({ status: "active", endsAt: "2026-07-16T12:00:00.000Z" }, new Date("2026-07-17T12:00:00.000Z"));
   for (const accessType of ["stripe_subscription_active", "founding_member", "manually_granted", "legacy_paid"]) {
