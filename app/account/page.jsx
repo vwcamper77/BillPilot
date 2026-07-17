@@ -11,6 +11,8 @@ import { auth, authPersistenceReady, isFirebaseClientConfigured } from "@/lib/fi
 import { trackEvent } from "@/lib/analytics/track";
 import ManageSubscriptionButton from "./ManageSubscriptionButton";
 import InternalAnalyticsControl from "@/components/InternalAnalyticsControl";
+import DashboardNav from "@/app/dashboard/components/DashboardNav";
+import AccountFinanceSettings from "./AccountFinanceSettings";
 
 const ACCOUNT_DIALOGS = {
   reset_data: {
@@ -377,6 +379,8 @@ export default function AccountPage() {
         </div>
       </header>
 
+      <DashboardNav />
+
       {feedback.message ? (
         <section className={`page-notice${feedback.type === "error" ? " is-error" : ""}`} aria-live="polite">
           {feedback.message}
@@ -387,6 +391,7 @@ export default function AccountPage() {
 
       <div className="account-stack">
         <InternalAnalyticsControl />
+        <AccountFinanceSettings user={user} />
         <section className="account-panel">
           <p className="account-section-label">Your account</p>
           {!billingReady ? <p className="helper-text" role="status">Loading your account…</p> : null}

@@ -27,6 +27,7 @@ import {
 import {
   calculateDashboard,
   calculateLargeCostImpact,
+  buildWeeklySafeSpendingPlan,
   diffDays,
   formatCurrency,
   formatDisplayDate,
@@ -42,10 +43,10 @@ import { logSecurityEventClient } from "@/lib/security/clientSecurity";
 import { safeError } from "@/lib/security/safeLog";
 import { postDashboardSettingsAction, postDashboardStateAction, saveIncome as saveIncomeRequest } from "./lib/dashboardApi";
 import { friendlyAuthError, friendlyGoogleAuthError, friendlySettingsError } from "./lib/friendlyErrors";
+import { triggerQuickAction } from "./components/QuickActions";
 import CollapsibleSection from "./components/CollapsibleSection";
 import HeroCard from "./components/HeroCard";
 import AfterNextIncome from "./components/AfterNextIncome";
-import { triggerQuickAction } from "./components/QuickActions";
 import AttentionStrip, { isBalanceSnapshotStale, STALE_BALANCE_DAYS } from "./components/AttentionStrip";
 import BalanceEditor from "./components/BalanceEditor";
 import AddBills from "./components/AddBills";
@@ -55,6 +56,14 @@ import SavingsEditor from "./components/SavingsEditor";
 import UtilitiesTracker, { buildTrackerChecks } from "./components/UtilitiesTracker";
 import FourWeekChart from "./components/FourWeekChart";
 import SetupWizard from "./components/SetupWizard";
+import AdditionalIncomeEditor from "./components/AdditionalIncomeEditor";
+import DashboardNav from "./components/DashboardNav";
+import Drawer from "./components/Drawer";
+import CurrentPositionCard from "./components/CurrentPositionCard";
+import MoneyRunway from "./components/MoneyRunway";
+import WeekBreakdownDrawer from "./components/WeekBreakdownDrawer";
+import SpendTestDrawer from "./components/SpendTestDrawer";
+import { buildSixWeekRunwayRows } from "./lib/runwayModel";
 
 const RECENT_SESSION_STORAGE_KEY = "cleartill_recent_checkout_session_id";
 const SETUP_COMPLETED_STORAGE_KEY = "ct.setup.completedAt";
@@ -102,7 +111,7 @@ function HomeDashboardFallback() {
   );
 }
 
-function HomeDashboardContent() {
+function HomeDashboardContent({ view = "overview" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -138,6 +147,9 @@ function HomeDashboardContent() {
   const [balanceImpact, setBalanceImpact] = useState("");
   const [highlightPrimaryResult, setHighlightPrimaryResult] = useState(false);
   const [pendingBalanceResult, setPendingBalanceResult] = useState(null);
+  const [selectedRunwayWeek, setSelectedRunwayWeek] = useState(null);
+  const [spendTestOpen, setSpendTestOpen] = useState(false);
+  const [addBillOpen, setAddBillOpen] = useState(false);
 
   const [optimisticBalance, setOptimisticBalance] = useState(null);
   const [optimisticIncome, setOptimisticIncome] = useState(null);
@@ -527,6 +539,23 @@ function HomeDashboardContent() {
     largeCostAllocations: largeCostLedgerAllocations,
     additionalIncomeEvents: incomeEvents,
   }) : null, [dashboard.afterPayday, dashboard.beforePayday, dashboard.currentBalance, forecastHorizonDate, hasBalanceSnapshot, incomeEvents, largeCostLedgerAllocations, todayIso]);
+  const sixWeekPlan = useMemo(() => hasBalanceSnapshot ? buildWeeklySafeSpendingPlan(
+    todayIso,
+    dashboard.paydayDate,
+    dashboard.currentBalance,
+    [...dashboard.beforePayday, ...dashboard.afterPayday],
+    largeCostLedgerAllocations,
+    0,
+    incomeEvents,
+    6,
+  ) : [], [dashboard.afterPayday, dashboard.beforePayday, dashboard.currentBalance, dashboard.paydayDate, hasBalanceSnapshot, incomeEvents, largeCostLedgerAllocations, todayIso]);
+  const fundingGapDates = useMemo(() => largeCostPlans.plans
+    .filter((plan) => Number(plan.shortfall) > 0)
+    .map((plan) => plan.dueDate), [largeCostPlans.plans]);
+  const runwayRows = useMemo(
+    () => buildSixWeekRunwayRows(sixWeekPlan, fundingGapDates),
+    [fundingGapDates, sixWeekPlan],
+  );
   const bigCostsDueBeforePayday = cashPosition?.protectedBeforeNextIncomeTotal || 0;
   const spendingRoomUntilPayday = cashPosition?.safeUntilNextIncome ?? null;
   const dailySpendingRoom = cashPosition?.safePerDayUntilNextIncome ?? null;
@@ -1215,6 +1244,113 @@ function HomeDashboardContent() {
     );
   }
 
+  const activeIncomeCount = incomeEvents.filter((source) => source?.active !== false).length;
+  const largestFundingGap = largeCostPlans.plans.reduce((largest, plan) => Math.max(largest, Number(plan.shortfall) || 0), 0);
+  const missingTrackerCount = trackerChecks.filter((check) => !check.found).length;
+  const viewTitle = view === "bills-income" ? "Bills & income" : view === "large-costs-savings" ? "Large costs & savings" : "Overview";
+  const planningContext = {
+    currentBalance: hasBalanceSnapshot ? dashboard.currentBalance : 0,
+    incomeAmount: 0,
+    additionalIncomeEvents: incomeEvents,
+    paydayDate: dashboard.paydayDate,
+    savingsAvailable: generalProtectedSavings,
+    bills: [...dashboard.beforePayday, ...dashboard.afterPayday],
+  };
+
+  if (["overview", "bills-income", "large-costs-savings"].includes(view)) {
+    return (
+      <main className={`dashboard-shell dashboard-view-${view}${accessState === "preview_expired" ? " dashboard-readonly" : ""}`} data-experience-mode="bau" data-access-state={accessState}>
+        <header className="topbar">
+          <div>
+            <Link className="brand-link" href="/" aria-label="ClearTill home"><Logo className="eyebrow-logo" /></Link>
+            <p className="brand">{viewTitle}</p>
+          </div>
+          <div className="topbar-actions">
+            <span className="access-badge">{accessState === "preview_active" ? `Live preview · ${previewDaysLeft ?? 0} days left` : accessState === "paid" ? "Member" : "Preview ended"}</span>
+            <span className="user-id">{user?.isAnonymous ? "Guest session" : user?.displayName || user?.email || "Signed in"}</span>
+            {user?.isAnonymous ? <button className="secondary-button" type="button" onClick={handleGoogleSignIn} disabled={signingIn}>Save with Google</button> : null}
+            {isAnalyticsAdmin ? <Link className="secondary-button" href="/admin/analytics">Analytics</Link> : null}
+          </div>
+        </header>
+
+        <DashboardNav />
+
+        {accessState === "preview_expired" ? (
+          <section className="expired-preview-banner" role="status">
+            <div><strong>Your live preview has ended.</strong><p>This position was last updated {balanceFreshness.replace(/^Updated /, "").toLowerCase()} and may now be out of date.</p></div>
+            <div className="expired-preview-actions"><Link className="primary-link upgrade-action" href="/billing?plan=monthly">Continue monthly</Link><Link className="secondary-button upgrade-action" href="/billing?plan=annual">Continue annually</Link></div>
+          </section>
+        ) : null}
+        {pageNotice ? <section className="page-notice" aria-live="polite">{pageNotice}</section> : null}
+
+        {view === "overview" ? (
+          <>
+            <div ref={primaryResultRef} className={highlightPrimaryResult ? "primary-result-highlight" : ""} tabIndex={-1} aria-live="polite">
+              <CurrentPositionCard cashPosition={cashPosition} displayCurrency={displayCurrency} onUpdateBalance={() => openBalanceEditor(false)} onTestSpend={() => setSpendTestOpen(true)} onAddBill={() => setAddBillOpen(true)} />
+              {balanceImpact ? <p className="balance-impact" role="status">{balanceImpact}</p> : null}
+            </div>
+
+            <AttentionStrip
+              compact
+              reminders={reminders}
+              billsDueSoon={billsDueSoon}
+              staleBalanceDays={staleBalanceDaysForStrip}
+              onUpdateBalance={() => openBalanceEditor(false)}
+              onReviewPosition={() => primaryResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              onAddCost={() => setAddBillOpen(true)}
+              issues={[
+                unassignedCostsBeforePayday > 0 ? `${formatCurrency(unassignedCostsBeforePayday, displayCurrency)} of planned costs still needs a funding choice.` : "",
+                estimatedIncomeTotal > 0 ? `${formatCurrency(estimatedIncomeTotal, displayCurrency)} of estimated income is not counted in the available amount.` : "",
+                bills.some((bill) => !bill.nextDueDate && !bill.dueDay) ? "A bill is missing its usual due date." : "",
+              ]}
+            />
+
+            <MoneyRunway rows={runwayRows} displayCurrency={displayCurrency} onSelectWeek={setSelectedRunwayWeek} />
+
+            <section className="overview-management" aria-labelledby="manage-title">
+              <div className="overview-section-heading"><div><p className="overview-kicker">Manage</p><h2 id="manage-title">Keep your plan up to date</h2></div></div>
+              <div className="overview-management-grid">
+                <Link href="/dashboard/bills-income"><strong>Bills & income</strong><span>{bills.length} active bill{bills.length === 1 ? "" : "s"} · {activeIncomeCount} income source{activeIncomeCount === 1 ? "" : "s"}</span><small>{nextDueBill?.nextDueDate ? `Next bill ${formatDisplayDate(nextDueBill.nextDueDate)}` : "Review regular money in and out"}</small></Link>
+                <Link href="/dashboard/large-costs-savings"><strong>Large costs & savings</strong><span>{largeCostPlans.plans.length} planned cost{largeCostPlans.plans.length === 1 ? "" : "s"}</span><small>{largestFundingGap > 0 ? `${formatCurrency(largestFundingGap, displayCurrency)} largest funding gap` : `${formatCurrency(generalProtectedSavings, displayCurrency)} protected savings`}</small></Link>
+                <Link href="/account"><strong>Account</strong><span>{reminders.length} recent reminder{reminders.length === 1 ? "" : "s"}</span><small>{missingTrackerCount ? `${missingTrackerCount} household item${missingTrackerCount === 1 ? "" : "s"} to review` : "Household tracker complete"}</small></Link>
+              </div>
+            </section>
+
+            <Drawer open={balanceEditorOpen} onClose={() => setBalanceEditorOpen(false)} title="Update your position" description="Update the balance currently available in your account.">
+              <BalanceEditor open focusPayday={focusPayday} onConsumeFocusPayday={() => setFocusPayday(false)} hasBalanceSnapshot={hasBalanceSnapshot} currentBalance={dashboard.currentBalance} balanceInput={balanceInput} onBalanceInputChange={setBalanceInput} balanceError={balanceError} savingBalance={savingBalance} onSubmitBalance={handleBalanceSave} income={displayIncome} hasPayday={hasPayday} hasIncomeAmount={hasIncomeAmount} hasBills={hasBills} totalMonthlyBills={totalMonthlyBills} monthlySpendingRoomValue={monthlySpendingRoomValue} editingIncome={editingIncome} onSetEditingIncome={setEditingIncome} incomeForm={incomeForm} onIncomeFormChange={setIncomeForm} savingEdit={savingEdit} editError={editError} onSubmitIncome={handleIncomeSave} incomeEvents={incomeEvents} onIncomeEventsChange={setIncomeEvents} todayIso={todayIso} onNotice={setPageNotice} displayCurrency={displayCurrency} onCurrencySelect={handleCurrencySave} />
+            </Drawer>
+            <SpendTestDrawer open={spendTestOpen} onClose={() => setSpendTestOpen(false)} cashPosition={cashPosition} displayCurrency={displayCurrency} />
+            <Drawer open={addBillOpen} onClose={() => setAddBillOpen(false)} title="Add a bill" description="Add one bill here, or use the full management page for imports and reviews." size="wide">
+              <AddBills bills={bills} onBillsChange={setBills} hasIncome={Boolean(displayIncome)} hasBalanceSnapshot={hasBalanceSnapshot} hasPayday={hasPayday} displayCurrency={displayCurrency} onImportingChange={setBillsBusy} autoFocusOnMount />
+            </Drawer>
+            <WeekBreakdownDrawer row={selectedRunwayWeek} displayCurrency={displayCurrency} onClose={() => setSelectedRunwayWeek(null)} />
+          </>
+        ) : null}
+
+        {view === "bills-income" ? (
+          <div className="management-page-stack">
+            <section className="management-page-intro management-page-intro-action">
+              <div><p className="overview-kicker">Money in and out</p><h1>Bills & income</h1><p>Manage regular commitments, imports and every confirmed income source used by your runway.</p></div>
+              <button className="primary-button" type="button" onClick={() => triggerQuickAction("bills", "add-bills")}>Add bill</button>
+            </section>
+            <section className="management-panel" aria-labelledby="income-management-title"><h2 id="income-management-title">Income</h2><AdditionalIncomeEditor incomeEvents={incomeEvents} onIncomeEventsChange={setIncomeEvents} todayIso={todayIso} displayCurrency={displayCurrency} onNotice={setPageNotice} defaultExpanded /></section>
+            <section className="management-panel" aria-labelledby="bill-management-title"><h2 id="bill-management-title">Bills</h2><BillList bills={bills} dashboard={dashboard} displayCurrency={displayCurrency} hasBalanceSnapshot={hasBalanceSnapshot} importLocked={billsBusy} todayIso={todayIso} onBillsChange={setBills} onNotice={setPageNotice} /></section>
+            <section className="management-panel" aria-labelledby="household-utilities-title"><h2 id="household-utilities-title">Household utilities tracker</h2><UtilitiesTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} /></section>
+            <section className="management-panel" aria-labelledby="add-bills-title"><h2 id="add-bills-title">Add or import bills</h2><AddBills bills={bills} onBillsChange={setBills} hasIncome={Boolean(displayIncome)} hasBalanceSnapshot={hasBalanceSnapshot} hasPayday={hasPayday} displayCurrency={displayCurrency} onImportingChange={setBillsBusy} /></section>
+          </div>
+        ) : null}
+
+        {view === "large-costs-savings" ? (
+          <div className="management-page-stack">
+            <section className="management-page-intro"><p className="overview-kicker">Plan ahead</p><h1>Large costs & savings</h1><p>Choose how upcoming costs are funded and keep protected savings separate from daily spending.</p></section>
+            <section className="management-panel"><LargeCostForm onLargeCostsChange={setLargeCosts} displayCurrency={displayCurrency} hasPayday={hasPayday} todayIso={todayIso} costsWithStatus={largeCostsWithStatus} plannedCosts={largeCostsWithStatus} unassignedAmount={unassignedCostsBeforePayday} planSummary={largeCostPlans.summary} planningContext={planningContext} onSavingsChange={setSavings} onNotice={setPageNotice} /></section>
+            <section className="management-panel" aria-labelledby="savings-management-title"><h2 id="savings-management-title">Savings and protected money</h2><SavingsEditor savings={savings} onSavingsChange={setSavings} displayCurrency={displayCurrency} protectedTotal={largeCostImpact.totalProtectedSavings} generalSavings={generalProtectedSavings} assignedSavings={largeCostImpact.totalCostSpecificSaved} assignedSavingsByCost={largeCostImpact.costs} bigCostsCoveredBySavings={largeCostImpact.bigCostsCoveredBySavings} fallbackCopy={spendingRoomFallbackCopy} /></section>
+          </div>
+        ) : null}
+      </main>
+    );
+  }
+
   return (
     <main className={`dashboard-shell${accessState === "preview_expired" ? " dashboard-readonly" : ""}`} data-experience-mode="bau" data-access-state={accessState}>
       <header className="topbar">
@@ -1442,10 +1578,10 @@ function HomeDashboardContent() {
   );
 }
 
-export default function HomeDashboard() {
+export default function HomeDashboard({ view = "overview" }) {
   return (
     <Suspense fallback={<HomeDashboardFallback />}>
-      <HomeDashboardContent />
+      <HomeDashboardContent view={view} />
     </Suspense>
   );
 }

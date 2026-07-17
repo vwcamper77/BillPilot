@@ -7,6 +7,7 @@ import AttributionTracker from "@/components/AttributionTracker";
 import AnalyticsConsent from "@/components/AnalyticsConsent";
 import TestAuthBridge from "@/components/TestAuthBridge";
 import InternalAnalyticsBanner from "@/components/InternalAnalyticsBanner";
+import ScrollToTopButton from "@/app/dashboard/components/ScrollToTopButton";
 import { INTERNAL_ANALYTICS_COOKIE, verifyInternalAnalyticsCookie } from "@/lib/analytics/internal.server";
 
 const isTestAuthBridgeEnabled = process.env.NODE_ENV !== "production";
@@ -136,6 +137,7 @@ export default async function RootLayout({ children }) {
           <div className="app-content">{children}</div>
           <Footer />
         </div>
+        <ScrollToTopButton />
       </body>
     </html>
   );
