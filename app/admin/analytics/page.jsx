@@ -125,6 +125,7 @@ export default function AdminAnalyticsPage() {
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
+          <Link className="account-row" href="/admin/email-operations">Email operations</Link>
           <Link className="account-row" href="/dashboard">Dashboard</Link>
         </div>
       </div>

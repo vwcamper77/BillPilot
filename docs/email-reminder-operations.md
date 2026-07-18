@@ -66,6 +66,21 @@ Rollout controls:
 
 Do not enable delivery until the sending domain has approved SPF, DKIM and DMARC, TLS delivery is confirmed, the monitored reply path is working, and the Resend webhook points to `/api/email/webhook`.
 
+## Admin email operations board
+
+Allowlisted administrators can open `/admin/email-operations` or follow **Email operations** from `/admin/analytics`. Access uses the existing verified Firebase session and `ADMIN_EMAILS` allowlist.
+
+The board reports:
+
+- **Fired** — ClearTill claimed the durable delivery record and began a provider attempt;
+- **Provider accepted** — Resend accepted the API request and returned a provider message ID;
+- **Delivered** — the recipient mail server accepted the message, as confirmed by the signed Resend webhook;
+- **Delayed, bounced, complained or failed** — provider/webhook operational outcomes;
+- **Activity after send** — a later authenticated ClearTill action, shown as an outcome signal without claiming causation;
+- active suppressions and whether provider, webhook, scheduler and rollout configuration is present.
+
+“Delivered” does not prove that a person read the email. Open tracking is deliberately not used for reminder decisions, and the board must not label provider-open events as verified reading. The API is admin-only, returns `private, no-store`, masks recipient addresses and does not expose rendered email bodies or financial values.
+
 ## Rollout
 
 1. Deploy with all reminder flags false and set `REMINDER_LIFECYCLE_START_AT` to the intended production rollout timestamp.
