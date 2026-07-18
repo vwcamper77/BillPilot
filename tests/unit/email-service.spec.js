@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import {
   CANONICAL_EMAIL_SENDER,
+  LEAD_MAGNET_EMAIL_SENDER,
   getMockEmailDeliveries,
   resetMockEmailDeliveries,
   sendEmail,
@@ -22,6 +23,24 @@ test("test mode records email in the mock and uses the canonical sender", async 
       from: CANONICAL_EMAIL_SENDER,
       to: "customer@example.com",
       subject: "Mock delivery",
+    }),
+  ]);
+});
+
+test("lead magnet delivery uses hello while arbitrary From addresses remain blocked", async () => {
+  await sendEmail({
+    senderType: "lead_magnet",
+    from: "Attacker <attacker@example.com>",
+    to: "customer@example.com",
+    subject: "Your guide",
+    text: "Test",
+  });
+
+  expect(getMockEmailDeliveries()).toEqual([
+    expect.objectContaining({
+      from: LEAD_MAGNET_EMAIL_SENDER,
+      to: "customer@example.com",
+      subject: "Your guide",
     }),
   ]);
 });
