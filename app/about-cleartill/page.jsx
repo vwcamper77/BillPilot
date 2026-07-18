@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import Logo from "@/components/Logo";
 import { SOCIAL_IMAGE, SOCIAL_IMAGE_URL, SITE_URL } from "@/lib/seo";
 
@@ -37,7 +38,7 @@ export default function AboutClearTillPage() {
 
       <section className="marketing-hero about-hero">
         <p className="acquisition-eyebrow">The founder story</p>
-        <h1>About Gavin Ferns and ClearTill</h1>
+        <h1>About ClearTill and it&apos;s founder Gavin Ferns</h1>
         <p className="about-question-intro">ClearTill was created around one simple question:</p>
         <blockquote>“How much of the money in my account is actually available after the bills due before my next income date?”</blockquote>
         <p>
@@ -66,17 +67,29 @@ export default function AboutClearTillPage() {
       <div className="founder-story-sections">
         <section aria-labelledby="about-gavin-heading">
           <p className="about-number">01</p>
-          <div>
-            <h2 id="about-gavin-heading">About Gavin Ferns</h2>
-            <p>
-              ClearTill was founded by Gavin Ferns, a project and commercial professional with a background in construction, infrastructure, commercial management and financial management.
-            </p>
-            <p>
-              Gavin has worked across major UK rail and construction programmes, where budgets, commitments, forecasts and changing financial positions form part of everyday decision-making. He also holds an Executive MBA from Imperial College Business School and has a longstanding interest in innovation, technology and practical problem-solving.
-            </p>
-            <p>
-              ClearTill applies that experience to a personal cashflow problem: understanding what is genuinely left after the costs that need to be covered.
-            </p>
+          <div className="founder-profile">
+            <div>
+              <h2 id="about-gavin-heading">About Gavin Ferns</h2>
+              <p>
+                ClearTill was founded by Gavin Ferns, a project and commercial professional with a background in construction, infrastructure, commercial management and financial management.
+              </p>
+              <p>
+                Gavin has worked across major UK rail and construction programmes, where budgets, commitments, forecasts and changing financial positions form part of everyday decision-making. He also holds an Executive MBA from Imperial College Business School and has a longstanding interest in innovation, technology and practical problem-solving.
+              </p>
+              <p>
+                ClearTill applies that experience to a personal cashflow problem: understanding what is genuinely left after the costs that need to be covered.
+              </p>
+            </div>
+            <figure>
+              <Image
+                src="/founder/gavin-ferns.jpg"
+                alt="Gavin Ferns, founder of ClearTill"
+                width={640}
+                height={640}
+                sizes="(max-width: 560px) calc(100vw - 48px), 260px"
+              />
+              <figcaption>Gavin Ferns, founder of ClearTill</figcaption>
+            </figure>
           </div>
         </section>
 
@@ -94,7 +107,7 @@ export default function AboutClearTillPage() {
           <p className="about-number">03</p>
           <div>
             <h2 id="outside-cleartill-heading">Outside ClearTill</h2>
-            <p>Outside work and product development, Gavin has two degrees, two campervans and a strong interest in travel, motorcycling and adventure.</p>
+            <p>Outside work and product development, Gavin has two degrees, owns a campervan and has a strong interest in adventure travel and motorcycling.</p>
           </div>
         </section>
       </div>

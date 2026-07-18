@@ -8204,6 +8204,10 @@ h1 {
 .about-number { margin: 0; color: var(--accent); font-size: 1.2rem; font-weight: 950; }
 .founder-story-sections p { color: var(--muted); line-height: 1.7; }
 .founder-story-sections p:last-child { margin-bottom: 0; }
+.founder-profile { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: clamp(28px, 5vw, 52px); align-items: start; }
+.founder-profile figure { margin: 0; }
+.founder-profile img { display: block; width: 100%; height: auto; aspect-ratio: 1; border-radius: 24px; object-fit: cover; box-shadow: var(--shadow-card); }
+.founder-profile figcaption { margin-top: 10px; color: var(--muted); font-size: .82rem; }
 .about-principles { display: grid; grid-template-columns: .75fr 1.25fr; gap: 50px; margin-top: 80px; }
 .about-principles ol { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; counter-reset: principles; }
 .about-principles li { display: grid; grid-template-columns: minmax(190px, .75fr) 1.25fr; gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--line); counter-increment: principles; }
@@ -8240,6 +8244,8 @@ h1 {
   .marketing-hero { padding: 48px 0; }
   .about-product-summary { margin-bottom: 56px; padding: 24px; }
   .founder-story-sections > section { grid-template-columns: 1fr; gap: 7px; padding: 38px 0; }
+  .founder-profile { grid-template-columns: 1fr; }
+  .founder-profile figure { max-width: 320px; }
   .about-principles { margin-top: 56px; }
   .about-principles li { grid-template-columns: 1fr; gap: 7px; }
 }

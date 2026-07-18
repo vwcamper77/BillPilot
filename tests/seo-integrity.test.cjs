@@ -31,7 +31,7 @@ test("About ClearTill has unique founder metadata and required company identity"
 });
 
 test("founder story uses verified claims and the homepage links to it", () => {
-  assert.match(about, /About Gavin Ferns/);
+  assert.match(about, /About ClearTill and it&apos;s founder Gavin Ferns/);
   assert.match(about, /Executive MBA from Imperial College Business School/);
   assert.match(about, /TalosTV and SetTheDate/);
   assert.match(home, /Created by Gavin Ferns/);
