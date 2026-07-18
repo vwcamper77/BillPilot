@@ -7,6 +7,9 @@ import path from "node:path";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
+import firestoreSafety from "./firestoreSafety.cjs";
+
+const { resolveSafeFirebaseTestConfig } = firestoreSafety;
 
 function loadEnvLocal() {
   const envPath = path.resolve(process.cwd(), ".env.local");
@@ -37,26 +40,31 @@ const TEST_PASSWORD = "cleartill-e2e-test-password";
 let adminApp = null;
 
 function getFirebaseAdminApp() {
-  if (adminApp) return adminApp;
+  const testConfig = resolveSafeFirebaseTestConfig(process.env, { readFileSync: fs.readFileSync });
 
-  if (getApps().length) {
-    adminApp = getApps()[0];
+  if (adminApp) {
+    if (String(adminApp.options.projectId || "").trim().toLowerCase() !== testConfig.projectId) {
+      throw new Error("Refusing to reuse a Firebase Admin app from a different project during E2E tests.");
+    }
     return adminApp;
   }
 
-  const projectId = String(process.env.FIREBASE_PROJECT_ID || "").trim();
-  const clientEmail = String(
-    process.env.FIREBASE_ADMIN_CLIENT_EMAIL || process.env.FIREBASE_CLIENT_EMAIL || "",
-  ).trim();
-  const privateKey = String(
-    process.env.FIREBASE_ADMIN_PRIVATE_KEY || process.env.FIREBASE_PRIVATE_KEY || "",
-  ).replace(/\\n/g, "\n");
-
-  if (!projectId || !clientEmail || !privateKey) {
-    throw new Error("Missing Firebase Admin env vars — check .env.local before running e2e tests.");
+  if (getApps().length) {
+    adminApp = getApps()[0];
+    if (String(adminApp.options.projectId || "").trim().toLowerCase() !== testConfig.projectId) {
+      throw new Error("Refusing to reuse a Firebase Admin app from a different project during E2E tests.");
+    }
+    return adminApp;
   }
 
-  adminApp = initializeApp({ projectId, credential: cert({ projectId, clientEmail, privateKey }) });
+  adminApp = initializeApp({
+    projectId: testConfig.projectId,
+    credential: cert({
+      projectId: testConfig.projectId,
+      clientEmail: testConfig.clientEmail,
+      privateKey: testConfig.privateKey,
+    }),
+  });
   return adminApp;
 }
 
@@ -268,9 +276,9 @@ export async function mintCustomToken(uid) {
 export async function getTestIdToken(uid) {
   const customToken = await mintCustomToken(uid);
 
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  const apiKey = process.env.E2E_NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!apiKey) {
-    throw new Error("Missing NEXT_PUBLIC_FIREBASE_API_KEY — check .env.local before running e2e tests.");
+    throw new Error("Missing E2E_NEXT_PUBLIC_FIREBASE_API_KEY — configure the dedicated test project before running e2e tests.");
   }
 
   const response = await fetch(

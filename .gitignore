@@ -16,6 +16,8 @@ yarn-error.log*
 test-results-*/
 cleartill-codex-redesign.zip
 *-firebase-adminsdk-*.json
+service-account*.json
+firebase-service-account*.json
 
 .vercel
 .env*

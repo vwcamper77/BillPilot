@@ -6,8 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test tests/analytics-integrity.test.cjs tests/revenue-integrity.test.cjs tests/subscription-trial.test.cjs tests/acquisition-auth.test.cjs tests/preview-lifecycle.test.cjs tests/seo-integrity.test.cjs",
+    "test": "node --test tests/analytics-integrity.test.cjs tests/revenue-integrity.test.cjs tests/subscription-trial.test.cjs tests/acquisition-auth.test.cjs tests/preview-lifecycle.test.cjs tests/seo-integrity.test.cjs tests/firestore-safety.test.cjs",
     "test:e2e": "playwright test",
+    "test:e2e:safe": "playwright test",
     "reconcile:stripe": "node scripts/reconcile-stripe-entitlements.mjs"
   },
   "dependencies": {
