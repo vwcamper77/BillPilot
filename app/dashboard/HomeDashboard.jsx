@@ -34,8 +34,8 @@ import {
   isValidDueDay,
 } from "@/lib/billMath";
 import { calculateLargeCostAffordabilityPlans } from "@/lib/largeCostPlanner";
-import { calculateCashPosition, expandIncomeEvents } from "@/lib/cashflowTimeline";
-import { hasActiveIncomeSchedule } from "@/lib/incomeSchedule";
+import { calculateCashPosition, expandIncomeEvents, resolveNextConfirmedIncome } from "@/lib/cashflowTimeline";
+import { classifyIncomeSource, hasActiveIncomeSchedule } from "@/lib/incomeSchedule";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
 import { logSecurityEventClient } from "@/lib/security/clientSecurity";
@@ -421,15 +421,16 @@ function HomeDashboardContent({ view = "overview" }) {
   ), [account, optimisticBalance]);
 
   const incomeForDashboard = useMemo(() => {
-    if (displayIncome && isValidDueDay(displayIncome.payDay)) return displayIncome;
     const monthlySource = incomeEvents.find((source) => source?.active !== false
       && source?.frequency === "monthly"
-      && source?.confidence !== "estimated"
+      && classifyIncomeSource(source) === "confirmed"
       && Number(source?.amount) > 0
       && /^\d{4}-\d{2}-\d{2}$/.test(String(source?.firstPaymentDate || source?.expectedDate || "")));
-    if (!monthlySource) return displayIncome ? { ...displayIncome, payDay: null } : null;
-    const firstPaymentDate = monthlySource.firstPaymentDate || monthlySource.expectedDate;
-    return { name: monthlySource.name, amount: Number(monthlySource.amount), payDay: Number(firstPaymentDate.slice(8, 10)), active: true };
+    if (monthlySource) {
+      const firstPaymentDate = monthlySource.firstPaymentDate || monthlySource.expectedDate;
+      return { name: monthlySource.name, amount: Number(monthlySource.amount), payDay: Number(firstPaymentDate.slice(8, 10)), active: true };
+    }
+    return displayIncome && isValidDueDay(displayIncome.payDay) ? displayIncome : displayIncome ? { ...displayIncome, payDay: null } : null;
   }, [displayIncome, incomeEvents]);
 
   const dashboard = useMemo(
@@ -559,7 +560,11 @@ function HomeDashboardContent({ view = "overview" }) {
     date.setUTCDate(date.getUTCDate() + 28);
     return date.toISOString().slice(0, 10);
   }, [todayIso]);
-  const forecastHorizonDate = dashboard.paydayDate || rollingHorizonDate;
+  const canonicalNextIncome = useMemo(
+    () => resolveNextConfirmedIncome(incomeEvents, todayIso),
+    [incomeEvents, todayIso],
+  );
+  const forecastHorizonDate = canonicalNextIncome?.date || rollingHorizonDate;
   const largeCostLedgerAllocations = useMemo(() => largeCostPlans.plans.flatMap((plan) => [
     plan.currentPeriodAllocation > 0 ? {
       id: `${plan.costId}-current`,
@@ -1358,7 +1363,7 @@ function HomeDashboardContent({ view = "overview" }) {
     );
   }
 
-  const activeIncomeCount = incomeEvents.filter((source) => source?.active !== false).length;
+  const activeIncomeCount = incomeEvents.filter((source) => ["confirmed", "estimated"].includes(classifyIncomeSource(source))).length;
   const largestFundingGap = largeCostPlans.plans.reduce((largest, plan) => Math.max(largest, Number(plan.shortfall) || 0), 0);
   const missingTrackerCount = trackerChecks.filter((check) => !check.found).length;
   const viewTitle = view === "bills-income" ? "Bills & income" : view === "large-costs-savings" ? "Large costs & savings" : "Overview";

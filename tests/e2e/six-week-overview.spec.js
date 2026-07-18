@@ -10,6 +10,7 @@ import {
   seedDashboardState,
   seedTestUsers,
   seedUserBill,
+  seedUserIncomeEvent,
 } from "./setup/seedTestUsers.mjs";
 
 let uid;
@@ -95,6 +96,44 @@ test("Overview states that no upcoming income is confirmed", async ({ page }) =>
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: "No upcoming income confirmed" })).toBeVisible({ timeout: 20000 });
   await expect(page.getByRole("link", { name: "Manage income" })).toHaveAttribute("href", "/dashboard/bills-income");
+});
+
+test("editing a confirmed monthly salary date updates hero, safe spending and runway without refresh", async ({ page }) => {
+  const today = londonToday();
+  const originalDate = addDays(today, 1);
+  const editedDate = addDays(today, 20);
+  await seedDashboardState(uid, { currentBalance: 600, payDay: Number(originalDate.slice(8, 10)), payAmount: 4000 });
+  await seedUserIncomeEvent(uid, {
+    id: "regular-salary",
+    name: "Regular salary",
+    amount: 4000,
+    expectedDate: originalDate,
+    frequency: "monthly",
+    confidence: "confirmed",
+  });
+  await signIn(page);
+  await page.goto("/dashboard");
+
+  const position = page.locator("#current-position");
+  await expect(position.getByRole("heading", { name: /left until your next income/i })).toBeVisible({ timeout: 20000 });
+  await position.getByRole("button", { name: "Update balance" }).click();
+  const editor = page.getByTestId("additional-income-editor");
+  await editor.getByRole("button", { name: /Add another income/ }).click();
+  const salary = editor.locator("li").filter({ hasText: "Regular salary" });
+  await expect(salary).toContainText("Confirmed");
+  await salary.getByRole("button", { name: "Edit", exact: true }).click();
+  await editor.getByLabel("First payment date").fill(editedDate);
+  await editor.getByRole("button", { name: "Save changes" }).click();
+
+  await expect(page.locator(".page-notice")).toContainText("Income schedule updated.");
+  await expect(salary).toContainText("Confirmed");
+  await page.locator(".balance-editor").getByRole("button", { name: "Close" }).click();
+  await expect(position.getByRole("heading", { name: /left until your next income/i })).toBeVisible();
+  await expect(position).toContainText("£4,000");
+  await expect(position).toContainText(new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", timeZone: "UTC" }).format(new Date(`${editedDate}T12:00:00Z`)));
+  await expect(page.getByRole("heading", { name: "No upcoming income confirmed" })).toHaveCount(0);
+  await expect(page.locator(".runway-chip-income")).toContainText("£4,000 income");
+  await expect(page.locator(".after-income-disclosure")).toContainText("£4,000 confirmed income is scheduled");
 });
 
 test("Balance save closes, recalculates and returns mobile focus only after success", async ({ page }) => {

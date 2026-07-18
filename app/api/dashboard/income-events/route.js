@@ -17,10 +17,10 @@ export async function POST(request) {
     const collectionRef = getAdminDb().collection("users").doc(decodedToken.uid).collection("incomeEvents");
 
     if (action === "save_income_event") {
-      const fields = normaliseFields(body?.fields || {});
       const eventId = String(body?.eventId || "").trim();
       const eventRef = eventId ? collectionRef.doc(eventId) : collectionRef.doc();
       const snapshot = await eventRef.get();
+      const fields = normaliseFields(body?.fields || {}, snapshot.exists ? snapshot.data() : null);
       await eventRef.set({
         ...fields,
         updatedAt: FieldValue.serverTimestamp(),
@@ -81,12 +81,12 @@ function validationError(message) {
   throw error;
 }
 
-function normaliseFields(raw) {
+function normaliseFields(raw, existing = null) {
   const name = String(raw?.name || "").trim().slice(0, 80);
   const amount = Math.round(Number(raw?.amount) * 100) / 100;
   const firstPaymentDate = String(raw?.firstPaymentDate || raw?.expectedDate || "").trim();
   const frequency = String(raw?.frequency || "one_off").trim();
-  const confidence = String(raw?.confidence || "confirmed").trim();
+  const confidence = String(raw?.confidence ?? existing?.confidence ?? "confirmed").trim();
   const endDate = String(raw?.endDate || "").trim();
   if (!name) validationError("Add a name for this income.");
   if (!Number.isFinite(amount) || amount <= 0) validationError("Enter an income amount greater than zero.");
@@ -102,7 +102,7 @@ function normaliseFields(raw) {
     frequency,
     endDate: endDate || null,
     confidence,
-    active: raw?.active !== false,
+    active: raw?.active === undefined ? existing?.active !== false : raw.active !== false,
     currency: "GBP",
   };
 }

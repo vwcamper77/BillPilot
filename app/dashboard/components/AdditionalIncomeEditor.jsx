@@ -4,6 +4,7 @@ import { useState } from "react";
 import DateField from "@/app/components/forms/DateField";
 import { formatCurrency, formatDisplayDate } from "@/lib/billMath";
 import { expandIncomeEvents } from "@/lib/cashflowTimeline";
+import { classifyIncomeSource, upsertIncomeSource } from "@/lib/incomeSchedule";
 import { postDashboardIncomeEventAction, runWithTimeout } from "../lib/dashboardApi";
 import { friendlySettingsError } from "../lib/friendlyErrors";
 
@@ -63,9 +64,7 @@ export default function AdditionalIncomeEditor({ incomeEvents = [], onIncomeEven
     try {
       const result = await runWithTimeout(postDashboardIncomeEventAction("save_income_event", { eventId: editingId || null, fields }), "Saving that income is taking too long. Check your connection and try again.");
       const saved = { ...fields, ...(result.event || {}), id: result.eventId, expectedDate: fields.firstPaymentDate };
-      onIncomeEventsChange?.((current) => current.some((item) => item.id === saved.id)
-        ? current.map((item) => item.id === saved.id ? { ...item, ...saved } : item)
-        : [...current, saved]);
+      onIncomeEventsChange?.((current) => upsertIncomeSource(current, saved));
       onNotice?.(editingId ? "Income schedule updated." : "Income schedule added.");
       closeForm();
     } catch (saveError) {
@@ -126,14 +125,16 @@ export default function AdditionalIncomeEditor({ incomeEvents = [], onIncomeEven
         <p className="helper-text">Confirmed payments affect safe spending only on their scheduled date. Estimates stay visible but are excluded.</p>
         {sources.length ? <ul className="additional-income-list">{sources.map((source) => {
           const firstDate = source.firstPaymentDate || source.expectedDate;
+          const classification = classifyIncomeSource(source);
           const overdueOccurrences = firstDate
             ? expandIncomeEvents([source], firstDate, todayIso, { confirmedOnly: false, includeNonForecast: true, asOfIso: todayIso })
               .filter((occurrence) => occurrence.status === "overdue_unconfirmed")
             : [];
           return <li key={source.id} className={source.active === false ? "is-paused" : ""}>
             <div><strong>{source.name}</strong><span>{formatCurrency(source.amount, displayCurrency)} · {formatDisplayDate(firstDate)} · {FREQUENCY_LABELS[source.frequency] || "One-off"}</span>
-              {source.confidence === "estimated" ? <small>Estimated — excluded from safe spending</small> : null}
-              {source.active === false ? <small>Paused</small> : null}
+              <small className={`income-status income-status-${classification}`}>
+                {classification === "confirmed" ? "Confirmed" : classification === "estimated" ? "Estimated — excluded from safe spending" : classification === "paused" ? "Paused" : "Excluded"}
+              </small>
               {overdueOccurrences.map((occurrence) => (
                 <span className="income-overdue-row" key={occurrence.occurrenceId}>
                   <small className="income-overdue">Payment due {formatDisplayDate(occurrence.date)} is overdue and unconfirmed.</small>

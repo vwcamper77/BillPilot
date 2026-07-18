@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { mergeLegacySalary, REGULAR_SALARY_SOURCE_ID } from "@/lib/incomeSchedule";
 import { recordReminderMeaningfulActivity } from "@/lib/reminders/lifecycle.server";
+import { localDateIso } from "@/lib/reminders/timezone";
 
 export const runtime = "nodejs";
 
@@ -48,7 +49,7 @@ export async function POST(request) {
 
     const legacyIncome = incomeSnapshot.exists ? serialiseDoc(incomeSnapshot) : null;
     const storedIncomeSources = incomeEventsSnapshot.docs.map(serialiseDoc);
-    const todayIso = new Date().toISOString().slice(0, 10);
+    const todayIso = localDateIso(new Date(), "Europe/London");
     const incomeEvents = mergeLegacySalary(storedIncomeSources, legacyIncome, todayIso);
     const migratedSalary = incomeEvents.find((source) => source.id === REGULAR_SALARY_SOURCE_ID);
     if (migratedSalary && !storedIncomeSources.some((source) => source.id === REGULAR_SALARY_SOURCE_ID)) {
