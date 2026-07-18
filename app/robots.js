@@ -4,7 +4,7 @@ export default function robots() {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/", "/about-cleartill", "/pricing", "/security", "/privacy", "/terms", "/blog/"],
+      allow: ["/", "/about-cleartill", "/pricing", "/security", "/privacy", "/terms", "/blog/", "/tools/"],
       disallow: ["/api/", "/admin/", "/account/", "/dashboard/", "/access/", "/billing/", "/trial/", "/signin", "/start", "/unsubscribe"],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,

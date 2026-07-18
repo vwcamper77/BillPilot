@@ -16,24 +16,40 @@ export const BLOG_CATEGORIES = [
   },
 ];
 
-/*
- * Add articles here when copy is approved. Keeping content in one structured
- * collection means the blog index, article pages, metadata and sitemap remain
- * in sync automatically.
- *
- * Article shape:
- * {
- *   slug, title, description, category, publishedAt, updatedAt?, readingMinutes,
- *   featured?, takeaway, content: [
- *     { type: "paragraph", text: "..." },
- *     { type: "heading", text: "...", id: "..." },
- *     { type: "list", items: ["..."] },
- *     { type: "callout", title: "...", text: "..." }
- *   ]
- * }
+/**
+ * @typedef {Object} JournalArticle
+ * @property {"article"} type
+ * @property {string} slug
+ * @property {string} title
+ * @property {string} seoTitle
+ * @property {string} description
+ * @property {string} category
+ * @property {string} publishedAt
+ * @property {string} [updatedAt]
+ * @property {number} readingMinutes
+ * @property {Array<Object>} content
+ * @property {boolean} [featured]
+ * @property {string} takeaway
+ * @property {Array<Object>} [faqs]
+ * @property {Array<Object>} [relatedLinks]
  */
+
+/**
+ * @typedef {Object} JournalTool
+ * @property {"tool"} type
+ * @property {string} slug
+ * @property {string} title
+ * @property {string} description
+ * @property {string} label
+ * @property {string} href
+ * @property {string} lastModified
+ */
+
+// Cards, pages, metadata and the sitemap share this approved source of truth.
+/** @type {JournalArticle[]} */
 export const BLOG_POSTS = [
   {
+    type: "article",
     slug: "how-much-can-i-spend-before-payday",
     title: "How much can I spend before payday? Work it out in 60 seconds",
     seoTitle: "How Much Can I Spend Before Payday? A 60-Second Method",
@@ -73,6 +89,14 @@ export const BLOG_POSTS = [
         type: "formula",
         label: "What you're clear to spend",
         formula: "current balance − bills still due before payday",
+      },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "If you want to run the calculation with your own figures, use the free " },
+          { text: "payday cashflow calculator", href: "/tools/payday-cashflow-calculator" },
+          { text: ". It works in your browser without an account or bank connection." },
+        ],
       },
       { type: "paragraph", text: "That's it. Not your salary, not your monthly budget, not a spreadsheet with categories. Just two numbers:" },
       {
@@ -160,6 +184,7 @@ export const BLOG_POSTS = [
     ],
   },
   {
+    type: "article",
     slug: "budgeting-irregular-income-no-payday",
     title: "Budgeting with irregular income when payday isn't a fixed date",
     seoTitle: "Budgeting With Irregular Income When There's No Payday",
@@ -322,7 +347,210 @@ export const BLOG_POSTS = [
       { type: "faqs" },
     ],
   },
+  {
+    type: "article",
+    slug: "budgeting-without-open-banking",
+    title: "Budgeting Without Open Banking: A Practical UK Guide",
+    seoTitle: "Budgeting Without Open Banking: A Practical UK Guide",
+    description: "A practical way to plan bills and everyday spending without connecting a bank account, sharing transaction history or relying on automatic categories.",
+    keywords: ["budgeting without Open Banking", "budget app without bank connection UK", "manual budgeting UK", "budget without linking bank account"],
+    category: "money-basics",
+    publishedAt: "2026-07-18",
+    readingMinutes: 14,
+    takeaway: "A manual budget can work without a bank connection when you keep one current balance, a reliable income horizon and a dated list of commitments up to date—and accept the maintenance that automation would otherwise do.",
+    relatedLinks: [
+      { type: "tool", title: "Payday cashflow calculator", description: "Run a private one-off calculation with no account or bank connection.", href: "/tools/payday-cashflow-calculator" },
+      { type: "guide", title: "How much can I spend before payday?", description: "Understand the short balance-minus-bills calculation.", href: "/blog/how-much-can-i-spend-before-payday" },
+      { type: "guide", title: "Budgeting with irregular income", description: "Choose a cautious horizon when there is no fixed payday.", href: "/blog/budgeting-irregular-income-no-payday" },
+    ],
+    faqs: [
+      { question: "Do I need Open Banking to make a useful budget?", answer: "No. You can build a useful plan from balances, income dates, bills and committed costs that you enter yourself. The trade-off is that you must keep those figures current." },
+      { question: "Is Open Banking unsafe?", answer: "Open Banking is a regulated, consent-based way to share account data with authorised services. Choosing a manual method is a preference about control, scope or convenience, not evidence that regulated Open Banking is inherently unsafe." },
+      { question: "How often should I update a manual budget?", answer: "Update it whenever a material balance, income date or commitment changes. A quick check after larger spending and at least once a week is a practical starting rhythm, but the right frequency depends on how quickly your position changes." },
+      { question: "How do I budget across more than one account?", answer: "Decide which accounts belong inside the plan, note each usable balance and subtract transfers between included accounts only once. Keep ring-fenced business, tax or savings money outside the usable total unless its purpose is represented as a commitment." },
+      { question: "Can I use this method with irregular income?", answer: "Yes. Use the next payment date and amount you can reasonably rely on, leave uncertain income out, and recalculate when it becomes confirmed or arrives." },
+      { question: "When should I seek impartial help?", answer: "Seek free impartial guidance if you are worried about missing priority payments, have already missed payments, cannot cover essentials or are relying on more borrowing to meet existing commitments." },
+    ],
+    content: [
+      { type: "paragraph", text: "Many budgeting apps can connect to a current account, import transactions and sort spending automatically. That can save time. It is not, however, the only way to make a useful plan." },
+      { type: "paragraph", text: "A manual approach starts from information you choose to enter: what is available now, when reliable income is due, and which costs must be allowed for before then. It can be kept on paper, in a spreadsheet or in a purpose-built tool that does not connect to a bank." },
+      { type: "paragraph", text: "This guide explains how to run that system honestly, including the work it requires and the situations where a connected service may be more convenient." },
+
+      { type: "heading", text: "What bank-connected budgeting tools normally do", id: "what-connected-tools-do" },
+      { type: "paragraph", text: "With your consent, a connected service can retrieve eligible account information, bring multiple accounts into one view, identify recurring payments and categorise transactions. Some services also forecast bills or notify you when a pattern changes." },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "The " },
+          { text: "official Open Banking organisation", href: "https://www.openbanking.org.uk/what-is-open-banking/" },
+          { text: " explains that people choose which regulated apps can access information and can withdraw that access. The " },
+          { text: "Financial Conduct Authority", href: "https://www.fca.org.uk/firms/open-banking-open-finance" },
+          { text: " describes UK Open Banking as secure, regulated and based on consented data sharing." },
+        ],
+      },
+      { type: "paragraph", text: "Automation reduces re-entry, but its output still needs judgement. A transaction category can be wrong, a pending payment may not appear yet, and a transfer between your own accounts is not new income. Connection does not remove the need to understand the plan." },
+
+      { type: "heading", text: "Why someone might prefer a manual approach", id: "why-manual" },
+      { type: "paragraph", text: "Reasons vary. You may want to share less transaction history, use an account that is not supported, combine cash with bank accounts, or understand every number driving the answer. You may simply prefer a small plan over a complete record of past spending." },
+      { type: "paragraph", text: "A manual system can also keep attention on future commitments rather than inviting a detailed review of every coffee or supermarket category. That narrower view suits the question: what remains after the costs due before the next reliable income date?" },
+      { type: "paragraph", text: "These are preferences, not reasons to portray Open Banking as dangerous. A regulated connected tool may be the better choice for someone who values automatic updates or has many active accounts and transactions." },
+
+      { type: "heading", text: "Manual and connected budgeting: the real trade-offs", id: "trade-offs" },
+      { type: "table", caption: "Trade-offs between manual and connected budgeting", headers: ["Consideration", "Manual approach", "Connected approach"], rows: [
+        ["Set-up", "Enter balances, dates and costs yourself", "Give consent and connect supported accounts"],
+        ["Updates", "You decide when to update each figure", "Eligible transactions can update automatically"],
+        ["Scope", "Only the information you choose to include", "Broader transaction and account view"],
+        ["Corrections", "You own the entries and assumptions", "You may need to correct categories or matches"],
+        ["Maintenance", "More regular manual checking", "Less re-entry, with connections and consent to manage"],
+        ["Cash and unsupported accounts", "Can be included manually", "May still need manual adjustments"],
+      ] },
+      { type: "paragraph", text: "Neither approach makes the underlying money position better. The useful system is the one you can keep accurate enough to act on." },
+
+      { type: "heading", text: "A step-by-step manual cashflow method", id: "manual-method" },
+      { type: "subheading", text: "1. Decide the boundary", id: "decide-boundary" },
+      { type: "paragraph", text: "Choose whether the plan covers you alone, a household or a particular account. Write that boundary down. Mixing an individual balance with all household bills—or household income with only your own bills—creates a confident-looking but incomplete result." },
+      { type: "subheading", text: "2. Record the usable balance now", id: "record-balance" },
+      { type: "paragraph", text: "Note the balance for every account inside the boundary. Check pending card payments, uncleared transfers and overdraft use. Exclude money that belongs to a business, tax pot or protected savings goal unless you also show the obligation that reserves it." },
+      { type: "subheading", text: "3. Choose the next reliable income date", id: "choose-income-date" },
+      { type: "paragraph", text: "Use the next date on which you have reasonable grounds to expect income. For fixed pay, that may be a normal payday. For variable work, use a confirmed shift payment, retainer or dependable invoice date rather than the most hopeful possibility." },
+      { type: "subheading", text: "4. List everything committed before that date", id: "list-commitments" },
+      { type: "paragraph", text: "Work through direct debits, standing orders, rent or mortgage, utilities, insurance, subscriptions, debt payments and one-off commitments. Use dates as well as categories: a bill after the chosen income date belongs in the next period, not this one." },
+      { type: "subheading", text: "5. Add only confirmed earlier income", id: "confirmed-income" },
+      { type: "paragraph", text: "If income is certain to arrive before the end date, add it once. Do not also add the income arriving on the date that ends the period. Leave disputed invoices, possible refunds and unconfirmed work outside the first calculation." },
+      { type: "subheading", text: "6. Subtract and review", id: "subtract-review" },
+      { type: "formula", label: "Working amount before the next income date", formula: "usable balances + confirmed earlier income − bills − committed costs − optional buffer" },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "You can run this method with the free " },
+          { text: "payday cashflow calculator", href: "/tools/payday-cashflow-calculator" },
+          { text: ". It keeps the total prominent and treats daily or weekly divisions only as rough pacing." },
+        ],
+      },
+
+      { type: "heading", text: "How often a manual plan needs updating", id: "update-frequency" },
+      { type: "paragraph", text: "A manual figure is a snapshot, not a live bank feed. Update it when a material transaction clears, a new cost is committed, a payment date changes or income becomes more or less certain. A weekly review plus a quick update after larger spending is a reasonable starting routine." },
+      { type: "paragraph", text: "Do not chase perfect transaction-by-transaction accuracy if it makes the system unusable. The aim is to keep the balance and upcoming commitments current enough that the result is useful. When in doubt, update before making a spending decision that depends on the answer." },
+
+      { type: "heading", text: "Cash, multiple accounts and shared household bills", id: "cash-multiple-accounts" },
+      { type: "paragraph", text: "Cash can sit inside the plan if you count the amount on hand and record meaningful cash spending. If you withdraw £60 from an included bank account, moving that £60 into your wallet is not spending: reduce the account and increase cash, or leave both changes out until the cash is spent." },
+      { type: "paragraph", text: "For multiple accounts, decide whether the result represents one account or all usable household money. Add balances only for accounts inside that scope. A transfer between two included accounts changes location, not total income. Count it once, not as money leaving one plan and arriving as new income in another." },
+      { type: "paragraph", text: "For shared bills, agree who records the full cost and who records any contribution. If a partner sends £400 for rent and the household plan already includes both partners' balances, treating that transfer as extra household income would double-count it. If the plan covers only your account, the contribution can be income and the full outgoing can be a bill." },
+
+      { type: "heading", text: "Handling irregular income", id: "irregular-income" },
+      { type: "paragraph", text: "Variable income makes the horizon more important. Choose the next payment you can reasonably rely on, use a cautious amount, and move the date back if the evidence changes. Stronger months can support future low-income periods, tax and annual costs, but that is a wider planning decision rather than permission to count uncertain money now." },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "Read the separate guide to " },
+          { text: "budgeting with irregular income when payday is not fixed", href: "/blog/budgeting-irregular-income-no-payday" },
+          { text: " for a fuller treatment of invoices, shifts and reliable payment dates." },
+        ],
+      },
+
+      { type: "heading", text: "Avoid double-counting", id: "avoid-double-counting" },
+      { type: "paragraph", text: "Most manual errors come from recording the same money twice. Common examples are adding payday income even though payday ends the period, treating a transfer between included accounts as income, entering a shared bill in two household plans, or subtracting a card purchase that is already reflected in the current balance." },
+      { type: "list", items: ["Give every included account and bill one owner in the plan.", "Use one end date and state whether income on that date is excluded.", "Mark transfers as transfers before deciding whether they change the plan total.", "Start from a balance at a known time, then subtract only items not already reflected in it.", "Reconcile the plan with the real balances regularly."] },
+
+      { type: "heading", text: "Privacy and control without scare claims", id: "privacy-control" },
+      { type: "paragraph", text: "A manual method can minimise the information shared with a budgeting provider because you choose the totals and dates to enter. That is a legitimate form of data minimisation and control." },
+      { type: "paragraph", text: "It does not follow that Open Banking is inherently unsafe. UK Open Banking involves authorised providers, explicit consent and controls for ending access. If you consider a connected service, check the provider, understand what data it requests, read its privacy information and decide whether the convenience is worth the access for you." },
+
+      { type: "heading", text: "When automation may be more convenient", id: "when-automation-helps" },
+      { type: "paragraph", text: "A connected service may suit you better if you have many accounts, a high volume of transactions, recurring payments that change frequently, or difficulty maintaining any manual routine. Automatic transaction history can also make long-term category analysis and retrospective spending reviews faster." },
+      { type: "paragraph", text: "A hybrid is possible: use statements or a connected service to review history, then keep a smaller manual forward-looking plan for the period until the next income date." },
+
+      { type: "heading", text: "When budgeting is not enough", id: "when-budgeting-is-not-enough" },
+      { type: "paragraph", text: "A better calculation cannot close a structural gap where reliable income does not cover essential and priority commitments. Do not treat a repeated shortfall as a failure to organise categories more neatly." },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "If you are worried about missing priority payments, have already missed payments, cannot cover essentials or are using more borrowing to meet existing debts, use " },
+          { text: "MoneyHelper's free debt guidance", href: "https://www.moneyhelper.org.uk/en/money-troubles/dealing-with-debt/help-if-youre-struggling-with-debt" },
+          { text: ". Its " },
+          { text: "budget planner", href: "https://www.moneyhelper.org.uk/en/everyday-money/budgeting/budget-planner" },
+          { text: " is also a broader impartial option for reviewing income and outgoings." },
+        ],
+      },
+
+      { type: "heading", text: "Where ClearTill fits", id: "where-cleartill-fits" },
+      { type: "paragraph", text: "ClearTill is a manual UK consumer cashflow-planning app. It does not connect to bank accounts or use Open Banking. You enter a current balance, income dates, bills and one-off costs, and it shows what remains after the items entered for the period." },
+      { type: "paragraph", text: "ClearTill does not guarantee that funds will be available, identify every commitment automatically or provide financial advice. The result depends on the completeness and timing of your entries." },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "You can learn more " },
+          { text: "about ClearTill and GMBF Ventures Ltd", href: "/about-cleartill" },
+          { text: ", check " },
+          { text: "current ClearTill pricing", href: "/pricing" },
+          { text: ", read the shorter guide to " },
+          { text: "working out what you can spend before payday", href: "/blog/how-much-can-i-spend-before-payday" },
+          { text: ", or " },
+          { text: "try the full ClearTill preview", href: "/start" },
+          { text: "." },
+        ],
+      },
+
+      { type: "heading", text: "Frequently asked questions", id: "frequently-asked-questions" },
+      { type: "faqs" },
+    ],
+  },
 ];
+
+/** @type {JournalTool[]} */
+export const JOURNAL_TOOLS = [
+  {
+    type: "tool",
+    slug: "payday-cashflow-calculator",
+    title: "Payday cashflow calculator",
+    description: "See what remains after bills and committed costs before your next income date. No bank connection, account or sign-up required.",
+    label: "Free tool",
+    href: "/tools/payday-cashflow-calculator",
+    lastModified: "2026-07-18",
+  },
+];
+
+function requireNonEmptyString(record, field, kind) {
+  if (typeof record[field] !== "string" || !record[field].trim()) {
+    throw new TypeError(`${kind} record requires a non-empty ${field}.`);
+  }
+}
+
+export function validateJournalArticle(record) {
+  if (!record || record.type !== "article") throw new TypeError('Journal article records require type "article".');
+  for (const field of ["slug", "title", "seoTitle", "description", "category", "publishedAt", "takeaway"]) {
+    requireNonEmptyString(record, field, "Article");
+  }
+  if (!Number.isInteger(record.readingMinutes) || record.readingMinutes < 1) {
+    throw new TypeError("Article record requires a positive integer readingMinutes value.");
+  }
+  if (!Array.isArray(record.content) || record.content.length === 0) {
+    throw new TypeError("Article record requires non-empty content.");
+  }
+  return record;
+}
+
+export function validateJournalTool(record) {
+  if (!record || record.type !== "tool") throw new TypeError('Journal tool records require type "tool".');
+  for (const field of ["slug", "title", "description", "label", "href", "lastModified"]) {
+    requireNonEmptyString(record, field, "Tool");
+  }
+  for (const articleOnlyField of ["publishedAt", "updatedAt", "readingMinutes", "content", "seoTitle"]) {
+    if (articleOnlyField in record) throw new TypeError(`Tool record must not define article-only field ${articleOnlyField}.`);
+  }
+  if (!record.href.startsWith("/tools/")) throw new TypeError("Tool record href must use the /tools/ route.");
+  return record;
+}
+
+export function validateJournalContent(articles = BLOG_POSTS, tools = JOURNAL_TOOLS) {
+  articles.forEach(validateJournalArticle);
+  tools.forEach(validateJournalTool);
+  const slugs = [...articles, ...tools].map((record) => record.slug);
+  if (new Set(slugs).size !== slugs.length) throw new TypeError("Journal record slugs must be unique.");
+  return true;
+}
+
+validateJournalContent();
 
 export function getPostBySlug(slug) {
   return BLOG_POSTS.find((post) => post.slug === slug);

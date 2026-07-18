@@ -162,6 +162,22 @@ export default async function BlogArticlePage({ params }) {
         </div>
       </article>
 
+      {post.relatedLinks?.length ? (
+        <section className="article-related" aria-labelledby="related-content-title">
+          <p className="eyebrow">Keep going</p>
+          <h2 id="related-content-title">Related guides and tools</h2>
+          <div>
+            {post.relatedLinks.map((item) => (
+              <Link href={item.href} key={item.href}>
+                <span>{item.type === "tool" ? "Free tool" : "Guide"}</span>
+                <strong>{item.title}</strong>
+                <p>{item.description}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="article-end-cta"><p className="eyebrow">A clearer view before payday</p><h2>Know what&apos;s spoken for—and what isn&apos;t.</h2><Link className="primary-button" href="/start">Start my no-card preview</Link></section>
       <Link className="article-back-link" href="/blog"><span aria-hidden="true">←</span> Back to all guides</Link>
     </main>

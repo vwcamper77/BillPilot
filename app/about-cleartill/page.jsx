@@ -38,7 +38,7 @@ export default function AboutClearTillPage() {
 
       <section className="marketing-hero about-hero">
         <p className="acquisition-eyebrow">The founder story</p>
-        <h1>About ClearTill and it&apos;s founder Gavin Ferns</h1>
+        <h1>About ClearTill and its founder Gavin Ferns</h1>
         <p className="about-question-intro">ClearTill was created around one simple question:</p>
         <blockquote>“How much of the money in my account is actually available after the bills due before my next income date?”</blockquote>
         <p>

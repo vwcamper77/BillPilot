@@ -1,4 +1,4 @@
-import { BLOG_POSTS } from "./blog/posts";
+import { BLOG_POSTS, JOURNAL_TOOLS } from "./blog/posts";
 import { HOME_URL, SITE_URL } from "@/lib/seo";
 
 export default function sitemap() {
@@ -54,5 +54,12 @@ export default function sitemap() {
     priority: 0.7,
   }));
 
-  return [...staticPages, ...blogPosts];
+  const tools = JOURNAL_TOOLS.map((tool) => ({
+    url: `${SITE_URL}${tool.href}`,
+    lastModified: tool.lastModified,
+    changeFrequency: "monthly",
+    priority: 0.8,
+  }));
+
+  return [...staticPages, ...tools, ...blogPosts];
 }

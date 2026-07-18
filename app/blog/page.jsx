@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import BlogExplorer from "./BlogExplorer";
-import { BLOG_CATEGORIES, BLOG_POSTS, formatPostDate, getCategory } from "./posts";
+import { BLOG_CATEGORIES, BLOG_POSTS, JOURNAL_TOOLS, formatPostDate, getCategory } from "./posts";
 import { createPageMetadata, SITE_URL } from "@/lib/seo";
 
 const PAGE_TITLE = "Journal — Practical Guides to Everyday Money";
@@ -21,8 +21,14 @@ export const metadata = {
   },
 };
 
-export default function BlogPage() {
-  const posts = BLOG_POSTS.map((post) => ({
+export default async function BlogPage({ searchParams }) {
+  const resolvedSearchParams = await searchParams;
+  const requestedTopic = typeof resolvedSearchParams?.topic === "string" ? resolvedSearchParams.topic : "all";
+  const activeCategory = BLOG_CATEGORIES.some((category) => category.slug === requestedTopic) ? requestedTopic : "all";
+  const categoryPosts = activeCategory === "all"
+    ? BLOG_POSTS
+    : BLOG_POSTS.filter((post) => post.category === activeCategory);
+  const posts = categoryPosts.map((post) => ({
     ...post,
     content: undefined,
     categoryLabel: getCategory(post.category)?.label || post.category,
@@ -32,18 +38,18 @@ export default function BlogPage() {
   const collectionSchema = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    name: PAGE_TITLE,
+    name: "The ClearTill Journal",
     description: PAGE_DESCRIPTION,
     url: `${SITE_URL}/blog`,
     isPartOf: { "@type": "WebSite", name: "ClearTill", url: SITE_URL },
     publisher: { "@type": "Organization", name: "ClearTill", url: SITE_URL },
     mainEntity: {
       "@type": "ItemList",
-      itemListElement: BLOG_POSTS.map((post, index) => ({
+      itemListElement: [...JOURNAL_TOOLS, ...categoryPosts].map((item, index) => ({
         "@type": "ListItem",
         position: index + 1,
-        url: `${SITE_URL}/blog/${post.slug}`,
-        name: post.title,
+        url: item.type === "tool" ? `${SITE_URL}${item.href}` : `${SITE_URL}/blog/${item.slug}`,
+        name: item.title,
       })),
     },
   };
@@ -88,17 +94,40 @@ export default function BlogPage() {
         </div>
         <div className="blog-topic-grid">
           {BLOG_CATEGORIES.map((category, index) => (
-            <a href={BLOG_POSTS.length ? `#latest-guides` : "#journal-note"} className={`blog-topic blog-topic-${index + 1}`} key={category.slug}>
+            <Link
+              href={`/blog?topic=${category.slug}#latest-guides`}
+              className={`blog-topic blog-topic-${index + 1}`}
+              aria-current={activeCategory === category.slug ? "page" : undefined}
+              key={category.slug}
+            >
               <span className="blog-topic-number">0{index + 1}</span>
               <h3>{category.label}</h3>
               <p>{category.description}</p>
               <span className="blog-topic-arrow" aria-hidden="true">↗</span>
-            </a>
+            </Link>
           ))}
         </div>
       </section>
 
-      <BlogExplorer posts={posts} categories={BLOG_CATEGORIES} />
+      <section className="blog-tools" id="free-tools" aria-labelledby="free-tools-title">
+        <div className="blog-section-intro">
+          <p className="eyebrow">Free tools</p>
+          <h2 id="free-tools-title">Put the method to work</h2>
+        </div>
+        {JOURNAL_TOOLS.map((tool) => (
+          <article className="blog-tool-card" key={tool.slug}>
+            <div className="blog-tool-mark" aria-hidden="true"><span>£</span><i /></div>
+            <div>
+              <span className="blog-tool-label">{tool.label}</span>
+              <h3>{tool.title}</h3>
+              <p>{tool.description}</p>
+            </div>
+            <Link href={tool.href} aria-label={`Open ${tool.title}`}>Use calculator <span aria-hidden="true">→</span></Link>
+          </article>
+        ))}
+      </section>
+
+      <BlogExplorer posts={posts} categories={BLOG_CATEGORIES} activeCategory={activeCategory} />
 
       <aside className="blog-editorial-note" id="journal-note">
         <div>

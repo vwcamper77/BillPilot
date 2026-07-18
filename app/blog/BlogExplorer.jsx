@@ -29,8 +29,7 @@ function PostCard({ post, featured = false }) {
   );
 }
 
-export default function BlogExplorer({ posts, categories }) {
-  const [activeCategory, setActiveCategory] = useState("all");
+export default function BlogExplorer({ posts, categories, activeCategory = "all" }) {
   const [query, setQuery] = useState("");
 
   const visiblePosts = useMemo(() => {
@@ -84,11 +83,11 @@ export default function BlogExplorer({ posts, categories }) {
       </div>
 
       <div className="blog-filter-row" aria-label="Filter guides by topic">
-        <button className={activeCategory === "all" ? "is-active" : ""} onClick={() => setActiveCategory("all")} type="button">All guides</button>
+        <Link className={activeCategory === "all" ? "is-active" : ""} href="/blog#latest-guides" aria-current={activeCategory === "all" ? "page" : undefined}>All guides</Link>
         {categories.map((category) => (
-          <button className={activeCategory === category.slug ? "is-active" : ""} key={category.slug} onClick={() => setActiveCategory(category.slug)} type="button">
+          <Link className={activeCategory === category.slug ? "is-active" : ""} href={`/blog?topic=${category.slug}#latest-guides`} aria-current={activeCategory === category.slug ? "page" : undefined} key={category.slug}>
             {category.label}
-          </button>
+          </Link>
         ))}
       </div>
 
