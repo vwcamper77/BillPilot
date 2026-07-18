@@ -60,6 +60,13 @@ const structuredData = {
       description: "A UK consumer cashflow-planning web app that shows what is safe to spend after bills until the next income date, without bank login or Open Banking.",
       provider: { "@id": `${HOME_URL}#organization` },
     },
+    {
+      "@type": "Person",
+      name: "Gavin Ferns",
+      jobTitle: "Founder of ClearTill",
+      worksFor: "GMBF Ventures Ltd",
+      url: "https://www.cleartill.money/about-cleartill",
+    },
   ],
 };
 
@@ -156,6 +163,15 @@ export default function HomePage() {
             <article><span>03</span><h3>Keep the position current</h3><p>Update your balance when you spend or a bill clears. ClearTill recalculates the result.</p></article>
           </div>
         </div>
+      </section>
+
+      <section className="live-home-container live-home-founder" aria-labelledby="home-founder-heading">
+        <p className="live-home-eyebrow">Created by Gavin Ferns</p>
+        <h2 id="home-founder-heading">Built from practical financial planning experience.</h2>
+        <p>
+          Gavin is a project and commercial professional with a background in construction finance and an Executive MBA from Imperial College Business School. He created ClearTill to simplify one everyday question: what is actually left after bills until the next income date?
+        </p>
+        <Link href="/about-cleartill">Read about Gavin and ClearTill</Link>
       </section>
 
       <section className="live-home-band live-home-reminders">

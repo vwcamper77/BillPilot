@@ -20,12 +20,35 @@ test("homepage metadata uses the approved title, description and canonical URL",
   assert.match(home, /<meta property="og:url" content=\{HOME_URL\} \/>/);
 });
 
-test("About ClearTill has unique metadata and required company identity", () => {
-  assert.match(about, /title: "About ClearTill"/);
-  assert.match(about, /path: "\/about-cleartill"/);
+test("About ClearTill has unique founder metadata and required company identity", () => {
+  assert.match(about, /About Gavin Ferns, Founder of ClearTill/);
+  assert.match(about, /Meet Gavin Ferns, the founder of ClearTill/);
+  assert.match(about, /const PAGE_URL = `\$\{SITE_URL\}\/about-cleartill`/);
+  assert.match(about, /alternates: \{ canonical: PAGE_URL \}/);
   assert.match(about, /GMBF Ventures Ltd/);
   assert.match(about, /17286832/);
   assert.match(about, /hello@cleartill\.money/);
+});
+
+test("founder story uses verified claims and the homepage links to it", () => {
+  assert.match(about, /About Gavin Ferns/);
+  assert.match(about, /Executive MBA from Imperial College Business School/);
+  assert.match(about, /TalosTV and SetTheDate/);
+  assert.match(home, /Created by Gavin Ferns/);
+  assert.match(home, /href="\/about-cleartill"/);
+  assert.doesNotMatch(about, /successful products|commercially successful/i);
+  assert.doesNotMatch(about, /Open Banking is unsafe|unsafe Open Banking/i);
+  assert.doesNotMatch(about, /linkedin\.com|twitter\.com|x\.com|facebook\.com|instagram\.com/i);
+});
+
+test("Person schema contains only verified founder fields", () => {
+  const personMatch = home.match(/\{\s*"@type": "Person",([\s\S]*?)\n\s*\},/);
+  assert.ok(personMatch, "missing Gavin Ferns Person schema");
+  const person = personMatch[0];
+  for (const field of ["name", "jobTitle", "worksFor", "url"]) assert.match(person, new RegExp(`${field}:`));
+  for (const forbidden of ["image:", "sameAs", "alumniOf", "award", "nationality", "birthDate", "address", "social"]) {
+    assert.ok(!person.includes(forbidden), `unexpected Person field: ${forbidden}`);
+  }
 });
 
 test("sitemap includes public entity pages and excludes private or utility routes", () => {

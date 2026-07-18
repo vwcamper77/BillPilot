@@ -7985,6 +7985,11 @@ h1 {
 .live-home-green { color: var(--lh-green); }
 .live-home-steps article { padding: 26px; border: 1px solid var(--lh-border); border-radius: 24px; background: #fff; }
 .live-home-steps article > span { display: inline-grid; width: 42px; height: 42px; margin-bottom: 28px; place-items: center; border-radius: 14px; background: var(--lh-mint); font-weight: 900; }
+.live-home-founder { margin-block: 0 94px; padding: 38px 42px; border-left: 4px solid var(--lh-green); background: rgba(255,255,255,.58); }
+.live-home-founder h2 { max-width: 760px; margin-bottom: 14px; font-size: clamp(1.8rem, 3.5vw, 2.8rem); }
+.live-home-founder > p:not(.live-home-eyebrow) { max-width: 850px; margin: 0 0 12px; color: var(--lh-muted); font-size: 1.05rem; }
+.live-home-founder a { color: var(--lh-dark); font-weight: 850; text-underline-offset: 4px; }
+.live-home-founder a:focus-visible { outline: 3px solid color-mix(in srgb, var(--lh-green) 55%, transparent); outline-offset: 4px; }
 .live-home-reminders { background: #f4fbf8; }
 .live-home-reminder-grid article { padding: 26px; border: 1px solid var(--lh-border); border-radius: 24px; background: #fff; box-shadow: 0 12px 34px rgba(20,60,58,.08); }
 .live-home-reminder-grid article > div { display: flex; justify-content: space-between; margin-bottom: 18px; color: var(--lh-muted); font-size: .75rem; }
@@ -8030,6 +8035,7 @@ h1 {
 @media (max-width: 520px) {
   .live-home-container { width: min(100% - 24px, 1160px); }
   .live-home-band { padding-block: 70px; }
+  .live-home-founder { margin-bottom: 70px; padding: 30px 24px; }
   .live-home-hero { padding-bottom: 64px; }
   .live-home-product-shell { padding: 12px; border-radius: 28px; }
   .live-home-product-head, .live-home-result { padding-inline: 18px; }
@@ -8184,24 +8190,41 @@ h1 {
 .marketing-faq summary { cursor: pointer; font-weight: 850; }
 .marketing-faq details p { margin-bottom: 0; color: var(--muted); line-height: 1.65; }
 
-.about-sections { display: grid; gap: 14px; }
-.about-sections article { display: grid; grid-template-columns: 80px 1fr; gap: 24px; padding: 34px; border: 1px solid var(--line); border-radius: 26px; background: rgba(255,255,255,.78); }
+.about-hero { max-width: 960px; }
+.about-hero .about-question-intro { margin: 30px 0 8px; color: var(--ink); font-weight: 850; }
+.about-hero blockquote { max-width: 850px; margin: 0 0 24px; padding-left: 22px; border-left: 4px solid var(--accent); font-size: clamp(1.55rem, 3.2vw, 2.45rem); font-weight: 850; line-height: 1.25; letter-spacing: -.025em; }
+.about-product-summary { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(32px, 7vw, 80px); margin: 12px 0 80px; padding: 42px; border-radius: 28px; background: var(--soft); }
+.about-product-summary h2, .about-principles h2, .founder-story-sections h2 { margin: 0 0 14px; font-size: clamp(1.8rem, 3vw, 2.7rem); letter-spacing: -.035em; }
+.about-product-summary p { color: var(--muted); line-height: 1.7; }
+.about-product-summary ul { display: grid; align-content: center; gap: 13px; margin: 0; padding: 0; list-style: none; }
+.about-product-summary li { position: relative; padding-left: 29px; line-height: 1.5; }
+.about-product-summary li::before { position: absolute; left: 0; content: "✓"; color: var(--accent-dark); font-weight: 950; }
+.founder-story-sections { border-top: 1px solid var(--line); }
+.founder-story-sections > section { display: grid; grid-template-columns: 80px minmax(0, 820px); gap: 24px; padding: 48px 0; border-bottom: 1px solid var(--line); }
 .about-number { margin: 0; color: var(--accent); font-size: 1.2rem; font-weight: 950; }
-.about-sections h2 { margin: 0 0 10px; font-size: 1.7rem; }
-.about-sections article div p { max-width: 760px; margin: 0; color: var(--muted); line-height: 1.7; }
+.founder-story-sections p { color: var(--muted); line-height: 1.7; }
+.founder-story-sections p:last-child { margin-bottom: 0; }
+.about-principles { display: grid; grid-template-columns: .75fr 1.25fr; gap: 50px; margin-top: 80px; }
+.about-principles ol { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; counter-reset: principles; }
+.about-principles li { display: grid; grid-template-columns: minmax(190px, .75fr) 1.25fr; gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--line); counter-increment: principles; }
+.about-principles li:first-child { padding-top: 0; }
+.about-principles li strong::before { content: "0" counter(principles) " "; color: var(--accent); }
+.about-principles li span { color: var(--muted); line-height: 1.55; }
 .company-panel { display: grid; grid-template-columns: .8fr 1.2fr; gap: 50px; margin-top: 72px; padding: 46px; color: #fff; border-radius: 28px; background: var(--ink); }
 .company-panel .acquisition-eyebrow { color: #fff; }
 .company-panel > div:last-child { color: #cfe0dc; line-height: 1.7; }
 .company-panel > div:last-child p:first-child { margin-top: 0; }
 .about-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
 .about-links a { padding: 11px 17px; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; background: #fff; font-weight: 800; text-decoration: none; }
+.founder-about a:focus-visible { border-radius: 4px; outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 3px; }
 
 @media (max-width: 900px) {
-  .auth-journey-grid, .pricing-grid, .marketing-faq, .company-panel { grid-template-columns: 1fr; }
+  .auth-journey-grid, .pricing-grid, .marketing-faq, .company-panel, .about-product-summary, .about-principles { grid-template-columns: 1fr; }
   .auth-journey-grid { padding-top: 34px; }
   .auth-journey-grid-signin { min-height: auto; }
   .auth-next-steps ol { grid-template-columns: repeat(2, 1fr); }
   .marketing-faq { gap: 24px; }
+  .about-principles { gap: 24px; }
 }
 
 @media (max-width: 560px) {
@@ -8215,7 +8238,10 @@ h1 {
   .auth-form-card { width: 100%; }
   .auth-next-steps ol { grid-template-columns: 1fr; }
   .marketing-hero { padding: 48px 0; }
-  .about-sections article { grid-template-columns: 1fr; gap: 7px; padding: 24px; }
+  .about-product-summary { margin-bottom: 56px; padding: 24px; }
+  .founder-story-sections > section { grid-template-columns: 1fr; gap: 7px; padding: 38px 0; }
+  .about-principles { margin-top: 56px; }
+  .about-principles li { grid-template-columns: 1fr; gap: 7px; }
 }
 
 /* Compact bills and income management */
