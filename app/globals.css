@@ -8218,6 +8218,10 @@ h1 {
 .company-panel .acquisition-eyebrow { color: #fff; }
 .company-panel > div:last-child { color: #cfe0dc; line-height: 1.7; }
 .company-panel > div:last-child p:first-child { margin-top: 0; }
+.company-panel a,
+.company-panel a:visited { color: #8ce8c5; font-weight: 750; text-decoration-color: rgba(140,232,197,.7); text-underline-offset: 4px; }
+.company-panel a:hover { color: #fff; text-decoration-color: #8ce8c5; }
+.company-panel a:focus-visible { color: #fff; border-radius: 3px; outline-color: #8ce8c5; }
 .about-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
 .about-links a { padding: 11px 17px; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; background: #fff; font-weight: 800; text-decoration: none; }
 .founder-about a:focus-visible { border-radius: 4px; outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 3px; }
