@@ -87,8 +87,13 @@ export default function PrivacyPage() {
 
         <h2 className="account-heading">Service emails</h2>
         <p>
-          ClearTill may send essential account, access, preview and service emails. Optional reminders can be
-          managed through the available account settings or unsubscribe link.
+          ClearTill may send essential account, access, preview, subscription and service emails. Optional
+          balance and next-day bill reminders can be changed, snoozed, paused or switched off in account
+          settings. Private reminder mode hides balances, bill names and amounts from email; Detailed mode is
+          available only as an explicit account preference. ClearTill does not use email-open tracking pixels
+          as the basis for reminder decisions. Delivery, bounce and complaint events may be processed to
+          operate the service and prevent unwanted repeat contact. Resend provides ClearTill&apos;s email-delivery
+          infrastructure where configured.
         </p>
         <p>
           If you request a free guide or worksheet, ClearTill stores the email address and limited source

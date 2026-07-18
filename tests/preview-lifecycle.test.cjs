@@ -108,19 +108,20 @@ test("webhook conversion retains preview and preserves legacy Stripe trial handl
   assert.doesNotMatch(lifecycle, /\.delete\(/);
 });
 
-test("all lifecycle emails use the idempotent delivery ledger and protect financial content", () => {
-  const emails = read("lib/previewEmails.server.js");
+test("all commercial lifecycle emails use the durable reminder ledger and protect financial content", () => {
+  const templates = read("lib/reminders/templates.js");
+  const service = read("lib/reminders/service.server.js");
+  const store = read("lib/reminders/store.server.js");
   const scheduler = read("app/api/scheduler/route.js");
-  for (const type of ["account_created", "onboarding_incomplete", "preview_started", "preview_balance_check", "preview_cost_check", "preview_ending", "preview_expired"]) {
-    assert.match(emails, new RegExp(`${type}:`));
+  for (const type of ["TRIAL_WELCOME", "DIRECT_PAID_WELCOME", "TRIAL_SETUP_NUDGE", "PAID_SETUP_NUDGE", "TRIAL_ENDING_SOON", "TRIAL_CONVERTED_TO_PAID", "TRIAL_EXPIRED"]) {
+    assert.match(templates, new RegExp(`NOTIFICATION_TYPES\\.${type}`));
   }
-  assert.match(emails, /claimEmailDelivery/);
-  assert.match(emails, /markEmailDelivery/);
-  assert.match(scheduler, /!previewSnapshot\.exists[\s\S]*!completeness\.complete/);
-  assert.match(read("lib/previewLifecycle.server.js"), /staleHours >= 36/);
-  for (const subject of ["Your ClearTill account is ready", "Your ClearTill live preview has started", "Has your balance changed?", "Is there anything still to add?", "Your live ClearTill preview ends tomorrow", "Your ClearTill position is now paused"]) {
-    assert.doesNotMatch(subject, /£|\$|€/);
-  }
+  assert.match(service, /claimEmailDelivery/);
+  assert.match(service, /markEmailDelivery/);
+  assert.match(store, /transaction\.create\(ref/);
+  assert.match(scheduler, /runReminderScheduler/);
+  assert.match(templates, /Financial details are hidden from this email/);
+  assert.match(templates, /You will not be charged automatically/);
   assert.match(read("lib/email.js"), /includeAmounts = false/);
 });
 
@@ -133,10 +134,11 @@ test("email claim policy retries safely and stops permanent failures", () => {
   assert.deepEqual(decideEmailClaim({ status: "failed", attempts: EMAIL_MAX_ATTEMPTS }, now), { ok: false, reason: "max_attempts" });
   assert.equal(failureStatusForAttempt(EMAIL_MAX_ATTEMPTS), "permanent_failure");
   const delivery = read("lib/email.js");
-  const scheduler = read("app/api/scheduler/route.js");
+  const store = read("lib/reminders/store.server.js");
   assert.match(delivery, /runTransaction[\s\S]*claimToken[\s\S]*leaseExpiresAt/);
-  assert.match(scheduler, /type: "account_created"[\s\S]*type: "preview_started"/);
-  assert.match(read("lib/previewLifecycle.server.js"), /day >= 6[\s\S]*day >= 4[\s\S]*day >= 2/);
+  assert.match(store, /nextAttemptAt/);
+  assert.match(store, /2 \*\* Math\.max/);
+  assert.match(read("lib/reminders/policy.js"), /ageDays <= 6[\s\S]*ageDays <= 29[\s\S]*ageDays <= 59/);
 });
 
 test("account-created email uses trusted Firebase identity and cannot start preview or Stripe", () => {

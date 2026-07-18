@@ -3,6 +3,9 @@ import { FieldValue, getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { touchCustomerActivity } from "@/lib/customerProfile.server";
 import { recordFirstSaveAndTutorial } from "@/lib/analytics/onboarding.server";
 import { assertCanEditFinancialData, isReadOnlyAccessError } from "@/lib/financialAccess.server";
+import { recordReminderMeaningfulActivity } from "@/lib/reminders/lifecycle.server";
+import { cancelPendingNotificationTypes } from "@/lib/reminders/store.server";
+import { NOTIFICATION_TYPES } from "@/lib/reminders/policy";
 
 export const runtime = "nodejs";
 
@@ -31,6 +34,8 @@ export async function POST(request) {
         }, { merge: true });
 
         await recordFirstSaveAndTutorial({ uid: decodedToken.uid, saveEvent: "bill_added" });
+        await recordReminderMeaningfulActivity(decodedToken.uid, "bill_added");
+        await cancelPendingBillEmails(decodedToken.uid);
 
         void touchCustomerActivity({
           uid: decodedToken.uid,
@@ -55,6 +60,8 @@ export async function POST(request) {
           ...fields,
           updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
+        await recordReminderMeaningfulActivity(decodedToken.uid, "bill_updated");
+        await cancelPendingBillEmails(decodedToken.uid);
 
         return NextResponse.json({ ok: true, action, billId });
       }
@@ -66,6 +73,8 @@ export async function POST(request) {
         }
 
         await userRef.doc(billId).delete();
+        await recordReminderMeaningfulActivity(decodedToken.uid, "bill_deleted");
+        await cancelPendingBillEmails(decodedToken.uid);
         return NextResponse.json({ ok: true, action, billId });
       }
 
@@ -78,6 +87,8 @@ export async function POST(request) {
         const batch = getAdminDb().batch();
         billIds.forEach((billId) => batch.delete(userRef.doc(billId)));
         await batch.commit();
+        await recordReminderMeaningfulActivity(decodedToken.uid, "bills_deleted");
+        await cancelPendingBillEmails(decodedToken.uid);
 
         return NextResponse.json({ ok: true, action, count: billIds.length });
       }
@@ -108,6 +119,10 @@ export async function POST(request) {
       { status: 500 },
     );
   }
+}
+
+function cancelPendingBillEmails(uid) {
+  return cancelPendingNotificationTypes(uid, [NOTIFICATION_TYPES.BILL_DUE_TOMORROW, NOTIFICATION_TYPES.BILL_AND_BALANCE_STALE], "bill_lifecycle_changed");
 }
 
 async function verifyDashboardBillsRequest(request) {

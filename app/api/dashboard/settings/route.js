@@ -3,6 +3,7 @@ import { FieldValue, getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { touchCustomerActivity } from "@/lib/customerProfile.server";
 import { recordFirstSaveAndTutorial } from "@/lib/analytics/onboarding.server";
 import { assertCanEditFinancialData, isReadOnlyAccessError } from "@/lib/financialAccess.server";
+import { recordReminderMeaningfulActivity } from "@/lib/reminders/lifecycle.server";
 
 export const runtime = "nodejs";
 
@@ -50,6 +51,7 @@ export async function POST(request) {
         await balanceRef.set(payload, { merge: true });
 
         await recordFirstSaveAndTutorial({ uid: decodedToken.uid, saveEvent: "balance_added" });
+        await recordReminderMeaningfulActivity(decodedToken.uid, "balance_updated");
 
         void touchCustomerActivity({ uid: decodedToken.uid, patch: { onboardingStatus: "balance_added" } });
 

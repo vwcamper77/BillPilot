@@ -1,279 +1,33 @@
 import { NextResponse } from "next/server";
-import { claimEmailDelivery, emailFailureStatus, markEmailDelivery, buildEmailPreview, buildUnsubscribeUrl, sendResendEmail, shouldSuppressOptionalEmail } from "@/lib/email";
-import { FieldValue, getAdminDb } from "@/lib/firebaseAdmin";
-import { getAppBaseUrl } from "@/lib/billing/config";
-import { trackServerAnalyticsEvent } from "@/lib/analytics";
-import { firstIncompleteOnboardingStep, hasCompletePosition, previewScheduleState } from "@/lib/previewLifecycle.server";
-import { sendPreviewLifecycleEmail } from "@/lib/previewEmails.server";
+import { runReminderScheduler } from "@/lib/reminders/service.server";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
+export async function GET(request) {
+  return handleSchedulerRequest(request);
+}
 export async function POST(request) {
+  return handleSchedulerRequest(request);
+}
+
+async function handleSchedulerRequest(request) {
   if (!isSchedulerRequest(request)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
-
-  const summary = {
-    ok: true,
-    attempted: 0,
-    sent: 0,
-    failed: 0,
-    skipped: 0,
-    suppressed: 0,
-  };
-
-  const usersSnapshot = await getAdminDb().collection("users").get();
-  const today = new Date();
-  const weekday = today.getUTCDay();
-
-  for (const userDoc of usersSnapshot.docs) {
-    const user = userDoc.data();
-    const userId = userDoc.id;
-    const [subscriptionSnap, billsSnapshot, balanceSnapshot, incomeSnapshot, costsSnapshot, previewSnapshot, emailPreferencesSnapshot] = await Promise.all([
-      userDoc.ref.collection("billing").doc("subscription").get(),
-      userDoc.ref.collection("bills").where("active", "==", true).get(),
-      userDoc.ref.collection("settings").doc("balance").get(),
-      userDoc.ref.collection("income").doc("main").get(),
-      userDoc.ref.collection("largeCosts").where("active", "==", true).get(),
-      userDoc.ref.collection("access").doc("preview").get(),
-      userDoc.ref.collection("settings").doc("emailPreferences").get(),
-    ]);
-    const subscription = subscriptionSnap.exists ? subscriptionSnap.data() : {};
-    const email = user.email || subscription.customerEmail || "";
-
-    if (!email) {
-      summary.skipped += 1;
-      continue;
-    }
-
-    const billCount = billsSnapshot.size;
-    const billsTotal = billsSnapshot.docs.reduce((sum, doc) => sum + (Number(doc.data().amount) || 0), 0);
-    const includeAmountsInEmail = emailPreferencesSnapshot.data()?.includeAmountsInEmail === true;
-    const preview = buildEmailPreview({ billCount, billsTotal, includeAmounts: includeAmountsInEmail });
-    const balanceLink = `${getAppBaseUrl()}/dashboard?focus=balance`;
-
-    const balance = balanceSnapshot.exists ? balanceSnapshot.data() : null;
-    const income = incomeSnapshot.exists ? incomeSnapshot.data() : null;
-    const costs = costsSnapshot.docs.map((doc) => doc.data());
-    const bills = billsSnapshot.docs.map((doc) => doc.data());
-    const completeness = hasCompletePosition({ balance, income, bills, largeCosts: costs });
-    const accountCreatedAt = user.accountCreatedAt?.toDate?.() || null;
-    // Accounts created after the no-card lifecycle launched receive that
-    // sequence instead of the older weekly reminder programme.
-    const usesPreviewLifecycle = Boolean(accountCreatedAt);
-
-    if (usesPreviewLifecycle) {
-      summary.attempted += 1;
-      const result = await sendPreviewLifecycleEmail({
-        userId,
-        email,
-        type: "account_created",
-        period: "account-created",
-        onboardingStep: "balance",
-      });
-      applyReminderSummary(summary, result);
-    }
-
-    if (!previewSnapshot.exists && accountCreatedAt && today.getTime() - accountCreatedAt.getTime() >= 24 * 60 * 60 * 1000 && !completeness.complete) {
-      summary.attempted += 1;
-      const step = firstIncompleteOnboardingStep({ balance: completeness.validBalance, income: completeness.validPayday, hasCost: completeness.hasCost });
-      const result = await sendPreviewLifecycleEmail({ userId, email, type: "onboarding_incomplete", period: "first-24-hours", onboardingStep: step });
-      applyReminderSummary(summary, result);
-    }
-
-    if (previewSnapshot.exists) {
-      const storedPreview = previewSnapshot.data();
-      if (storedPreview.status === "active" && storedPreview.startedAt) {
-        summary.attempted += 1;
-        const startedAt = storedPreview.startedAt?.toDate?.()?.toISOString?.() || String(storedPreview.startedAt);
-        const startResult = await sendPreviewLifecycleEmail({
-          userId,
-          email,
-          type: "preview_started",
-          period: startedAt,
-          endDate: storedPreview.endsAt,
-        });
-        applyReminderSummary(summary, startResult);
-      }
-      const schedule = previewScheduleState(storedPreview, { now: today, balanceUpdatedAt: balance?.snapshotEnteredAt || balance?.updatedAt });
-      if (schedule.type) {
-        summary.attempted += 1;
-        if (schedule.type === "preview_expired" && storedPreview.status === "active") {
-          await previewSnapshot.ref.set({ status: "expired", updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-        }
-        const result = await sendPreviewLifecycleEmail({
-          userId,
-          email,
-          type: schedule.type,
-          period: `${schedule.normalized.startedAt}:${schedule.type}`,
-          endDate: schedule.normalized.endsAt,
-          includeAmounts: includeAmountsInEmail,
-        });
-        applyReminderSummary(summary, result);
-        if (result.status === "sent") {
-          await trackServerAnalyticsEvent(schedule.type === "preview_expired" ? "preview_expired" : "preview_reminder_sent", { uid: userId, source: schedule.type });
-        }
-      }
-    }
-
-    if (!usesPreviewLifecycle && (weekday === 0 || weekday === 1)) {
-      summary.attempted += 1;
-      const result = await sendOptionalReminder({
-        userId,
-        email,
-        type: "weekly_planning",
-        period: `${today.toISOString().slice(0, 10)}:weekly`,
-        subject: "Plan your week with ClearTill",
-        text: [
-          "Update your current balance to see what you really have available after upcoming bills.",
-          preview,
-          `Update my balance: ${balanceLink}`,
-          `Unsubscribe: ${buildUnsubscribeUrl({ userId, type: "weekly_planning" })}`,
-        ].filter(Boolean).join("\n\n"),
-        html: `<p>Update your current balance to see what you really have available after upcoming bills.</p>${preview ? `<p>${preview}</p>` : ""}<p><a href="${balanceLink}">Update my balance</a></p><p><a href="${buildUnsubscribeUrl({ userId, type: "weekly_planning" })}">Unsubscribe from weekly reminders</a></p>`,
-      });
-      applyReminderSummary(summary, result);
-    }
-
-    if (!usesPreviewLifecycle && weekday === 3) {
-      summary.attempted += 1;
-      const result = await sendOptionalReminder({
-        userId,
-        email,
-        type: "midweek_balance",
-        period: `${today.toISOString().slice(0, 10)}:midweek`,
-        subject: "Still clear until payday?",
-        text: [
-          "Refresh your balance and see whether this week's spending has changed your position.",
-          preview,
-          `Check what's left: ${balanceLink}`,
-          `Unsubscribe: ${buildUnsubscribeUrl({ userId, type: "midweek_balance" })}`,
-        ].filter(Boolean).join("\n\n"),
-        html: `<p>Refresh your balance and see whether this week's spending has changed your position.</p>${preview ? `<p>${preview}</p>` : ""}<p><a href="${balanceLink}">Check what's left</a></p><p><a href="${buildUnsubscribeUrl({ userId, type: "midweek_balance" })}">Unsubscribe from weekly reminders</a></p>`,
-      });
-      applyReminderSummary(summary, result);
-    }
-
-    if (subscription.subscriptionStatus === "trialing" && subscription.trialEnd) {
-      const claimEmailAlreadySent = subscription.checkoutIntentId
-        ? await getAdminDb().collection("pendingTrialClaims").doc(subscription.checkoutIntentId).get()
-          .then((snapshot) => snapshot.exists && snapshot.data()?.emailOutbox?.status === "sent")
-          .catch(() => false)
-        : false;
-      await queueTrialEmail(summary, { userId, email, subscription, claimEmailAlreadySent });
-    }
-
-    if (subscription.latestInvoiceStatus === "payment_failed") {
-      await queueFailedPaymentEmail(summary, { userId, email });
-    }
-
-    await userDoc.ref.collection("scheduler").doc("latest").set({
-      ranAt: FieldValue.serverTimestamp(),
-      lastBalanceSeen: balanceSnapshot.exists ? Boolean(balanceSnapshot.data()?.currentBalance >= 0) : false,
-    }, { merge: true });
+  try {
+    const url = new URL(request.url);
+    const requestedUid = process.env.NODE_ENV !== "production" ? String(url.searchParams.get("uid") || "").trim() : "";
+    const nowParam = process.env.NODE_ENV === "test" ? url.searchParams.get("now") : null;
+    const now = nowParam ? new Date(nowParam) : new Date();
+    return NextResponse.json(await runReminderScheduler({ now, requestedUid }));
+  } catch (error) {
+    console.error("[reminder-scheduler] failed", { code: error?.code || "unknown" });
+    return NextResponse.json({ ok: false, error: "Reminder scheduling failed." }, { status: 500 });
   }
-
-  return NextResponse.json(summary);
 }
 
 function isSchedulerRequest(request) {
   const secret = process.env.SCHEDULER_SECRET || process.env.CRON_SECRET;
   return Boolean(secret) && request.headers.get("authorization") === `Bearer ${secret}`;
-}
-
-async function sendOptionalReminder({ userId, email, type, period, subject, text, html, transactional = false }) {
-  if (await shouldSuppressOptionalEmail(userId, type)) {
-    return { status: "suppressed" };
-  }
-
-  const claimed = await claimEmailDelivery({ userId, type, period, transactional });
-  if (!claimed.ok) {
-    return { status: claimed.reason === "duplicate" ? "skipped" : "failed" };
-  }
-
-  try {
-    const response = await sendResendEmail({
-      to: email,
-      subject,
-      text,
-      html,
-      headers: {
-        "X-ClearTill-Email-Type": type,
-        "X-ClearTill-Idempotency-Key": claimed.idempotencyKey,
-      },
-    });
-
-    if (response.skipped) {
-      await markEmailDelivery(claimed.ref, { status: emailFailureStatus(claimed.attempts), reason: response.error }, { claimToken: claimed.claimToken });
-      return { status: "skipped" };
-    }
-
-    await markEmailDelivery(claimed.ref, {
-      status: "sent",
-      sentAt: FieldValue.serverTimestamp(),
-      providerMessageId: response.providerMessageId || null,
-    }, { claimToken: claimed.claimToken });
-    await trackServerAnalyticsEvent("trial_reminder_sent", { uid: userId, reminderType: type });
-    return { status: "sent" };
-  } catch (error) {
-    await markEmailDelivery(claimed.ref, { status: emailFailureStatus(claimed.attempts), reason: String(error?.message || "send_failed").slice(0, 120) }, { claimToken: claimed.claimToken });
-    return { status: "failed" };
-  }
-}
-
-async function queueTrialEmail(summary, { userId, email, subscription, claimEmailAlreadySent = false }) {
-  const now = Date.now();
-  const trialEnd = Number(subscription.trialEnd || 0);
-  const balanceLink = `${getAppBaseUrl()}/dashboard?focus=balance`;
-
-  if (subscription.trialWelcomeSentAt !== true && !claimEmailAlreadySent) {
-    summary.attempted += 1;
-    const result = await sendOptionalReminder({
-      userId,
-      email,
-      type: "trial_start",
-      period: subscription.stripeSubscriptionId || `${trialEnd}:start`,
-      subject: "Welcome to your ClearTill trial",
-      text: `Your 7-day trial is live. First payment: £1.99 on ${new Date(trialEnd).toLocaleDateString("en-GB")} and monthly after that.\n\nManage your subscription in billing.\n\nUpdate my balance: ${balanceLink}`,
-      html: `<p>Your 7-day trial is live.</p><p>First payment: £1.99 on ${new Date(trialEnd).toLocaleDateString("en-GB")} and monthly after that.</p><p><a href="${balanceLink}">Update my balance</a></p>`,
-      transactional: true,
-    });
-    applyReminderSummary(summary, result);
-  }
-
-  if (trialEnd - now <= 48 * 60 * 60 * 1000 && trialEnd > now) {
-    summary.attempted += 1;
-    const result = await sendOptionalReminder({
-      userId,
-      email,
-      type: "trial_ending",
-      period: `${subscription.stripeSubscriptionId || "trial"}:ending`,
-      subject: "Your ClearTill trial is nearly over",
-      text: `Your first £1.99 monthly payment is due on ${new Date(trialEnd).toLocaleDateString("en-GB")}. Manage or cancel your subscription before then if you need to.`,
-      html: `<p>Your first £1.99 monthly payment is due on ${new Date(trialEnd).toLocaleDateString("en-GB")}.</p><p>Manage or cancel your subscription before then if you need to.</p>`,
-    });
-    applyReminderSummary(summary, result);
-  }
-}
-
-async function queueFailedPaymentEmail(summary, { userId, email }) {
-  summary.attempted += 1;
-  const result = await sendOptionalReminder({
-    userId,
-    email,
-    type: "payment_failed",
-    period: `${new Date().toISOString().slice(0, 10)}:payment_failed`,
-    subject: "Your ClearTill payment needs attention",
-    text: `We couldn't take your £1.99 monthly payment. Update your payment details in the Customer Portal to keep access.`,
-    html: "<p>We couldn't take your £1.99 monthly payment.</p><p>Update your payment details in the Customer Portal to keep access.</p>",
-    transactional: true,
-  });
-  applyReminderSummary(summary, result);
-}
-
-function applyReminderSummary(summary, result) {
-  if (result.status === "sent") summary.sent += 1;
-  else if (result.status === "suppressed") summary.suppressed += 1;
-  else if (result.status === "failed") summary.failed += 1;
-  else summary.skipped += 1;
 }

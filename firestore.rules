@@ -65,7 +65,7 @@ service cloud.firestore {
     match /users/{userId}/settings/{settingId} {
       allow read: if isOwner(userId);
       allow write: if isOwner(userId)
-        && (settingId in ["preferences", "emailPreferences"]
+        && (settingId == "preferences"
           || (settingId in ["balance", "savings"] && canWriteFinancialData(userId)));
     }
 
@@ -113,6 +113,31 @@ service cloud.firestore {
     }
 
     match /emailDeliveries/{deliveryId} {
+      allow read, write: if false;
+    }
+
+    match /emailSuppressions/{suppressionId} {
+      allow read, write: if false;
+    }
+
+    match /emailActionTokens/{tokenId} {
+      allow read, write: if false;
+    }
+
+    match /emailProviderWebhookEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/notifications/{documentId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/notificationEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId}/reminderPreferenceAudits/{auditId} {
       allow read, write: if false;
     }
   }

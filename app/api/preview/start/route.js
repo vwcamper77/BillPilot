@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { verifyRequestUser } from "@/lib/serverAuth";
 import { resolveEntitlementForUid } from "@/lib/entitlementResolver.server";
 import { startPreviewForUid } from "@/lib/previewLifecycle.server";
-import { sendPreviewLifecycleEmail } from "@/lib/previewEmails.server";
 import { trackServerAnalyticsEvent } from "@/lib/analytics";
+import { runReminderForUser } from "@/lib/reminders/service.server";
 
 export const runtime = "nodejs";
 
@@ -27,12 +27,8 @@ export async function POST(request) {
     const access = await resolveEntitlementForUid(user.uid, { accountEmail: user.email || null });
 
     if (result.created) {
-      await sendPreviewLifecycleEmail({
-        userId: user.uid,
-        email: user.email || access.accountEmail,
-        type: "preview_started",
-        period: result.preview.startedAt,
-        endDate: result.preview.endsAt,
+      await runReminderForUser(user.uid, { onlyLifecycle: true }).catch((error) => {
+        console.error("[preview-start] reminder lifecycle failed", { code: error?.code || "unknown" });
       });
       await trackServerAnalyticsEvent("preview_started", { uid: user.uid, source: "first_complete_position" });
     }

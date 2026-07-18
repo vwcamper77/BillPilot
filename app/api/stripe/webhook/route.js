@@ -12,6 +12,8 @@ import { recordVerifiedPaidInvoice, recordVerifiedTrial } from "@/lib/billing/co
 import { attributionFromStripeMetadata } from "@/lib/analytics/attribution.server";
 import { getAdminAuth } from "@/lib/firebaseAdmin";
 import { markPreviewConverted } from "@/lib/previewLifecycle.server";
+import { runReminderForUser } from "@/lib/reminders/service.server";
+import { sendPaymentFailureNotice } from "@/lib/billing/paymentFailureEmail.server";
 
 export const runtime = "nodejs";
 
@@ -132,6 +134,7 @@ async function handleStripeEvent(stripe, event) {
       } else {
         await recordVerifiedTrial({ uid, sessionId: object.id, subscription, internalTest, attribution, stripeEventId: event.id, customerEmail });
       }
+      await queueCommercialReminderLifecycle(uid, eventCreated);
       return { uid, stripeCheckoutSessionId: object.id, stripeCustomerId, stripeSubscriptionId: subscription.id };
     }
 
@@ -169,6 +172,7 @@ async function handleStripeEvent(stripe, event) {
           await trackServerAnalyticsEvent("trial_cancelled", { uid, source: "stripe_webhook" });
         }
       }
+      await queueCommercialReminderLifecycle(uid, eventCreated);
       return { uid, stripeCustomerId: typeof subscription.customer === "string" ? subscription.customer : null, stripeSubscriptionId: subscription.id };
     }
 
@@ -207,6 +211,7 @@ async function handleStripeEvent(stripe, event) {
         subscription,
         stripeEventId: event.id,
       });
+      await queueCommercialReminderLifecycle(firebaseUid, eventCreated);
       return { uid: firebaseUid, stripeSubscriptionId: subscription.id, stripeInvoiceId: object.id, amountPaid: Number(object.amount_paid) || 0, currency: object.currency || null };
     }
 
@@ -233,12 +238,22 @@ async function handleStripeEvent(stripe, event) {
         },
       });
       if (!internalTest) await trackServerAnalyticsEvent("invoice_payment_failed", { uid, source: "stripe_webhook" });
+      if (!internalTest) await sendPaymentFailureNotice({ uid, invoiceId: object.id });
       return { uid, stripeSubscriptionId: subscription.id, stripeInvoiceId: object.id, paymentStatus: "failed" };
     }
 
     default:
       safeInfo("[stripe-webhook] ignored", { type: event.type });
       return { ignoredReason: "unsupported_event_type" };
+  }
+}
+
+async function queueCommercialReminderLifecycle(uid, eventCreated) {
+  try {
+    return await runReminderForUser(uid, { now: new Date(eventCreated || Date.now()), onlyLifecycle: true });
+  } catch (error) {
+    safeError("[stripe-webhook] reminder lifecycle failed", { code: error?.code || "unknown" });
+    return { status: "failed" };
   }
 }
 

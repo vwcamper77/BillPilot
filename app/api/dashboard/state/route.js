@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebaseAdmin";
 import { mergeLegacySalary, REGULAR_SALARY_SOURCE_ID } from "@/lib/incomeSchedule";
+import { recordReminderMeaningfulActivity } from "@/lib/reminders/lifecycle.server";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,7 @@ export async function POST(request) {
       const { id, ...fields } = migratedSalary;
       await userRef.collection("incomeEvents").doc(id).set(fields, { merge: true });
     }
+    await recordReminderMeaningfulActivity(decodedToken.uid, "dashboard_reviewed");
 
     return NextResponse.json({
       ok: true,
