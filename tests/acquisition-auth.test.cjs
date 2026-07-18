@@ -98,3 +98,20 @@ test("pricing and mobile acquisition layout match the published offer", () => {
   assert.match(pricingAction, /window\.location\.assign\("\/start"\)/);
   assert.match(css, /@media \(max-width: 560px\)[\s\S]*?\.auth-journey-grid[\s\S]*?flex-direction: column/);
 });
+
+test("privacy policy is a public server-rendered OAuth verification page", () => {
+  const privacy = read("app/privacy/page.jsx");
+
+  assert.doesNotMatch(privacy, /["']use client["']|firebase\/auth|onAuthStateChanged|verifyRequestUser|redirect\(/);
+  assert.match(privacy, /ClearTill Privacy Policy/);
+  assert.match(privacy, /GMBF Ventures Ltd/);
+  assert.match(privacy, /mailto:hello@cleartill\.money/);
+  assert.match(privacy, /Firebase Authentication/);
+  assert.match(privacy, /balance[\s\S]*payday[\s\S]*bills[\s\S]*large costs[\s\S]*savings/i);
+  assert.match(privacy, /does not require your bank login details[\s\S]*Open Banking/i);
+  assert.match(privacy, /Stripe/);
+  assert.match(privacy, /Google Analytics[\s\S]*Meta Pixel[\s\S]*Mixpanel/);
+  assert.match(privacy, /request access to or deletion/);
+  assert.match(privacy, /href="https:\/\/cleartill\.money"/);
+  assert.match(privacy, /href="\/terms"/);
+});

@@ -1,9 +1,8 @@
 import Link from "next/link";
-import Logo from "@/components/Logo";
-import TrustShield from "@/components/TrustShield";
 
 export const metadata = {
-  title: "Privacy Policy | ClearTill",
+  title: "ClearTill Privacy Policy",
+  description: "How ClearTill collects, uses and protects personal and financial planning data.",
   alternates: { canonical: "/privacy" },
 };
 
@@ -12,85 +11,102 @@ export default function PrivacyPage() {
     <main className="legal-shell">
       <header className="topbar">
         <div>
-          <Link className="brand-link" href="/" aria-label="ClearTill home">
-            <Logo className="eyebrow-logo" />
-          </Link>
-          <h1 className="brand" style={{ fontSize: "2rem" }}>Privacy Policy</h1>
+          <p className="eyebrow">ClearTill</p>
+          <h1 className="brand" style={{ fontSize: "2rem" }}>ClearTill Privacy Policy</h1>
         </div>
-        <div className="topbar-actions">
-          <Link className="secondary-button" href="/account">Back to account</Link>
-          <Link className="secondary-button" href="/dashboard">Dashboard</Link>
-        </div>
+        <nav className="topbar-actions" aria-label="Privacy policy navigation">
+          <a className="secondary-button" href="https://cleartill.money">Back to ClearTill home</a>
+          <Link className="secondary-button" href="/terms">Terms</Link>
+        </nav>
       </header>
 
-      <TrustShield className="page-trust-banner" />
-
-      <section className="legal-panel">
+      <article className="legal-panel">
         <p>
-          ClearTill helps you plan your money without connecting to your bank.
+          This privacy policy explains how ClearTill handles information when you create an account
+          and use the ClearTill money-planning service.
         </p>
 
-        <h2 className="account-heading" style={{ marginTop: "20px" }}>Who operates ClearTill</h2>
+        <h2 className="account-heading">Who operates ClearTill</h2>
         <p>
-          ClearTill is operated by GMBF Ventures Ltd, a company registered in England and Wales under company number
-          {" "}17286832. Our registered office is 124 City Road, London, EC1V 2NX, United Kingdom.
-        </p>
-
-        <h2 className="account-heading">What data you enter</h2>
-        <p>Information we may store includes:</p>
-        <ul className="page-list">
-          <li>your email address</li>
-          <li>paid-date settings</li>
-          <li>current available money entered by you</li>
-          <li>bills and scheduled payments</li>
-          <li>savings and big cost entries</li>
-          <li>text extracted from screenshots or statements you choose to upload</li>
-        </ul>
-
-        <h2 className="account-heading" style={{ marginTop: "20px" }}>Why ClearTill uses it</h2>
-        <p>
-          We use this information only to provide the ClearTill service — to show
-          what is due before you're paid and what may be left afterwards. We do not
-          sell your personal data.
-        </p>
-
-        <h2 className="account-heading" style={{ marginTop: "20px" }}>No bank login, no Open Banking</h2>
-        <p>
-          ClearTill does not ask for your bank login details and does not use
-          Open Banking. You choose what information to enter, and you can use a
-          manual balance snapshot instead of connecting any account.
-        </p>
-
-        <h2 className="account-heading" style={{ marginTop: "20px" }}>How imported data is handled</h2>
-        <p>
-          Sensitive import data is encrypted where supported. Server-processed
-          import text — such as content extracted from uploaded screenshots, CSV
-          files or imported statements — is encrypted before storage using keys
-          held only on the server. See our <Link href="/security">Security</Link> page
-          for more detail.
-        </p>
-        <p>
-          Some budgeting fields, such as amounts and dates, may be stored in a
-          readable format so ClearTill can calculate your forecast and spending
-          room in realtime. Server-processed import text is encrypted where
-          supported.
-        </p>
-
-        <h2 className="account-heading" style={{ marginTop: "20px" }}>Your data controls</h2>
-        <p>
-          You can export, reset or delete your ClearTill data from your account
-          menu, and you can also delete your account. Reset and delete actions
-          permanently remove your ClearTill budgeting data and cannot be undone.
-        </p>
-
-        <h2 className="account-heading" style={{ marginTop: "20px" }}>Contact</h2>
-        <p>
-          For privacy or support questions, contact us at{" "}
+          ClearTill is operated by GMBF Ventures Ltd, a company registered in England and Wales under
+          company number 17286832. Its registered office is 124 City Road, London, EC1V 2NX, United Kingdom.
+          Privacy questions can be sent to{" "}
           <a href="mailto:hello@cleartill.money">hello@cleartill.money</a>.
         </p>
 
-        <p className="helper-text" style={{ marginTop: "16px" }}>Last updated: 30 June 2026</p>
-      </section>
+        <h2 className="account-heading">Account data we collect</h2>
+        <p>
+          When you register or sign in, ClearTill processes account information such as your email address,
+          Firebase user identifier, authentication provider and, where supplied, your display name. ClearTill
+          uses Firebase Authentication to create and secure user accounts and to confirm who is making an
+          authenticated request.
+        </p>
+
+        <h2 className="account-heading">Financial planning data you provide</h2>
+        <p>
+          ClearTill stores the information you choose to enter so it can calculate your position before payday.
+          This may include:
+        </p>
+        <ul className="page-list">
+          <li>your current balance or available-money snapshot;</li>
+          <li>your payday, income amount and income schedule;</li>
+          <li>bills, subscriptions and other scheduled payments;</li>
+          <li>large costs and their planned dates;</li>
+          <li>savings balances and savings allocated to future costs; and</li>
+          <li>information extracted from screenshots, CSV files or statements that you choose to upload.</li>
+        </ul>
+        <p>
+          ClearTill uses Firebase services, including Firestore, to store user and service data. Sensitive
+          server-processed import content is encrypted where supported. ClearTill does not sell your personal
+          data.
+        </p>
+
+        <h2 className="account-heading">No bank login or Open Banking</h2>
+        <p>
+          ClearTill does not require your bank login details and does not require an Open Banking connection.
+          You decide what information to enter and can use a manually entered balance instead of connecting a
+          bank account.
+        </p>
+
+        <h2 className="account-heading">Payments</h2>
+        <p>
+          ClearTill may use Stripe to provide secure payment, subscription and billing-portal services. Stripe
+          processes payment details under its own privacy terms. ClearTill does not store full payment-card
+          details.
+        </p>
+
+        <h2 className="account-heading">Analytics</h2>
+        <p>
+          Where configured, ClearTill may use analytics and attribution tools such as Google Analytics, Google
+          Tag Manager, Meta Pixel and Mixpanel to understand service usage, diagnose problems and measure
+          marketing performance. Analytics is used only as described in this policy and according to the
+          consent controls presented by ClearTill. ClearTill does not send the balance, payday, bills, large
+          costs or savings values you enter as analytics properties.
+        </p>
+
+        <h2 className="account-heading">Service emails</h2>
+        <p>
+          ClearTill may send essential account, access, preview and service emails. Optional reminders can be
+          managed through the available account settings or unsubscribe link.
+        </p>
+
+        <h2 className="account-heading">Exporting or deleting your data</h2>
+        <p>
+          Signed-in users can use the account page to export their data, reset their ClearTill planning data,
+          delete their ClearTill data, or delete their account. You may also request access to or deletion of
+          your information by emailing{" "}
+          <a href="mailto:hello@cleartill.money">hello@cleartill.money</a>.
+        </p>
+
+        <h2 className="account-heading">Contact and related terms</h2>
+        <p>
+          Read the <Link href="/terms">ClearTill Terms</Link>, return to the{" "}
+          <a href="https://cleartill.money">ClearTill home page</a>, or contact{" "}
+          <a href="mailto:hello@cleartill.money">hello@cleartill.money</a>.
+        </p>
+
+        <p className="helper-text" style={{ marginTop: "16px" }}>Last updated: 18 July 2026</p>
+      </article>
     </main>
   );
 }
