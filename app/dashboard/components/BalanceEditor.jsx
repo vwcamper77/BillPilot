@@ -49,9 +49,9 @@ export default function BalanceEditor({
   const wrapperRef = useRef(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
 
-    window.requestAnimationFrame(() => {
+    const frame = window.requestAnimationFrame(() => {
       if (focusPayday) {
         onSetEditingIncome?.(true);
         wrapperRef.current?.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
@@ -62,18 +62,13 @@ export default function BalanceEditor({
         onConsumeFocusPayday?.();
       } else {
         wrapperRef.current?.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
-        window.setTimeout(() => {
-          balanceInputRef.current?.focus();
-          balanceInputRef.current?.select?.();
-        }, 180);
+        balanceInputRef.current?.focus();
+        balanceInputRef.current?.select?.();
       }
     });
+    return () => window.cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, focusPayday]);
-
-  function handleBalanceInputFocus(event) {
-    event.currentTarget.select();
-  }
 
   const selectedPaydayDate = isValidDueDay(incomeForm.payDay)
     ? calculateIncomeSchedule(incomeForm.payDay, todayIso).nextPayDate
@@ -106,11 +101,14 @@ export default function BalanceEditor({
                 <input
                   ref={balanceInputRef}
                   id="account-balance"
+                  type="text"
                   inputMode="decimal"
+                  autoComplete="off"
+                  enterKeyHint="done"
+                  spellCheck={false}
+                  data-drawer-initial-focus={focusPayday ? undefined : ""}
                   value={balanceInput}
                   onChange={(event) => onBalanceInputChange(event.target.value)}
-                  onFocus={handleBalanceInputFocus}
-                  onClick={handleBalanceInputFocus}
                   placeholder="Current Balance"
                 />
                 <button className="secondary-button" type="submit" disabled={savingBalance}>

@@ -2645,10 +2645,10 @@ export default function DashboardPage() {
     setShowBalanceEditor(true);
     balanceSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setHighlightBalanceForm(true);
-    window.setTimeout(() => {
+    window.requestAnimationFrame(() => {
       balanceInputRef.current?.focus();
       balanceInputRef.current?.select?.();
-    }, 180);
+    });
     window.setTimeout(() => {
       setHighlightBalanceForm(false);
     }, 1800);
@@ -3398,7 +3398,11 @@ export default function DashboardPage() {
                   <input
                     ref={balanceInputRef}
                     id="account-balance"
+                    type="text"
                     inputMode="decimal"
+                    autoComplete="off"
+                    enterKeyHint="done"
+                    spellCheck={false}
                     value={balanceInput}
                     disabled={importLocked || savingBalance || authStateChanging}
                     onChange={(event) => setBalanceInput(event.target.value)}

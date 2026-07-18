@@ -114,6 +114,21 @@ test("balance update recalculates, announces, focuses and highlights the result"
   assert.match(dashboard, /primary-result-highlight/);
 });
 
+test("balance entry is not reselected while the user is typing", () => {
+  const editor = read("app/dashboard/components/BalanceEditor.jsx");
+  const legacy = read("app/dashboard/HomeLegacy.jsx");
+  const dashboard = read("app/dashboard/page.jsx");
+
+  for (const source of [editor, legacy, dashboard]) {
+    assert.match(source, /id="account-balance"[\s\S]*?autoComplete="off"/);
+  }
+  assert.doesNotMatch(editor, /handleBalanceInputFocus|onClick=\{handleBalanceInputFocus\}|onFocus=\{handleBalanceInputFocus\}/);
+  assert.doesNotMatch(legacy, /handleBalanceInputFocus|onClick=\{handleBalanceInputFocus\}|onFocus=\{handleBalanceInputFocus\}/);
+  assert.doesNotMatch(editor, /setTimeout\([\s\S]{0,120}balanceInputRef\.current/);
+  assert.doesNotMatch(legacy, /setTimeout\([\s\S]{0,120}balanceInputRef\.current/);
+  assert.doesNotMatch(dashboard, /setTimeout\([\s\S]{0,120}balanceInputRef\.current/);
+});
+
 test("admin includes paid unclaimed founding members and reconciliation status", () => {
   const admin = read("app/api/admin/analytics/route.js");
   assert.match(admin, /pendingEntitlementsSnapshot/);

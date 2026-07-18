@@ -26,6 +26,8 @@ async function signIn(page) {
   await page.waitForFunction(() => typeof window.__cleartillTestSignIn === "function");
   await page.evaluate((customToken) => window.__cleartillTestSignIn(customToken), token);
   await page.evaluate(() => window.localStorage.setItem("ct.setup.completedAt", new Date().toISOString()));
+  const rejectAnalytics = page.getByRole("button", { name: "No thanks" });
+  if (await rejectAnalytics.isVisible()) await rejectAnalytics.click();
 }
 
 test.beforeAll(async () => {

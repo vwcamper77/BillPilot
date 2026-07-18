@@ -2492,17 +2492,13 @@ function DashboardPageContent() {
   function focusBalanceSnapshotForm() {
     balanceSectionRef.current?.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
     setHighlightBalanceForm(true);
-    window.setTimeout(() => {
+    window.requestAnimationFrame(() => {
       balanceInputRef.current?.focus();
       balanceInputRef.current?.select?.();
-    }, 180);
+    });
     window.setTimeout(() => {
       setHighlightBalanceForm(false);
     }, 1800);
-  }
-
-  function handleBalanceInputFocus(event) {
-    event.currentTarget.select();
   }
 
   function focusPaydayForm() {
@@ -2950,12 +2946,14 @@ function DashboardPageContent() {
                   <input
                     ref={balanceInputRef}
                     id="account-balance"
+                    type="text"
                     inputMode="decimal"
+                    autoComplete="off"
+                    enterKeyHint="done"
+                    spellCheck={false}
                     value={balanceInput}
                     disabled={importLocked}
                     onChange={(event) => setBalanceInput(event.target.value)}
-                    onFocus={handleBalanceInputFocus}
-                    onClick={handleBalanceInputFocus}
                     placeholder="Current Balance"
                   />
                   <button className="secondary-button" type="submit" disabled={importLocked}>
