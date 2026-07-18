@@ -19,30 +19,6 @@ export function friendlyAuthError(error) {
   return "Something went wrong. Try again.";
 }
 
-export function friendlyGoogleAuthError(error) {
-  const code = error?.code || "";
-
-  if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
-    return "Google sign-in was blocked by the browser. Please try again, or use email sign-in.";
-  }
-
-  if (code === "auth/unauthorized-domain") {
-    return "Google sign-in was blocked for this domain. Add this Vercel domain in Firebase Authentication > Settings > Authorized domains.";
-  }
-
-  if (code === "auth/operation-not-allowed") {
-    return "Google sign-in is not enabled in Firebase Authentication yet.";
-  }
-
-  const message = friendlyAuthError(error);
-
-  if (message !== "Something went wrong. Try again.") {
-    return message;
-  }
-
-  return "Google sign-in failed. Check Firebase Google sign-in and Authorized domains, then try again.";
-}
-
 export function friendlyServerErrorMessage(message) {
   if (!message) return "";
   if (/failed to fetch|networkerror|network request failed/i.test(message)) {

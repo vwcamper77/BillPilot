@@ -7,6 +7,14 @@ function read(filePath) {
   return fs.readFileSync(path.join(process.cwd(), filePath), "utf8");
 }
 
+function between(source, start, end) {
+  const startIndex = source.indexOf(start);
+  assert.ok(startIndex >= 0, `Missing start marker: ${start}`);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  assert.ok(endIndex > startIndex, `Missing end marker: ${end}`);
+  return source.slice(startIndex, endIndex);
+}
+
 test("start is account creation only and sends both providers to onboarding", () => {
   const page = read("app/start/page.jsx");
   const auth = read("app/components/AuthJourney.jsx");
@@ -35,6 +43,50 @@ test("attribution query data survives the onboarding redirect", () => {
     assert.match(auth, new RegExp(`"${key}"`));
   }
   assert.match(auth, /target\.set\(key, value\)/);
+});
+
+test("Google auth uses one click-triggered popup and has actionable Firebase errors", () => {
+  const flows = [
+    ["app/components/AuthJourney.jsx", "async function continueWithGoogle", "async function submitEmail"],
+    ["app/billing/BillingAccessGate.jsx", "async function handleGoogleSignIn", "async function handleSubmit"],
+    ["app/dashboard/page.jsx", "async function handleGoogleSignIn", "async function handleEmailAuth"],
+    ["app/dashboard/HomeDashboard.jsx", "async function handleGoogleSignIn", "async function handleEmailAuth"],
+    ["app/dashboard/HomeLegacy.jsx", "async function handleGoogleSignIn", "async function handleEmailAuth"],
+  ];
+
+  for (const [file, start, end] of flows) {
+    const source = read(file);
+    const googleHandler = between(source, start, end);
+    assert.equal((googleHandler.match(/signInWithPopup\(auth, googleProvider\)/g) || []).length, 1, file);
+    assert.doesNotMatch(googleHandler, /await authPersistenceReady/, file);
+    assert.match(source, /onClick=\{(?:continueWithGoogle|handleGoogleSignIn)\}/, file);
+  }
+
+  const authSources = flows.map(([file]) => read(file)).join("\n");
+  assert.doesNotMatch(authSources, /signInWithRedirect|getRedirectResult|__\/auth\/handler/);
+
+  const errors = read("lib/googleAuthErrors.js");
+  for (const code of ["popup-blocked", "popup-closed-by-user", "unauthorized-domain", "operation-not-allowed"]) {
+    assert.match(errors, new RegExp(`auth/${code}`));
+  }
+  assert.match(errors, /console\.error[\s\S]*?code/);
+});
+
+test("Firebase browser config is sourced from the documented public environment variables", () => {
+  const firebase = read("lib/firebase.js");
+  const expected = {
+    apiKey: "NEXT_PUBLIC_FIREBASE_API_KEY",
+    authDomain: "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+    projectId: "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+    storageBucket: "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+    messagingSenderId: "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+    appId: "NEXT_PUBLIC_FIREBASE_APP_ID",
+    measurementId: "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID",
+  };
+
+  for (const [property, envName] of Object.entries(expected)) {
+    assert.match(firebase, new RegExp(`${property}: process\\.env\\.${envName}`));
+  }
 });
 
 test("pricing and mobile acquisition layout match the published offer", () => {

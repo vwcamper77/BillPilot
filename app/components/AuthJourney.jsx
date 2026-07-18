@@ -18,6 +18,7 @@ import {
   googleProvider,
   isFirebaseClientConfigured,
 } from "@/lib/firebase";
+import { friendlyGoogleAuthError, logGoogleAuthError } from "@/lib/googleAuthErrors";
 import { trackEvent } from "@/lib/analytics/track";
 
 const ATTRIBUTION_QUERY_KEYS = [
@@ -122,7 +123,6 @@ export default function AuthJourney({ mode }) {
     setError("");
     setResetState("");
     try {
-      await authPersistenceReady;
       const result = await signInWithPopup(auth, googleProvider);
       if (isSignup && !getAdditionalUserInfo(result)?.isNewUser) {
         trackEvent("login", { method: "google" });
@@ -131,7 +131,8 @@ export default function AuthJourney({ mode }) {
       }
       finish(result.user, "google");
     } catch (authError) {
-      setError(authMessage(authError, mode));
+      logGoogleAuthError(authError, `auth-journey-${mode}`);
+      setError(friendlyGoogleAuthError(authError));
     } finally {
       authAttemptRef.current = false;
       setBusy("");

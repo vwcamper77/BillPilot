@@ -12,6 +12,7 @@ import {
 } from "firebase/auth";
 import CheckoutButton from "./CheckoutButton";
 import { auth, authPersistenceReady, googleProvider, isFirebaseClientConfigured } from "@/lib/firebase";
+import { friendlyGoogleAuthError, logGoogleAuthError } from "@/lib/googleAuthErrors";
 import { trackEvent } from "@/lib/analytics/track";
 import { getStoredAttribution } from "@/lib/analytics/attribution";
 import { trackGa4Event } from "@/lib/analytics/ga4";
@@ -134,24 +135,9 @@ export default function BillingAccessGate() {
       }
       setStatus({ busy: false, error: "" });
     } catch (error) {
+      logGoogleAuthError(error, AUTH_CONTEXT);
       if (error?.code === "auth/credential-already-in-use" && auth.currentUser?.isAnonymous) {
-        try {
-          await auth.currentUser.delete().catch(() => signOut(auth));
-          const retryResult = await signInWithPopup(auth, googleProvider);
-          if (getAdditionalUserInfo(retryResult)?.isNewUser) {
-            trackAccountCreated("google");
-            trackGa4Event("sign_up", { method: "google", context: AUTH_CONTEXT });
-          } else {
-            trackEvent("login", { method: "google" });
-            trackGa4Event("login", { method: "google", context: AUTH_CONTEXT });
-          }
-          setStatus({ busy: false, error: "" });
-          return;
-        } catch (retryError) {
-          trackAuthOutcome(retryError, "google");
-          setStatus({ busy: false, error: friendlyGoogleAuthError(retryError) });
-          return;
-        }
+        await signOut(auth).catch(() => undefined);
       }
 
       trackAuthOutcome(error, "google");
@@ -336,26 +322,4 @@ function friendlyAuthError(error, mode) {
   return mode === "signup"
     ? "We couldn't create your login right now. Please try again."
     : "We couldn't sign you in right now. Please try again.";
-}
-
-function friendlyGoogleAuthError(error) {
-  const code = String(error?.code || "");
-
-  if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
-    return "Google sign-in was blocked by the browser. Please try again, or use email sign-in.";
-  }
-
-  if (code === "auth/unauthorized-domain") {
-    return "Google sign-in isn't available on this domain yet.";
-  }
-
-  if (code === "auth/operation-not-allowed") {
-    return "Google sign-in is not enabled yet. Please use email sign-in.";
-  }
-
-  if (code === "auth/popup-closed-by-user") {
-    return "Google sign-in was closed before finishing. Please try again.";
-  }
-
-  return "We couldn't sign you in with Google right now. Please try again, or use email sign-in.";
 }

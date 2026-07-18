@@ -26,6 +26,7 @@ import {
   isFirebaseClientConfigured,
   missingFirebaseClientEnv,
 } from "@/lib/firebase";
+import { friendlyGoogleAuthError, logGoogleAuthError } from "@/lib/googleAuthErrors";
 import {
   buildBillDocument,
   buildFourWeekCashflowWaterfall,
@@ -845,8 +846,6 @@ function DashboardPageContent() {
     setAuthError("");
 
     try {
-      await authPersistenceReady;
-
       if (auth.currentUser?.isAnonymous) {
         await linkWithPopup(auth.currentUser, googleProvider);
         trackAccountCreated("google");
@@ -860,24 +859,12 @@ function DashboardPageContent() {
         trackEvent("login", { method: "google" });
       }
     } catch (signInError) {
+      logGoogleAuthError(signInError, "dashboard-legacy");
       if (
         signInError?.code === "auth/credential-already-in-use"
         && auth.currentUser?.isAnonymous
       ) {
-        try {
-          await auth.currentUser.delete().catch(() => signOut(auth));
-          const retryResult = await signInWithPopup(auth, googleProvider);
-          if (getAdditionalUserInfo(retryResult)?.isNewUser) {
-            trackAccountCreated("google");
-          } else {
-            trackEvent("login", { method: "google" });
-          }
-          return;
-        } catch (retryError) {
-          setAuthError(friendlyGoogleAuthError(retryError));
-          setSigningIn(false);
-          return;
-        }
+        await signOut(auth).catch(() => undefined);
       }
       setAuthError(friendlyGoogleAuthError(signInError));
       setSigningIn(false);
@@ -6002,30 +5989,6 @@ function friendlyAuthError(error) {
   if (code === "auth/user-disabled") return "This account has been disabled. Contact support.";
 
   return "Something went wrong. Try again.";
-}
-
-function friendlyGoogleAuthError(error) {
-  const code = error?.code || "";
-
-  if (code === "auth/popup-blocked" || code === "auth/cancelled-popup-request") {
-    return "Google sign-in was blocked by the browser. Please try again, or use email sign-in.";
-  }
-
-  if (code === "auth/unauthorized-domain") {
-    return "Google sign-in was blocked for this domain. Add this Vercel domain in Firebase Authentication > Settings > Authorized domains.";
-  }
-
-  if (code === "auth/operation-not-allowed") {
-    return "Google sign-in is not enabled in Firebase Authentication yet.";
-  }
-
-  const message = friendlyAuthError(error);
-
-  if (message !== "Something went wrong. Try again.") {
-    return message;
-  }
-
-  return "Google sign-in failed. Check Firebase Google sign-in and Authorized domains, then try again.";
 }
 
 function friendlyServerErrorMessage(message) {

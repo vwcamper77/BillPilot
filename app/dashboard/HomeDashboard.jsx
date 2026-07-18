@@ -41,7 +41,8 @@ import { getStoredAttribution } from "@/lib/analytics/attribution";
 import { logSecurityEventClient } from "@/lib/security/clientSecurity";
 import { safeError } from "@/lib/security/safeLog";
 import { postDashboardSettingsAction, postDashboardStateAction, saveIncome as saveIncomeRequest } from "./lib/dashboardApi";
-import { friendlyAuthError, friendlyGoogleAuthError, friendlySettingsError } from "./lib/friendlyErrors";
+import { friendlyAuthError, friendlySettingsError } from "./lib/friendlyErrors";
+import { friendlyGoogleAuthError, logGoogleAuthError } from "@/lib/googleAuthErrors";
 import { triggerQuickAction } from "./components/QuickActions";
 import { getScrollBehavior } from "./lib/billHelpers";
 import CollapsibleSection from "./components/CollapsibleSection";
@@ -816,8 +817,6 @@ function HomeDashboardContent({ view = "overview" }) {
     setAuthError("");
 
     try {
-      await authPersistenceReady;
-
       if (auth.currentUser?.isAnonymous) {
         await linkWithPopup(auth.currentUser, googleProvider);
         trackAccountCreated("google");
@@ -831,24 +830,12 @@ function HomeDashboardContent({ view = "overview" }) {
         trackEvent("login", { method: "google" });
       }
     } catch (signInError) {
+      logGoogleAuthError(signInError, "dashboard");
       if (
         signInError?.code === "auth/credential-already-in-use"
         && auth.currentUser?.isAnonymous
       ) {
-        try {
-          await auth.currentUser.delete().catch(() => signOut(auth));
-          const retryResult = await signInWithPopup(auth, googleProvider);
-          if (getAdditionalUserInfo(retryResult)?.isNewUser) {
-            trackAccountCreated("google");
-          } else {
-            trackEvent("login", { method: "google" });
-          }
-          return;
-        } catch (retryError) {
-          setAuthError(friendlyGoogleAuthError(retryError));
-          setSigningIn(false);
-          return;
-        }
+        await signOut(auth).catch(() => undefined);
       }
       setAuthError(friendlyGoogleAuthError(signInError));
       setSigningIn(false);
