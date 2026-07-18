@@ -22,6 +22,12 @@ export default function sitemap() {
       priority: 0.7,
     },
     {
+      url: `${SITE_URL}/free-cash-position-sheet`,
+      lastModified: "2026-07-18",
+      changeFrequency: "monthly",
+      priority: 0.9,
+    },
+    {
       url: `${SITE_URL}/blog`,
       lastModified: "2026-07-18",
       changeFrequency: "weekly",

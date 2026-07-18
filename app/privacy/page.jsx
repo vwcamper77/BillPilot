@@ -90,6 +90,12 @@ export default function PrivacyPage() {
           ClearTill may send essential account, access, preview and service emails. Optional reminders can be
           managed through the available account settings or unsubscribe link.
         </p>
+        <p>
+          If you request a free guide or worksheet, ClearTill stores the email address and limited source
+          information needed to fulfil that request and prevent duplicate delivery. The requested resource is
+          sent whether or not you separately choose marketing emails. Marketing permission is optional,
+          unticked by default and recorded with the wording and time of your choice.
+        </p>
 
         <h2 className="account-heading">Exporting or deleting your data</h2>
         <p>

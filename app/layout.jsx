@@ -7,6 +7,7 @@ import AttributionTracker from "@/components/AttributionTracker";
 import AnalyticsConsent from "@/components/AnalyticsConsent";
 import TestAuthBridge from "@/components/TestAuthBridge";
 import InternalAnalyticsBanner from "@/components/InternalAnalyticsBanner";
+import LeadMagnetCapture from "@/components/LeadMagnetCapture";
 import ScrollToTopButton from "@/app/dashboard/components/ScrollToTopButton";
 import { INTERNAL_ANALYTICS_COOKIE, verifyInternalAnalyticsCookie } from "@/lib/analytics/internal.server";
 import {
@@ -94,6 +95,7 @@ export default async function RootLayout({ children }) {
           </>
         )}
         <AttributionTracker />
+        <LeadMagnetCapture />
         {isTestAuthBridgeEnabled ? <TestAuthBridge /> : null}
         {gaMeasurementId && !internalAnalytics ? (
           <>
