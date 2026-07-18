@@ -7521,7 +7521,7 @@ h1 {
 .tool-shell { width: min(1180px, 100%); margin: 0 auto; padding: 28px 30px 90px; }
 .tool-hero { max-width: 900px; margin: 62px auto 55px; text-align: center; }
 .tool-hero > .eyebrow { color: var(--accent-dark); font-size: .76rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
-.tool-hero h1 { margin: 18px 0 22px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(3.2rem, 8vw, 6.6rem); font-weight: 500; letter-spacing: -.055em; line-height: .9; }
+.tool-hero h1 { max-width: none; margin: 18px 0 22px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(3.2rem, 8vw, 6.6rem); font-weight: 500; letter-spacing: -.055em; line-height: .9; }
 .tool-hero > p:not(.eyebrow) { max-width: 720px; margin: 0 auto; color: var(--muted); font-size: clamp(1.08rem, 2vw, 1.3rem); line-height: 1.6; }
 .tool-hero ul { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 26px 0 0; padding: 0; list-style: none; }
 .tool-hero li { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--accent-dark); font-size: .78rem; font-weight: 750; }
