@@ -64,6 +64,18 @@ Rollout controls:
 - `REMINDER_GUIDED_COHORT_PERCENT=50` — deterministic Guided/Light allocation;
 - policy timing variables documented in `.env.example`.
 
+## Hourly scheduler hosting
+
+The hourly `/api/scheduler` trigger is hosted by a second-generation Firebase scheduled function named `runClearTillReminderScheduler` in `europe-west2`. Reminder policy, eligibility, queueing, rendering and delivery remain in the Next.js application; the Firebase function sends only an authenticated POST to the canonical scheduler endpoint.
+
+- Firebase Secret Manager secret: `CLEARTILL_SCHEDULER_SECRET`
+- Vercel counterpart: `SCHEDULER_SECRET`, falling back to `CRON_SECRET`
+- Schedule: hourly at minute zero in UTC
+- Retries: two bounded retries; the application scheduler remains idempotent
+- Vercel's `vercel.json` must not also schedule `/api/scheduler`
+
+Deploy with `firebase deploy --only functions:runClearTillReminderScheduler`. Never store the shared secret in source control or a committed dotenv file. Keep `REMINDER_EMAILS_ENABLED=false` until provider, webhook and privacy checks have been completed.
+
 Do not enable delivery until the sending domain has approved SPF, DKIM and DMARC, TLS delivery is confirmed, the monitored reply path is working, and the Resend webhook points to `/api/email/webhook`.
 
 ## Admin email operations board
