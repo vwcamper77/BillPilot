@@ -7991,6 +7991,8 @@ h1 {
 .live-home-reminder-grid article > div span:first-child { color: var(--lh-green); }
 .live-home-privacy { display: grid; grid-template-columns: .8fr 1.2fr; gap: 40px; align-items: center; padding: 46px; border: 1px solid var(--lh-border); border-radius: 34px; background: linear-gradient(130deg, var(--lh-mint), #fff); }
 .live-home-privacy .live-home-section-copy { margin-bottom: 0; }
+.live-home-entity-copy { margin: 22px 0 8px; color: var(--lh-text); line-height: 1.65; }
+.live-home-company-link { color: var(--lh-green-dark); font-weight: 850; text-underline-offset: 3px; }
 .live-home-privacy-list { display: grid; gap: 12px; }
 .live-home-privacy-list article { display: flex; gap: 13px; align-items: flex-start; padding: 16px; border: 1px solid var(--lh-border); border-radius: 16px; background: #fff; }
 .live-home-privacy-list article > span { display: grid; width: 25px; height: 25px; flex: 0 0 25px; color: #fff; border-radius: 50%; place-items: center; background: var(--lh-green); font-weight: 900; }

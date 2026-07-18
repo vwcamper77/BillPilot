@@ -139,7 +139,22 @@ export const BLOG_POSTS = [
           { text: ". When you update your balance, ClearTill immediately recalculates the bills still due and your new clear-to-spend figure." },
         ],
       },
-      { type: "paragraph", text: "No bank connection, no transaction history, no categories to maintain. Your seven-day live preview needs no card, and nothing is charged automatically when it ends. Continuing costs £3.99 monthly or £24.99 annually." },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "No bank connection, no transaction history, no categories to maintain. Your seven-day live preview needs no card, and nothing is charged automatically when it ends. See " },
+          { text: "current ClearTill pricing", href: "/pricing" },
+          { text: " if you decide to continue." },
+        ],
+      },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "You can also read " },
+          { text: "about ClearTill and GMBF Ventures Ltd", href: "/about-cleartill" },
+          { text: "." },
+        ],
+      },
       { type: "heading", text: "Frequently asked questions", id: "frequently-asked-questions" },
       { type: "faqs" },
     ],
@@ -276,7 +291,14 @@ export const BLOG_POSTS = [
       { type: "paragraph", text: "Both are necessary because a year can appear affordable on average while the next ten days remain extremely tight." },
 
       { type: "heading", text: "Using ClearTill when your income is irregular", id: "using-cleartill" },
-      { type: "paragraph", text: "ClearTill is built around the period between today and the next date you expect to be paid." },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "The " },
+          { text: "ClearTill cashflow app", href: "/" },
+          { text: " is built around the period between today and the next date you expect to be paid." },
+        ],
+      },
       { type: "paragraph", text: "For irregular income, treat the next payment you can reasonably rely on as your next payday." },
       { type: "paragraph", text: "Enter:" },
       { type: "list", items: ["Your current balance", "The next reliable income date", "The bills due before that date"] },
@@ -285,7 +307,16 @@ export const BLOG_POSTS = [
       { type: "paragraph", text: "ClearTill does not:" },
       { type: "list", items: ["Connect to your bank", "Predict whether a client will pay", "Calculate tax", "Replace business cash-flow forecasting", "Decide how much buffer you should retain", "Automatically track every transaction"] },
       { type: "paragraph", text: "It is a simple way to hold the short-term arithmetic in one place." },
-      { type: "paragraph", text: "There is a seven-day no-card live preview. Nothing is charged automatically when it ends; continuing costs £3.99 monthly or £24.99 annually." },
+      {
+        type: "paragraph",
+        segments: [
+          { text: "There is a seven-day no-card live preview. Nothing is charged automatically when it ends; see " },
+          { text: "current ClearTill pricing", href: "/pricing" },
+          { text: " if you decide to continue. Information about the app's operator is on the " },
+          { text: "About ClearTill page", href: "/about-cleartill" },
+          { text: "." },
+        ],
+      },
 
       { type: "heading", text: "Frequently asked questions", id: "frequently-asked-questions" },
       { type: "faqs" },

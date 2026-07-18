@@ -9,35 +9,28 @@ import TestAuthBridge from "@/components/TestAuthBridge";
 import InternalAnalyticsBanner from "@/components/InternalAnalyticsBanner";
 import ScrollToTopButton from "@/app/dashboard/components/ScrollToTopButton";
 import { INTERNAL_ANALYTICS_COOKIE, verifyInternalAnalyticsCookie } from "@/lib/analytics/internal.server";
+import {
+  HOME_DESCRIPTION,
+  HOME_TITLE,
+  HOME_URL,
+  SITE_URL,
+  SOCIAL_IMAGE,
+  SOCIAL_IMAGE_URL,
+} from "@/lib/seo";
 
 const isTestAuthBridgeEnabled = process.env.NODE_ENV !== "production";
 
 const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID;
 const gtmContainerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID;
 
-const SITE_URL = "https://www.cleartill.money";
-const OG_TITLE = "ClearTill — Know what you can safely spend until payday";
-const OG_DESCRIPTION = "Balance. Bills. One clear answer.";
-
-// Shared by the root layout and every page that needs to restate metadata
-// (a page-level `metadata` export replaces openGraph/twitter wholesale
-// rather than merging with the root's — see CLAUDE.md notes on this file
-// for the per-page pages that must spread this back in).
-export const SOCIAL_IMAGE = {
-  url: "/social/cleartill-og-v2.png",
-  secureUrl: `${SITE_URL}/social/cleartill-og-v2.png`,
-  width: 1200,
-  height: 630,
-  type: "image/png",
-  alt: OG_TITLE,
-};
-
 export const metadata = {
   metadataBase: new URL(SITE_URL),
-  title: OG_TITLE,
-  description: OG_DESCRIPTION,
+  title: {
+    default: HOME_TITLE,
+    template: "%s | ClearTill",
+  },
+  description: HOME_DESCRIPTION,
   manifest: "/site.webmanifest",
-  alternates: { canonical: "/" },
   icons: {
     icon: [
       { url: "/favicon/favicon.svg", type: "image/svg+xml" },
@@ -50,16 +43,16 @@ export const metadata = {
   openGraph: {
     type: "website",
     siteName: "ClearTill",
-    title: OG_TITLE,
-    description: OG_DESCRIPTION,
-    url: SITE_URL,
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    locale: "en_GB",
     images: [SOCIAL_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: OG_TITLE,
-    description: OG_DESCRIPTION,
-    images: [SOCIAL_IMAGE.url],
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    images: [SOCIAL_IMAGE_URL],
   },
 };
 

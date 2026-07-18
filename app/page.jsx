@@ -1,11 +1,66 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import {
+  HOME_DESCRIPTION,
+  HOME_TITLE,
+  HOME_URL,
+  LOGO_URL,
+  SOCIAL_IMAGE,
+  SOCIAL_IMAGE_URL,
+} from "@/lib/seo";
 
 const PREVIEW_HREF = "/start";
 
 export const metadata = {
-  title: "ClearTill — Know what’s really left before payday",
-  description: "Add your balance, payday and upcoming bills to see what remains. No bank connection. No card required.",
+  title: { absolute: HOME_TITLE },
+  description: HOME_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "ClearTill",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    locale: "en_GB",
+    images: [SOCIAL_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    images: [SOCIAL_IMAGE_URL],
+  },
+};
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${HOME_URL}#organization`,
+      name: "ClearTill",
+      legalName: "GMBF Ventures Ltd",
+      url: HOME_URL,
+      logo: LOGO_URL,
+      email: "hello@cleartill.money",
+      description: "ClearTill is a UK consumer cashflow-planning app that shows what is safe to spend after bills until the next income date.",
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${HOME_URL}#website`,
+      name: "ClearTill",
+      url: HOME_URL,
+      publisher: { "@id": `${HOME_URL}#organization` },
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${HOME_URL}#application`,
+      name: "ClearTill",
+      applicationCategory: "FinanceApplication",
+      operatingSystem: "Web",
+      url: HOME_URL,
+      description: "A UK consumer cashflow-planning web app that shows what is safe to spend after bills until the next income date, without bank login or Open Banking.",
+      provider: { "@id": `${HOME_URL}#organization` },
+    },
+  ],
 };
 
 const CTA = ({ className = "" }) => (
@@ -17,11 +72,17 @@ const CTA = ({ className = "" }) => (
 export default function HomePage() {
   return (
     <main className="live-home">
+      <link rel="canonical" href={HOME_URL} />
+      <meta property="og:url" content={HOME_URL} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
+      />
       <header className="live-home-container live-home-header">
         <Logo className="live-home-logo" height={42} />
         <nav className="live-home-nav" aria-label="Main navigation">
           <Link href="/pricing">Pricing</Link>
-          <Link href="/about">About</Link>
+          <Link href="/about-cleartill">About</Link>
           <Link className="live-home-signin" href="/signin">Sign in</Link>
         </nav>
       </header>
@@ -112,7 +173,13 @@ export default function HomePage() {
 
       <section className="live-home-band">
         <div className="live-home-container live-home-privacy">
-          <div><p className="live-home-eyebrow">Privacy by design</p><h2>You stay in control.</h2><p className="live-home-section-copy">ClearTill does not need your online banking password or an Open Banking connection. Its estimate is based only on the figures you choose to enter.</p></div>
+          <div>
+            <p className="live-home-eyebrow">Privacy by design</p>
+            <h2>You stay in control.</h2>
+            <p className="live-home-section-copy">ClearTill does not need your online banking password or an Open Banking connection. Its estimate is based only on the figures you choose to enter.</p>
+            <p className="live-home-entity-copy">ClearTill is a UK cashflow-planning app from GMBF Ventures Ltd. It helps you see what is safe to spend after bills until your next income date.</p>
+            <Link className="live-home-company-link" href="/about-cleartill">About ClearTill and the company behind it</Link>
+          </div>
           <div className="live-home-privacy-list">
             <article><span>✓</span><p><strong>No bank login</strong><br />ClearTill does not ask for online banking credentials.</p></article>
             <article><span>✓</span><p><strong>No automatic charges in the preview</strong><br />There is no card entry and nothing renews automatically.</p></article>

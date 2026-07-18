@@ -1,8 +1,11 @@
 {
   "name": "ClearTill",
   "short_name": "ClearTill",
-  "description": "Know you're clear till payday.",
+  "description": "UK cashflow planning that shows what is safe to spend after bills until your next income date.",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
+  "lang": "en-GB",
   "display": "standalone",
   "background_color": "#143C3A",
   "theme_color": "#143C3A",

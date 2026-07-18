@@ -101,6 +101,7 @@ test("pricing and mobile acquisition layout match the published offer", () => {
 
 test("privacy policy is a public server-rendered OAuth verification page", () => {
   const privacy = read("app/privacy/page.jsx");
+  const seo = read("lib/seo.js");
 
   assert.doesNotMatch(privacy, /["']use client["']|firebase\/auth|onAuthStateChanged|verifyRequestUser|redirect\(/);
   assert.match(privacy, /ClearTill Privacy Policy/);
@@ -112,6 +113,7 @@ test("privacy policy is a public server-rendered OAuth verification page", () =>
   assert.match(privacy, /Stripe/);
   assert.match(privacy, /Google Analytics[\s\S]*Meta Pixel[\s\S]*Mixpanel/);
   assert.match(privacy, /request access to or deletion/);
-  assert.match(privacy, /href="https:\/\/cleartill\.money"/);
+  assert.match(privacy, /href=\{HOME_URL\}/);
+  assert.match(seo, /https:\/\/www\.cleartill\.money/);
   assert.match(privacy, /href="\/terms"/);
 });

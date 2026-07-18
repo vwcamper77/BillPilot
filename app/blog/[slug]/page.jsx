@@ -2,8 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
 import { BLOG_POSTS, formatPostDate, getCategory, getPostBySlug } from "../posts";
-
-const SITE_URL = "https://www.cleartill.money";
+import { createPageMetadata, HOME_URL, SITE_URL, SOCIAL_IMAGE_URL } from "@/lib/seo";
 
 export function generateStaticParams() {
   return BLOG_POSTS.map((post) => ({ slug: post.slug }));
@@ -13,23 +12,20 @@ export async function generateMetadata({ params }) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
   if (!post) return {};
-  const url = `${SITE_URL}/blog/${post.slug}`;
-  return {
-    title: post.seoTitle || `${post.title} | ClearTill Journal`,
+  const pageMetadata = createPageMetadata({
+    title: post.seoTitle || post.title,
     description: post.description,
+    path: `/blog/${post.slug}`,
+    type: "article",
+  });
+  return {
+    ...pageMetadata,
     keywords: post.keywords,
-    alternates: { canonical: `/blog/${post.slug}` },
     openGraph: {
-      type: "article",
-      siteName: "ClearTill",
-      title: post.title,
-      description: post.description,
-      url,
+      ...pageMetadata.openGraph,
       publishedTime: post.publishedAt,
       modifiedTime: post.updatedAt || post.publishedAt,
-      images: [{ url: "/social/cleartill-og-v2.png", width: 1200, height: 630, alt: post.title }],
     },
-    twitter: { card: "summary_large_image", title: post.title, description: post.description, images: ["/social/cleartill-og-v2.png"] },
   };
 }
 
@@ -109,9 +105,9 @@ export default async function BlogArticlePage({ params }) {
     datePublished: post.publishedAt,
     dateModified: post.updatedAt || post.publishedAt,
     mainEntityOfPage: articleUrl,
-    author: { "@type": "Organization", name: "ClearTill" },
+    author: { "@type": "Organization", name: "ClearTill", url: `${SITE_URL}/about-cleartill` },
     publisher: { "@type": "Organization", name: "ClearTill", url: SITE_URL },
-    image: `${SITE_URL}/social/cleartill-og-v2.png`,
+    image: SOCIAL_IMAGE_URL,
     articleSection: category?.label,
     keywords: post.keywords?.join(", "),
   };
@@ -119,7 +115,7 @@ export default async function BlogArticlePage({ params }) {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+      { "@type": "ListItem", position: 1, name: "Home", item: HOME_URL },
       { "@type": "ListItem", position: 2, name: "Journal", item: `${SITE_URL}/blog` },
       { "@type": "ListItem", position: 3, name: post.title, item: articleUrl },
     ],

@@ -2,31 +2,22 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import BlogExplorer from "./BlogExplorer";
 import { BLOG_CATEGORIES, BLOG_POSTS, formatPostDate, getCategory } from "./posts";
+import { createPageMetadata, SITE_URL } from "@/lib/seo";
 
-const SITE_URL = "https://www.cleartill.money";
-const PAGE_TITLE = "The ClearTill Journal | Practical guides to everyday money";
+const PAGE_TITLE = "Journal — Practical Guides to Everyday Money";
 const PAGE_DESCRIPTION = "Clear, practical guides to managing bills, planning around payday, everyday spending and saving — without jargon or judgement.";
 
-export const metadata = {
+const pageMetadata = createPageMetadata({
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
+  path: "/blog",
+});
+
+export const metadata = {
+  ...pageMetadata,
   alternates: {
-    canonical: "/blog",
+    ...pageMetadata.alternates,
     types: { "application/rss+xml": `${SITE_URL}/blog/feed.xml` },
-  },
-  openGraph: {
-    type: "website",
-    siteName: "ClearTill",
-    title: PAGE_TITLE,
-    description: PAGE_DESCRIPTION,
-    url: `${SITE_URL}/blog`,
-    images: [{ url: "/social/cleartill-og-v2.png", width: 1200, height: 630, alt: "ClearTill" }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: PAGE_TITLE,
-    description: PAGE_DESCRIPTION,
-    images: ["/social/cleartill-og-v2.png"],
   },
 };
 

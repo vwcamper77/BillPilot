@@ -1,10 +1,9 @@
 import { PRIVATE_PAGE_ROBOTS } from "@/lib/seo";
 
 export const metadata = {
-  alternates: { canonical: "/admin/analytics" },
   robots: PRIVATE_PAGE_ROBOTS,
 };
 
-export default function AdminAnalyticsLayout({ children }) {
+export default function BillingLayout({ children }) {
   return children;
 }

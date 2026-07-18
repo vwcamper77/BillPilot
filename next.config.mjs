@@ -1,9 +1,19 @@
 const isDev = process.env.NODE_ENV !== "production";
 const devDistDir = process.env.NEXT_DIST_DIR;
+const isWindowsBuildHost = process.platform === "win32";
 
 /** @type {import("next").NextConfig} */
 const nextConfig = {
   ...(isDev && devDistDir ? { distDir: devDistDir } : {}),
+  ...(isWindowsBuildHost
+    ? {
+        experimental: {
+          // Keep local Windows prerendering within available memory. Vercel's
+          // Linux production build retains Next.js's default parallelism.
+          cpus: 1,
+        },
+      }
+    : {}),
   async headers() {
     // The claim journey's query string carries a one-time access token; the
     // success page's carries a Stripe session id. Neither should leak via

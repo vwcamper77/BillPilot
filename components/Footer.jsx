@@ -18,7 +18,7 @@ export default function Footer() {
       <div className="site-footer-links">
         <Link href="/pricing">Pricing</Link>
         <span aria-hidden="true">&middot;</span>
-        <Link href="/about">About</Link>
+        <Link href="/about-cleartill">About ClearTill</Link>
         <span aria-hidden="true">&middot;</span>
         <Link href="/signin">Sign in</Link>
         <span aria-hidden="true">&middot;</span>

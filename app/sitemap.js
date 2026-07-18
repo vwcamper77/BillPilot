@@ -1,53 +1,54 @@
 import { BLOG_POSTS } from "./blog/posts";
-
-const siteUrl = "https://www.cleartill.money";
+import { HOME_URL, SITE_URL } from "@/lib/seo";
 
 export default function sitemap() {
   const staticPages = [
     {
-      url: siteUrl,
+      url: HOME_URL,
+      lastModified: "2026-07-18",
       changeFrequency: "weekly",
       priority: 1,
     },
     {
-      url: `${siteUrl}/billing`,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${siteUrl}/pricing`,
+      url: `${SITE_URL}/pricing`,
+      lastModified: "2026-07-17",
       changeFrequency: "monthly",
       priority: 0.9,
     },
     {
-      url: `${siteUrl}/about`,
+      url: `${SITE_URL}/about-cleartill`,
+      lastModified: "2026-07-18",
       changeFrequency: "yearly",
       priority: 0.7,
     },
     {
-      url: `${siteUrl}/blog`,
+      url: `${SITE_URL}/blog`,
+      lastModified: "2026-07-18",
       changeFrequency: "weekly",
       priority: 0.8,
     },
     {
-      url: `${siteUrl}/security`,
+      url: `${SITE_URL}/security`,
+      lastModified: "2026-07-12",
       changeFrequency: "monthly",
       priority: 0.5,
     },
     {
-      url: `${siteUrl}/privacy`,
+      url: `${SITE_URL}/privacy`,
+      lastModified: "2026-07-18",
       changeFrequency: "yearly",
       priority: 0.3,
     },
     {
-      url: `${siteUrl}/terms`,
+      url: `${SITE_URL}/terms`,
+      lastModified: "2026-07-01",
       changeFrequency: "yearly",
       priority: 0.3,
     },
   ];
 
   const blogPosts = BLOG_POSTS.map((post) => ({
-    url: `${siteUrl}/blog/${post.slug}`,
+    url: `${SITE_URL}/blog/${post.slug}`,
     lastModified: post.updatedAt || post.publishedAt,
     changeFrequency: "monthly",
     priority: 0.7,

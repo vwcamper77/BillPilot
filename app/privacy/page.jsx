@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { createPageMetadata, HOME_URL } from "@/lib/seo";
 
-export const metadata = {
+export const metadata = createPageMetadata({
   title: "ClearTill Privacy Policy",
-  description: "How ClearTill collects, uses and protects personal and financial planning data.",
-  alternates: { canonical: "/privacy" },
-};
+  description: "How ClearTill and GMBF Ventures Ltd collect, use and protect account and cashflow-planning data.",
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (
@@ -15,7 +16,7 @@ export default function PrivacyPage() {
           <h1 className="brand" style={{ fontSize: "2rem" }}>ClearTill Privacy Policy</h1>
         </div>
         <nav className="topbar-actions" aria-label="Privacy policy navigation">
-          <a className="secondary-button" href="https://cleartill.money">Back to ClearTill home</a>
+          <a className="secondary-button" href={HOME_URL}>Back to ClearTill home</a>
           <Link className="secondary-button" href="/terms">Terms</Link>
         </nav>
       </header>
@@ -101,7 +102,7 @@ export default function PrivacyPage() {
         <h2 className="account-heading">Contact and related terms</h2>
         <p>
           Read the <Link href="/terms">ClearTill Terms</Link>, return to the{" "}
-          <a href="https://cleartill.money">ClearTill home page</a>, or contact{" "}
+          <a href={HOME_URL}>ClearTill home page</a>, or contact{" "}
           <a href="mailto:hello@cleartill.money">hello@cleartill.money</a>.
         </p>
 

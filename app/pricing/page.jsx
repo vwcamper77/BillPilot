@@ -1,12 +1,13 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import PricingAction from "./PricingAction";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata = {
-  title: "ClearTill pricing",
-  description: "Start with a free seven-day live preview. Continue monthly or annually only if ClearTill is useful to you.",
-  alternates: { canonical: "/pricing" },
-};
+export const metadata = createPageMetadata({
+  title: "ClearTill Pricing",
+  description: "Compare ClearTill's free live preview, monthly plan and annual plan for keeping your cashflow position current.",
+  path: "/pricing",
+});
 
 const plans = [
   {
@@ -39,7 +40,7 @@ export default function PricingPage() {
     <main className="marketing-page">
       <header className="acquisition-header">
         <Link href="/" aria-label="ClearTill home"><Logo className="acquisition-logo" height={40} /></Link>
-        <nav aria-label="Main navigation"><Link href="/about">About</Link><Link href="/signin">Sign in</Link></nav>
+        <nav aria-label="Main navigation"><Link href="/about-cleartill">About</Link><Link href="/signin">Sign in</Link></nav>
       </header>
 
       <section className="marketing-hero">

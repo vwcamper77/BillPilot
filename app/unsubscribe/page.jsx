@@ -1,3 +1,10 @@
+import { PRIVATE_PAGE_ROBOTS } from "@/lib/seo";
+
+export const metadata = {
+  title: "Email preferences",
+  robots: PRIVATE_PAGE_ROBOTS,
+};
+
 export default async function UnsubscribePage({ searchParams }) {
   const params = await searchParams;
   const success = params?.success === "1";

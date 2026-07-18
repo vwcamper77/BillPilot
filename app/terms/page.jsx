@@ -1,10 +1,12 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata = {
-  title: "Terms of Service | ClearTill",
-  alternates: { canonical: "/terms" },
-};
+export const metadata = createPageMetadata({
+  title: "ClearTill Terms of Service",
+  description: "The terms for using ClearTill, the cashflow-planning service operated by GMBF Ventures Ltd.",
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (

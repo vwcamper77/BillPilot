@@ -1,10 +1,12 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import { createPageMetadata } from "@/lib/seo";
 
-export const metadata = {
+export const metadata = createPageMetadata({
   title: "ClearTill Security",
-  alternates: { canonical: "/security" },
-};
+  description: "How ClearTill protects account and cashflow-planning data while keeping users in control without bank login or Open Banking.",
+  path: "/security",
+});
 
 export default function SecurityPage() {
   return (
