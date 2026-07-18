@@ -103,6 +103,18 @@ test("homepage dashboard and billing portal remain separate", () => {
   assert.match(account, /api\/stripe\/portal/);
 });
 
+test("signed-in refreshes enter the modular dashboard before legacy billing resolves", () => {
+  const dashboard = read("app/dashboard/page.jsx");
+  assert.match(
+    dashboard,
+    /if \(user && !user\.isAnonymous\) \{\s*return <HomeDashboard \/>;\s*\}/,
+  );
+  assert.doesNotMatch(
+    dashboard,
+    /if \(user && !user\.isAnonymous && billingStatusReady\)/,
+  );
+});
+
 test("balance update recalculates, announces, focuses and highlights the result", () => {
   const dashboard = read("app/dashboard/page.jsx");
   assert.match(dashboard, /postDashboardSettingsAction\("save_balance"/);

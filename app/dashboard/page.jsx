@@ -3062,11 +3062,11 @@ export default function DashboardPage() {
     );
   }
 
-  // Preserve the authoritative entitlement/trial states above and the secure
-  // claim banner for anonymous trial users. Signed-in customers with resolved
-  // access use the modular dashboard; everyone else keeps the completed-result
-  // and single-CTA path below.
-  if (user && !user.isAnonymous && billingStatusReady) {
+  // Signed-in customers always enter through the modular dashboard. It performs
+  // its own access check and loading states, so waiting for this legacy page's
+  // billing request would briefly paint the legacy dashboard after a refresh.
+  // Anonymous trial users still use the completed-result and claim flow below.
+  if (user && !user.isAnonymous) {
     return <HomeDashboard />;
   }
 
