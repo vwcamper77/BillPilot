@@ -46,7 +46,7 @@ Integrated base: `origin/main` at `d0c3eeb` plus the current uncommitted linkabl
 
 - `/blog/how-much-can-i-spend-before-payday`: informational explanation of the basic “balance minus bills” method and why a bank balance alone is incomplete.
 - `/blog/budgeting-irregular-income-no-payday`: informational method for choosing a cautious next reliable income horizon when pay dates or amounts vary.
-- `/tools/payday-cashflow-calculator`: transactional intent; privately divides cash available now across the calendar days through the selected payday.
+- `/tools/payday-cashflow-calculator`: transactional intent; privately subtracts dated bills from cash available now, calculates the net daily amount and plots a runway through payday.
 - `/blog/budgeting-without-open-banking`: comparative/practical intent; explains how to run a manual cashflow system, the trade-offs against connected automation and the maintenance needed.
 
 The new guide must not become another “how much can I spend before payday” article, and the calculator's supporting copy must link to—rather than reproduce—the two specialist guides.
@@ -79,7 +79,7 @@ The Journal remains the discovery hub. It should list guides normally and featur
 - The linkable-assets work has been integrated on top of the latest `origin/main`, preserving the founder/About page, Firestore quota handling and production-Firebase test safeguards.
 - The local `/about-cleartill` migration is assumed intentional. New links should use that canonical route even though the task brief names the legacy `/about` route; `/about` remains a resolving permanent redirect.
 - Dates use Europe/London calendar semantics in the user interface, but date arithmetic must operate on parsed calendar parts so UTC conversion cannot shift a selected day.
-- Same-day calculations use a one-day planning period. Future income is never added: the free calculator divides only the cash the user says is available now.
-- The calculator deliberately has only two inputs—cash available now and payday date—so bills and committed costs remain part of the fuller ClearTill app rather than being confused with future income.
+- Same-day calculations use a one-day planning period. Future income is never added: the free calculator uses only cash available now and subtracts bills entered for the period.
+- Users can add up to eight dated bills. The browser-only runway shows the remaining cash after bills on each day; recurring bill management remains part of the fuller ClearTill app.
 - No calculator analytics will be added initially. This is safer than extending two existing event pipelines and still satisfies the product requirements.
 - The task cannot guarantee backlinks, rankings, rich results or press coverage.

@@ -39,7 +39,7 @@ test("calculator and guide expose unique canonical metadata inputs", () => {
 test("calculator does not persist, transmit or track entered financial values", () => {
   const calculator = read("app/tools/payday-cashflow-calculator/PaydayCashflowCalculator.jsx");
   assert.doesNotMatch(calculator, /localStorage|sessionStorage|document\.cookie|fetch\(|XMLHttpRequest|sendBeacon|trackClientAnalyticsEvent|trackEvent|URLSearchParams|history\./);
-  for (const field of ["availableCash", "nextIncomeDate"]) {
+  for (const field of ["availableCash", "nextIncomeDate", "bills", "buildCashRunway"]) {
     assert.match(calculator, new RegExp(field));
   }
   assert.doesNotMatch(calculator, /confirmedIncome|billsDueBeforeDate|oneOffCosts|safetyBuffer/);

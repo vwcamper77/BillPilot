@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   MAX_MONEY_PENCE,
+  buildCashRunway,
   calculatePaydayCashflow,
   calendarDaysBetween,
   formatGbp,
@@ -11,12 +12,35 @@ import {
 } from "../../lib/paydayCashflowCalculator.js";
 import { createPaydayCalculatorSchemas } from "../../lib/linkableAssetsSchema.js";
 
-test("uses only cash available now", () => {
-  expect(calculatePaydayCashflow({ availableCashPence: 30000 })).toEqual({ availableCashPence: 30000 });
+test("subtracts bills from cash available now without adding future income", () => {
+  expect(calculatePaydayCashflow({
+    availableCashPence: 30000,
+    bills: [{ amountPence: 5000 }, { amountPence: 3000 }],
+  })).toEqual({
+    availableCashPence: 30000,
+    totalBillsPence: 8000,
+    netAvailablePence: 22000,
+    shortfallPence: 0,
+    isShortfall: false,
+  });
 });
 
 test("accepts an exact zero amount", () => {
-  expect(calculatePaydayCashflow({ availableCashPence: 0 })).toEqual({ availableCashPence: 0 });
+  expect(calculatePaydayCashflow({ availableCashPence: 0 })).toEqual({
+    availableCashPence: 0,
+    totalBillsPence: 0,
+    netAvailablePence: 0,
+    shortfallPence: 0,
+    isShortfall: false,
+  });
+});
+
+test("reports when bills exceed the available cash", () => {
+  expect(calculatePaydayCashflow({ availableCashPence: 10000, bills: [{ amountPence: 12500 }] })).toMatchObject({
+    netAvailablePence: -2500,
+    shortfallPence: 2500,
+    isShortfall: true,
+  });
 });
 
 test("rejects negative available cash", () => {
@@ -95,6 +119,31 @@ test("divides available cash by the planning days", () => {
 
 test("rounds indicative pacing down to the nearest penny", () => {
   expect(getPacingFigures(1000, 3)).toEqual({ dailyPence: 333 });
+});
+
+test("builds a dated runway and applies each bill on its due date", () => {
+  const runway = buildCashRunway({
+    availableCashPence: 30000,
+    todayIso: "2026-07-18",
+    paydayIso: "2026-07-21",
+    bills: [
+      { name: "Energy", amountPence: 5000, date: "2026-07-19" },
+      { name: "Phone", amountPence: 3000, date: "2026-07-21" },
+    ],
+  });
+  expect(runway).toHaveLength(4);
+  expect(runway.map((point) => point.remainingPence)).toEqual([30000, 25000, 25000, 22000]);
+  expect(runway[1].bills).toEqual([{ name: "Energy", amountPence: 5000 }]);
+  expect(runway[3].billsTotalPence).toBe(3000);
+});
+
+test("rejects runway bills outside today-to-payday", () => {
+  expect(() => buildCashRunway({
+    availableCashPence: 30000,
+    todayIso: "2026-07-18",
+    paydayIso: "2026-07-21",
+    bills: [{ name: "Later bill", amountPence: 1000, date: "2026-07-22" }],
+  })).toThrow(/between today and payday/);
 });
 
 test("calculator structured data is valid at object level and has no fabricated ratings", () => {

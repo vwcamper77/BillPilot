@@ -36,15 +36,27 @@ test("calculator is private-by-design, accessible and produces the dominant resu
 
   const minimumDate = await page.getByRole("textbox", { name: "Next payday date" }).getAttribute("min");
   const futureDate = addCalendarDays(minimumDate, 11);
+  const firstBillDate = addCalendarDays(minimumDate, 3);
+  const secondBillDate = addCalendarDays(minimumDate, 7);
   await page.getByRole("textbox", { name: "Cash available now" }).fill("300");
   await page.getByRole("textbox", { name: "Next payday date" }).fill(futureDate);
-  await page.getByRole("button", { name: "Calculate" }).click();
+  await page.getByRole("textbox", { name: "Bill 1 name" }).fill("Energy");
+  await page.getByRole("textbox", { name: "Amount" }).nth(0).fill("60");
+  await page.getByRole("textbox", { name: "Due date" }).nth(0).fill(firstBillDate);
+  await page.getByRole("textbox", { name: "Bill 2 name" }).fill("Phone");
+  await page.getByRole("textbox", { name: "Amount" }).nth(1).fill("36");
+  await page.getByRole("textbox", { name: "Due date" }).nth(1).fill(secondBillDate);
+  await page.getByRole("button", { name: "Calculate runway" }).click();
 
   const result = page.getByRole("status");
   await expect(result).toBeFocused();
-  await expect(result.getByText("Available per day until payday")).toBeVisible();
-  await expect(result.locator(".calculator-result-amount")).toHaveText("£25.00");
-  await expect(result.getByText("£300.00 ÷ 12 days = £25.00 per day.")).toBeVisible();
+  await expect(result.getByText("Available per day after bills")).toBeVisible();
+  await expect(result.locator(".calculator-result-amount")).toHaveText("£17.00");
+  await expect(result.getByText(/£300\.00 cash − £96\.00 bills = £204\.00 left through payday/)).toBeVisible();
+  await expect(result.getByRole("heading", { name: "Your cash runway" })).toBeVisible();
+  await expect(result.locator(".calculator-runway-day")).toHaveCount(12);
+  await expect(result.locator(".calculator-runway-bills").filter({ hasText: "Energy" })).toContainText("−£60.00");
+  await expect(result.locator(".calculator-runway-bills").filter({ hasText: "Phone" })).toContainText("−£36.00");
   await expect(page).toHaveURL(/\/tools\/payday-cashflow-calculator$/);
 
   expect(interactionRequests).toEqual([]);
@@ -52,7 +64,7 @@ test("calculator is private-by-design, accessible and produces the dominant resu
   expect(storageWrites).toEqual([]);
   expect(await context.cookies()).toEqual(cookiesBeforeInteraction);
   const transmitted = JSON.stringify(interactionRequests);
-  for (const privateValue of ["300", futureDate]) {
+  for (const privateValue of ["300", "Energy", "60", firstBillDate, "Phone", "36", secondBillDate, futureDate]) {
     expect(transmitted).not.toContain(privateValue);
   }
 
@@ -68,7 +80,7 @@ test("calculator is private-by-design, accessible and produces the dominant resu
 
 test("calculator actions work from the keyboard and expose validation and live-result semantics", async ({ page }) => {
   await page.goto("/tools/payday-cashflow-calculator");
-  const calculateButton = page.getByRole("button", { name: "Calculate" });
+  const calculateButton = page.getByRole("button", { name: "Calculate runway" });
   await calculateButton.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText("Check the highlighted fields and calculate again.")).toBeVisible();

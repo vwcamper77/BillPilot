@@ -37,7 +37,7 @@ export default function PaydayCashflowCalculatorPage() {
         <nav className="article-breadcrumb" aria-label="Breadcrumb"><Link href="/blog">Journal</Link><span aria-hidden="true">/</span><span>Free tools</span></nav>
         <p className="eyebrow">Free tool · no sign-up</p>
         <h1>Payday cashflow calculator</h1>
-        <p>Divide the cash you have available now across the days until payday. Future wages are not added to the calculation.</p>
+        <p>Subtract bills due before payday, see what is left and follow the balance across a simple daily runway. Future wages are not added.</p>
         <ul aria-label="Calculator privacy and access summary">
           <li>Calculated in your browser</li>
           <li>No entries saved</li>
@@ -50,15 +50,15 @@ export default function PaydayCashflowCalculatorPage() {
       <article className="tool-content">
         <section>
           <p className="eyebrow">What the answer means</p>
-          <h2>A simple daily amount from the cash you have now</h2>
-          <p>The calculator divides the amount you enter by the number of calendar days from today through your selected payday. For example, £300 across 12 days is £25 per day.</p>
+          <h2>A net daily amount after upcoming bills</h2>
+          <p>The calculator starts with today&apos;s cash, subtracts the bills you add, then divides the net amount by the calendar days through payday. The runway shows when each bill reduces the remaining balance.</p>
           <p>It does not add the pay due on payday—or any other future income—because that money is not available now.</p>
         </section>
 
         <section>
-          <h2>What amount should you enter?</h2>
-          <p>Enter the cash you can actually use between now and payday. If part of your current bank balance is already reserved for bills or committed costs, take those amounts off before entering the figure.</p>
-          <p>If you need ClearTill to account for individual bills and one-off costs, use the <Link href="/start">full ClearTill preview</Link>. The free calculator deliberately keeps this check simple.</p>
+          <h2>What should you enter?</h2>
+          <p>Enter the cash currently available, then add each bill that will leave that cash between today and payday. Give each bill an amount and due date so the runway can place it on the right day.</p>
+          <p>Do not add the same bill twice, and do not enter future pay as cash available now. For recurring bills and a position you can save and update, use the <Link href="/start">full ClearTill preview</Link>.</p>
         </section>
 
         <section>
@@ -69,8 +69,8 @@ export default function PaydayCashflowCalculatorPage() {
 
         <section className="tool-methodology">
           <h2>Methodology and privacy</h2>
-          <p><strong>Formula:</strong> cash available now ÷ calendar days through payday = available cash per day.</p>
-          <p>Amounts are converted to whole pence before arithmetic and formatted as GBP. The result rounds down to the nearest penny so the daily amounts do not exceed the cash entered. The planning period includes today and the selected payday.</p>
+          <p><strong>Formula:</strong> (cash available now − bills due through payday) ÷ calendar days through payday = available cash per day.</p>
+          <p>Amounts are converted to whole pence before arithmetic and formatted as GBP. The result rounds down to the nearest penny so the daily amounts do not exceed the net cash left. The planning period includes today and the selected payday. The runway applies each bill on its entered due date.</p>
           <p><strong>Privacy:</strong> entries remain in browser memory for the open page. They are not sent to analytics or ClearTill, stored locally, placed in cookies or added to the URL.</p>
           <p><strong>General information:</strong> ClearTill is not a bank, lender, payment processor or financial adviser. This calculator performs simple arithmetic using the figures you enter; it is not financial advice.</p>
         </section>
@@ -78,8 +78,9 @@ export default function PaydayCashflowCalculatorPage() {
         <section>
           <h2>Frequently asked questions</h2>
           <div className="tool-faqs">
-            <details><summary>Does the calculator include my payday income?</summary><p>No. It divides only the cash you have available now. Pay arriving on payday is not added.</p></details>
-            <details><summary>Should I take bills off first?</summary><p>Yes, if those bills must be paid from the cash currently in your account. Enter only the amount left for use between now and payday.</p></details>
+            <details><summary>Does the calculator include my payday income?</summary><p>No. Pay arriving on payday is not added. The calculation uses today&apos;s cash and subtracts only the bills you enter.</p></details>
+            <details><summary>Which bills should I add?</summary><p>Add bills due from today through payday that will be paid from the cash entered. Leave out bills already paid or due after payday.</p></details>
+            <details><summary>What does the runway show?</summary><p>It shows the cash remaining on each calendar day after any bill due that day has been subtracted.</p></details>
             <details><summary>Does ClearTill see the amount?</summary><p>No. The calculation runs locally in your browser and the amount is not sent to ClearTill.</p></details>
             <details><summary>Can I save the result?</summary><p>This free calculator does not save entries. You can run it again, or <Link href="/start">try the full ClearTill preview</Link> to maintain a fuller position.</p></details>
           </div>
