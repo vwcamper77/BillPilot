@@ -113,6 +113,19 @@ test("signed-in refreshes enter the modular dashboard before legacy billing reso
     dashboard,
     /if \(user && !user\.isAnonymous && billingStatusReady\)/,
   );
+  assert.match(dashboard, /if \(user && !user\.isAnonymous\) \{[\s\S]*?setBillingStatusReady\(true\);[\s\S]*?return undefined;/);
+  assert.match(dashboard, /entryIntent === "trial" \|\| !user\.isAnonymous/);
+});
+
+test("Firestore quota exhaustion is exposed as a temporary outage", () => {
+  const accessRoute = read("app/api/access/route.js");
+  const dashboard = read("app/dashboard/HomeDashboard.jsx");
+  assert.match(accessRoute, /isFirestoreQuotaError\(error\)/);
+  assert.match(accessRoute, /state: "service_unavailable"/);
+  assert.match(accessRoute, /status: 503/);
+  assert.match(accessRoute, /"Retry-After": "300"/);
+  assert.match(dashboard, /accessCheck\.state === "service_unavailable"/);
+  assert.match(dashboard, /Your sign-in worked, but we cannot load account data right now/);
 });
 
 test("balance update recalculates, announces, focuses and highlights the result", () => {

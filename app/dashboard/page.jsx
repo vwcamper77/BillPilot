@@ -434,7 +434,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!entryParamsReady || !user || !db || authStateChanging || auth?.currentUser?.uid !== user.uid || entryIntent === "trial" || (shouldUseDirectAuthEntry && user.isAnonymous)) {
+    if (!entryParamsReady || !user || !db || authStateChanging || auth?.currentUser?.uid !== user.uid || entryIntent === "trial" || !user.isAnonymous || (shouldUseDirectAuthEntry && user.isAnonymous)) {
       setBills([]);
       setLargeCosts([]);
       setSavings(null);
@@ -520,6 +520,14 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     setBillingStatusReady(false);
+
+    // Signed-in customers are rendered by HomeDashboard, which performs its own
+    // access check. Avoid resolving the same Firestore entitlement a second time
+    // in this legacy wrapper.
+    if (user && !user.isAnonymous) {
+      setBillingStatusReady(true);
+      return undefined;
+    }
 
     async function loadBillingStatus() {
       try {

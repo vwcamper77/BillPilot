@@ -30,11 +30,36 @@ export async function GET(request) {
 
     console.error("[access-check] access check failed", error);
 
+    if (isFirestoreQuotaError(error)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          state: "service_unavailable",
+          accessActive: false,
+          error: "ClearTill is temporarily unable to load account data. Please try again shortly.",
+        },
+        {
+          status: 503,
+          headers: { "Retry-After": "300" },
+        },
+      );
+    }
+
     return NextResponse.json(
       { ok: false, state: "access_check_error", accessActive: false },
       { status: 500 },
     );
   }
+}
+
+function isFirestoreQuotaError(error) {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || error?.details || "").toLowerCase();
+  return code === "8"
+    || code === "resource-exhausted"
+    || code === "resource_exhausted"
+    || message.includes("resource_exhausted")
+    || message.includes("quota exceeded");
 }
 
 async function verifyIdTokenFromRequest(request) {

@@ -1275,6 +1275,31 @@ function HomeDashboardContent({ view = "overview" }) {
     );
   }
 
+  if (accessCheck.state === "service_unavailable") {
+    return (
+      <main className="dashboard-shell">
+        <section className="auth-panel">
+          <Logo className="eyebrow-logo" />
+          <h1>ClearTill is temporarily unavailable.</h1>
+          <p className="helper-text">Your sign-in worked, but we cannot load account data right now. Please try again shortly.</p>
+          <div className="topbar-actions">
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => {
+                setAccessLoaded(false);
+                window.location.reload();
+              }}
+            >
+              Try again
+            </button>
+            <Link className="secondary-button" href="/">Home</Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (!accountLoaded) {
     return (
       <main className="dashboard-shell">
