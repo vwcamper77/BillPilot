@@ -7504,7 +7504,7 @@ h1 {
 .finance-nav a.is-active { color: #fff; background: var(--accent-dark); }
 .finance-nav a:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
 
-.current-position-card { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 16px 28px; margin-bottom: 14px; padding: 22px 24px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface-mint, #eef9f5); box-shadow: var(--shadow-card); }
+.current-position-card { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 16px 28px; margin-bottom: 14px; padding: 22px 24px; scroll-margin-top: 88px; border: 1px solid var(--line); border-radius: 24px; background: var(--surface-mint, #eef9f5); box-shadow: var(--shadow-card); }
 .current-position-card.is-warning { border-color: #d98b83; background: #fff5f3; }
 .current-position-main { min-width: 0; }
 .current-position-eyebrow, .overview-kicker { margin: 0 0 5px; color: var(--accent-dark); font-size: .72rem; font-weight: 900; letter-spacing: .09em; text-transform: uppercase; }
@@ -8214,4 +8214,99 @@ h1 {
   .auth-next-steps ol { grid-template-columns: 1fr; }
   .marketing-hero { padding: 48px 0; }
   .about-sections article { grid-template-columns: 1fr; gap: 7px; padding: 24px; }
+}
+
+/* Compact bills and income management */
+.bills-income-header { padding: 16px 18px 0; border: 1px solid var(--line); border-radius: 20px; background: #fff; box-shadow: var(--shadow-card); }
+.bills-income-header-main { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.bills-income-header-main h1 { margin: 0; font-size: clamp(1.75rem, 3vw, 2.35rem); }
+.bills-income-header-main p:last-child { margin: 4px 0 0; color: var(--muted); }
+.bills-income-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 12px; }
+.bills-income-metrics > div { display: flex; align-items: baseline; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft, #f8faf7); }
+.bills-income-metrics dt { color: var(--muted); font-size: .72rem; }
+.bills-income-metrics dd { margin: 0; font-size: .84rem; font-weight: 900; }
+.bills-income-tabs { display: flex; gap: 4px; }
+.bills-income-tabs button { min-width: 132px; min-height: 44px; padding: 9px 16px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; font: inherit; font-weight: 850; cursor: pointer; }
+.bills-income-tabs button span { display: inline-grid; min-width: 23px; height: 23px; margin-left: 5px; padding: 0 6px; border-radius: 999px; background: #edf4f1; place-items: center; font-size: .72rem; }
+.bills-income-tabs button[aria-selected="true"] { color: var(--accent-dark); border-bottom-color: var(--accent); }
+.bills-income-tabs button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: -3px; }
+.bills-income-tab-panel { display: grid; gap: 14px; }
+.bills-income-tab-panel[hidden] { display: none; }
+.bills-management-panel { padding: 12px; }
+.compact-bill-manager { display: grid; gap: 14px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.compact-bill-toolbar { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(300px, auto) auto auto; gap: 9px; align-items: center; }
+.bill-search-field input { width: 100%; min-height: 44px; }
+.bill-filter-tabs { display: flex; flex-wrap: wrap; gap: 5px; }
+.bill-filter-tab { min-height: 36px; padding: 6px 9px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; background: #fff; font: inherit; font-size: .73rem; font-weight: 750; cursor: pointer; }
+.bill-filter-tab.is-active { color: var(--accent-dark); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: #edf8f3; }
+.bill-sort-field { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: .73rem; font-weight: 750; white-space: nowrap; }
+.bill-sort-field select { min-height: 40px; width: auto; }
+.compact-selection-toolbar { display: flex; flex-wrap: wrap; gap: 7px; padding: 8px 10px; border-radius: 10px; background: #f2f7f5; }
+.compact-selection-toolbar button { min-height: 38px; }
+.compact-bill-note { margin: 0; padding: 9px 11px; color: var(--muted); border-radius: 10px; background: #f6f8f5; font-size: .82rem; }
+.compact-bill-section { display: grid; gap: 8px; }
+.compact-bill-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.compact-bill-section-heading h3 { margin: 0; font-size: 1rem; }
+.compact-bill-section-heading p { margin: 0; color: var(--muted); font-size: .76rem; }
+.compact-bill-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.compact-bill-grid-urgent { grid-template-columns: 1fr; }
+.compact-bill-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; min-height: 72px; padding: 9px 10px 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.compact-bill-section-urgent .compact-bill-row { border-left: 4px solid #df8a54; background: #fffbf5; }
+.compact-bill-row.is-paid { opacity: .74; }
+.compact-bill-row .bill-checkbox { width: 20px; height: 20px; }
+.compact-bill-row:has(.bill-checkbox) { grid-template-columns: auto minmax(0, 1fr) auto; }
+.compact-bill-row:has(.bill-checkbox) .compact-bill-actions { display: none; }
+.compact-bill-copy { display: grid; gap: 2px; min-width: 0; }
+.compact-bill-title-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.compact-bill-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compact-bill-meta { color: var(--muted); font-size: .72rem; }
+.bill-category-pill, .bill-paid-tag, .bill-new-tag { width: max-content; max-width: 100%; padding: 2px 6px; border-radius: 999px; background: #edf4f1; color: var(--muted); font-size: .64rem; font-weight: 750; }
+.bill-paid-tag { background: #e5f5ea; color: #28623d; }
+.bill-new-tag { background: #fff1d9; color: #73501d; }
+.compact-bill-amount { font-size: .92rem; overflow-wrap: anywhere; }
+.compact-bill-actions { display: flex; align-items: center; gap: 3px; }
+.bill-action-button { min-height: 40px; padding: 6px 8px; color: var(--accent-dark); border: 0; border-radius: 9px; background: transparent; font: inherit; font-size: .72rem; font-weight: 850; cursor: pointer; }
+.bill-action-button:hover { background: #edf4f1; }
+.bill-overflow { position: relative; }
+.bill-overflow summary { display: grid; width: 40px; height: 40px; border-radius: 9px; cursor: pointer; list-style: none; place-items: center; }
+.bill-overflow summary::-webkit-details-marker { display: none; }
+.bill-overflow summary:hover { background: #edf4f1; }
+.bill-overflow-menu { position: absolute; z-index: 10; top: calc(100% + 3px); right: 0; min-width: 145px; padding: 5px; border: 1px solid var(--line); border-radius: 10px; background: #fff; box-shadow: var(--shadow-card); }
+.bill-overflow-menu button { width: 100%; min-height: 40px; padding: 7px 9px; color: #8b3028; border: 0; border-radius: 7px; background: transparent; text-align: left; cursor: pointer; }
+.bill-overflow-menu button:hover { background: #fff2ef; }
+.compact-bill-empty { padding: 24px; border: 1px dashed var(--line); border-radius: 12px; text-align: center; }
+.compact-bill-empty h3, .compact-bill-empty p { margin: 0; }
+.compact-bill-empty p { margin-top: 4px; color: var(--muted); }
+.compact-bill-show-more { justify-self: center; }
+.compact-bill-edit-form { display: grid; gap: 14px; }
+.compact-bill-edit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+@media (max-width: 980px) {
+  .compact-bill-toolbar { grid-template-columns: minmax(180px, 1fr) auto; }
+  .bill-filter-tabs { grid-column: 1 / -1; grid-row: 2; }
+  .compact-bill-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 660px) {
+  .bills-income-header { padding: 14px 14px 0; }
+  .bills-income-header-main { align-items: stretch; flex-direction: column; gap: 12px; }
+  .bills-income-metrics { display: grid; grid-template-columns: 1fr 1fr; }
+  .bills-income-metrics > div { display: grid; gap: 1px; }
+  .bills-income-tabs button { flex: 1; min-width: 0; }
+  .compact-bill-toolbar { grid-template-columns: 1fr auto; }
+  .bill-search-field { grid-column: 1 / -1; }
+  .bill-filter-tabs { grid-column: 1 / -1; grid-row: auto; }
+  .compact-bill-section-heading { display: block; }
+  .compact-bill-section-heading p { margin-top: 3px; }
+  .compact-bill-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .compact-bill-amount { grid-column: 2; grid-row: 1; align-self: start; }
+  .compact-bill-actions { grid-column: 1 / -1; justify-content: flex-end; border-top: 1px solid var(--line); padding-top: 4px; }
+  .bill-action-button { min-height: 44px; }
+  .bill-overflow summary { width: 44px; height: 44px; }
+  .compact-bill-edit-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 400px) {
+  .bills-income-metrics { grid-template-columns: 1fr; }
+  .bill-sort-field { grid-column: 1 / -1; justify-content: space-between; }
 }

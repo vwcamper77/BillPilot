@@ -14,14 +14,14 @@ function commitmentTypeLabel(type) {
   return "Committed item";
 }
 
-export default function CurrentPositionCard({ cashPosition, displayCurrency, onUpdateBalance, onTestSpend, onAddBill }) {
+export default function CurrentPositionCard({ cashPosition, displayCurrency, onUpdateBalance, onTestSpend, onAddBill, currentPositionRef, updateBalanceButtonRef }) {
   const nextIncome = cashPosition?.nextConfirmedIncome || null;
   const hasPosition = cashPosition && nextIncome;
   const committedItems = [...(cashPosition?.outflowsBeforeNextIncome || [])]
     .sort((a, b) => a.date.localeCompare(b.date) || Math.abs(b.amount) - Math.abs(a.amount));
 
   return (
-    <article className={`current-position-card${cashPosition?.safeUntilNextIncome < 0 ? " is-warning" : ""}`} aria-labelledby="current-position-title">
+    <article id="current-position" ref={currentPositionRef} className={`current-position-card${cashPosition?.safeUntilNextIncome < 0 ? " is-warning" : ""}`} aria-labelledby="current-position-title">
       <div className="current-position-main">
         <p className="current-position-eyebrow">Current position</p>
         {hasPosition ? (
@@ -68,7 +68,7 @@ export default function CurrentPositionCard({ cashPosition, displayCurrency, onU
       ) : null}
 
       <div className="current-position-actions" aria-label="Current position actions">
-        <button className="primary-button" type="button" onClick={onUpdateBalance}>Update balance</button>
+        <button ref={updateBalanceButtonRef} className="primary-button" type="button" onClick={onUpdateBalance}>Update balance</button>
         <button className="secondary-button" type="button" onClick={onTestSpend} disabled={!hasPosition}>Test a spend</button>
         <button className="secondary-button" type="button" onClick={onAddBill}>Add bill</button>
       </div>

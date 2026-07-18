@@ -131,7 +131,7 @@ export default function BalanceEditor({
               <option value="USD">USD $</option>
             </select>
           </div>
-          {balanceError ? <p className="error">{balanceError}</p> : null}
+          {balanceError ? <p className="error" role="alert">{balanceError}</p> : null}
         </section>
 
         <section className="income-schedule-card" data-testid="income-schedule-card">

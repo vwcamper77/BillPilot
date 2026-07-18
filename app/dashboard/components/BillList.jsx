@@ -8,7 +8,6 @@ import {
   composeBillDisplayName,
   formatCurrency,
   formatDisplayDate,
-  formatOrdinal,
   isValidDueDay,
   sanitiseBillDisplayName,
   splitBillDisplayName,
@@ -17,230 +16,116 @@ import { logSecurityEventClient } from "@/lib/security/clientSecurity";
 import { postDashboardBillAction, runWithTimeout } from "../lib/dashboardApi";
 import { friendlyBillSaveError } from "../lib/friendlyErrors";
 import { CATEGORY_META, classifyBill, isPaidBill, isRecentlyAdded } from "../lib/billHelpers";
+import { buildBillListView } from "../lib/billListModel";
+import Drawer from "./Drawer";
 
-const BILLS_PER_PAGE = 6;
+const INITIAL_VISIBLE_BILLS = 20;
 
 function BillCategoryPill({ bill }) {
   const category = bill.category || classifyBill(bill).category || "other";
+  if (category === "other") return null;
   const meta = CATEGORY_META[category] || CATEGORY_META.other;
+  return <span className="bill-category-pill">{meta.icon} {meta.label}</span>;
+}
+
+function recurrenceLabel(bill) {
+  return {
+    weekly: "Weekly",
+    fortnightly: "Every two weeks",
+    four_weekly: "Every four weeks",
+    yearly: "Yearly",
+  }[bill?.frequency] || "Monthly";
+}
+
+function BillCard({ bill, displayCurrency, importLocked, selectMode, selected, onToggleSelect, onEdit, onDelete, onMarkPaid }) {
+  const paid = isPaidBill(bill);
   return (
-    <span className="bill-category-pill">
-      {meta.icon} {meta.label}
-    </span>
+    <li id={`bill-row-${bill.id}`} className={`compact-bill-row${isRecentlyAdded(bill) ? " is-recent" : ""}${paid ? " is-paid" : ""}`}>
+      {selectMode ? <input type="checkbox" className="bill-checkbox" checked={selected} onChange={() => onToggleSelect(bill.id)} aria-label={`Select ${bill.name}`} /> : null}
+      <div className="compact-bill-copy">
+        <div className="compact-bill-title-row">
+          <strong className="compact-bill-name" title={bill.name}>{bill.name || "Unnamed bill"}</strong>
+          {paid ? <span className="bill-paid-tag">Paid</span> : null}
+          {isRecentlyAdded(bill) ? <span className="bill-new-tag">New</span> : null}
+        </div>
+        <span className="compact-bill-meta">
+          {recurrenceLabel(bill)} · {bill.nextDueDate ? `Due ${formatDisplayDate(bill.nextDueDate)}` : "Due date not set"}
+        </span>
+        <BillCategoryPill bill={bill} />
+      </div>
+      <strong className="compact-bill-amount">{formatCurrency(bill.amount, displayCurrency)}</strong>
+      {!selectMode ? (
+        <div className="compact-bill-actions">
+          <button className="bill-action-button bill-action-paid" type="button" disabled={importLocked || (!bill.nextDueDate && !paid)} onClick={() => onMarkPaid(bill)}>{paid ? "Undo paid" : "Mark paid"}</button>
+          <button className="bill-action-button bill-action-edit" type="button" disabled={importLocked} onClick={() => onEdit(bill)}>Edit</button>
+          <details className="bill-overflow">
+            <summary aria-label={`More actions for ${bill.name}`} title="More actions"><span aria-hidden="true">•••</span></summary>
+            <div className="bill-overflow-menu">
+              <button type="button" disabled={importLocked} onClick={() => onDelete(bill.id)}>Remove bill</button>
+            </div>
+          </details>
+        </div>
+      ) : null}
+    </li>
   );
 }
 
-function BillPagination({ page, total, onPrev, onNext }) {
+function BillSection({ title, description, bills, variant, selectedBillIds, ...cardProps }) {
+  if (!bills.length) return null;
   return (
-    <div className="bill-pagination">
-      <button className="secondary-button" type="button" disabled={page === 0} onClick={onPrev}>← Previous</button>
-      <span className="bill-pagination-label">Page {page + 1} of {total}</span>
-      <button className="secondary-button" type="button" disabled={page >= total - 1} onClick={onNext}>Next →</button>
-    </div>
+    <section className={`compact-bill-section compact-bill-section-${variant}`} aria-labelledby={`bill-section-${variant}`}>
+      <div className="compact-bill-section-heading">
+        <h3 id={`bill-section-${variant}`}>{title}</h3>
+        {description ? <p>{description}</p> : null}
+      </div>
+      <ul className={`compact-bill-grid${variant === "urgent" ? " compact-bill-grid-urgent" : ""}`}>
+        {bills.map((bill) => <BillCard key={bill.id} bill={bill} selected={selectedBillIds?.has(bill.id) || false} {...cardProps} />)}
+      </ul>
+    </section>
   );
 }
 
-function BillGroup({
-  title,
-  bills,
-  editingBillId,
-  editingBillForm,
-  onBillFormChange,
-  onEditStart,
-  onEditCancel,
-  onEditSave,
-  savingEdit,
-  importLocked,
-  onDelete,
-  onMarkPaid,
-  selectMode,
-  selectedBillIds,
-  onToggleSelect,
-  displayCurrency,
-}) {
-  return (
-    <div className="bill-section">
-      <h3>{title}</h3>
-      {bills.length ? (
-        <ul className="bill-list">
-          {bills.map((bill) => (
-            <li key={bill.id} className={isRecentlyAdded(bill) ? "bill-row-new" : undefined}>
-              {editingBillId === bill.id ? (
-                <form className="edit-form bill-edit-form" onSubmit={(event) => onEditSave(event, bill.id)}>
-                  <label className="field-label" htmlFor={`bill-supplier-${bill.id}`}>Supplier name</label>
-                  <input
-                    id={`bill-supplier-${bill.id}`}
-                    list="supplier-name-options"
-                    value={editingBillForm.supplierName}
-                    onChange={(event) => onBillFormChange((current) => ({ ...current, supplierName: event.target.value }))}
-                    placeholder="Supplier name"
-                  />
-                  <label className="field-label" htmlFor={`bill-name-${bill.id}`}>Bill name</label>
-                  <input
-                    id={`bill-name-${bill.id}`}
-                    value={editingBillForm.billName || editingBillForm.name}
-                    onChange={(event) => onBillFormChange((current) => ({ ...current, billName: event.target.value, name: event.target.value }))}
-                    placeholder="Bill name"
-                  />
-                  <label className="field-label" htmlFor={`bill-amount-${bill.id}`}>Amount</label>
-                  <input
-                    id={`bill-amount-${bill.id}`}
-                    inputMode="decimal"
-                    value={editingBillForm.amount}
-                    onChange={(event) => onBillFormChange((current) => ({ ...current, amount: event.target.value }))}
-                    placeholder="Amount"
-                  />
-                  <DayOfMonthField
-                    id={`bill-due-day-${bill.id}`}
-                    label="Day of month"
-                    value={editingBillForm.dueDay}
-                    onChange={(event) => onBillFormChange((current) => ({ ...current, dueDay: event.target.value }))}
-                  />
-                  <label className="field-label" htmlFor={`bill-category-${bill.id}`}>Category</label>
-                  <select
-                    id={`bill-category-${bill.id}`}
-                    className="category-select"
-                    value={editingBillForm.category}
-                    onChange={(event) => onBillFormChange((current) => ({ ...current, category: event.target.value }))}
-                  >
-                    <option value="">Auto-detect</option>
-                    <option value="household">🏠 Household</option>
-                    <option value="subscription">🔁 Subscription</option>
-                    <option value="work_side_project">💼 Work / side project</option>
-                    <option value="vehicle">🚗 Vehicle</option>
-                    <option value="debt">💳 Debt / repayment</option>
-                    <option value="family">🧒 Children / family</option>
-                    <option value="other">📌 Other</option>
-                  </select>
-                  <div className="edit-actions">
-                    <button className="primary-button small-button" type="submit" disabled={savingEdit || importLocked}>
-                      {savingEdit ? "Saving..." : "Save"}
-                    </button>
-                    <button className="secondary-button small-button" type="button" disabled={importLocked} onClick={onEditCancel}>
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <>
-                  {selectMode ? (
-                    <input
-                      type="checkbox"
-                      className="bill-checkbox"
-                      checked={selectedBillIds?.has(bill.id) ?? false}
-                      onChange={() => onToggleSelect?.(bill.id)}
-                      aria-label={`Select ${bill.name}`}
-                    />
-                  ) : null}
-                  <div className="bill-row-main">
-                    <div className="bill-row-head">
-                      <span className="bill-row-title">{bill.name}</span>
-                      {isRecentlyAdded(bill) ? <span className="bill-new-tag">Recently added</span> : null}
-                      {isPaidBill(bill) ? <span className="bill-paid-tag">Paid</span> : null}
-                    </div>
-                    <div className="bill-row-details">
-                      <span className="bill-meta-pair">
-                        <strong>{formatCurrency(bill.amount, displayCurrency)}</strong>
-                        <span className="bill-meta">per month</span>
-                      </span>
-                      <span className="bill-meta-pair">
-                        <strong>{isValidDueDay(bill.dueDay) ? formatOrdinal(bill.dueDay) : "Date not set"}</strong>
-                        <span className="bill-meta">due date</span>
-                      </span>
-                      {isPaidBill(bill) ? (
-                        <span className="bill-meta-pair">
-                          <strong>{formatDisplayDate(bill.paidThroughDate)}</strong>
-                          <span className="bill-meta">paid through</span>
-                        </span>
-                      ) : null}
-                    </div>
-                    <BillCategoryPill bill={bill} />
-                  </div>
-                  {!selectMode ? (
-                    <div className="bill-actions">
-                      <button
-                        className="bill-action-button bill-action-paid"
-                        type="button"
-                        disabled={importLocked || (!bill.nextDueDate && !isPaidBill(bill))}
-                        onClick={() => onMarkPaid?.(bill)}
-                      >
-                        {isPaidBill(bill) ? "Undo paid" : "Paid"}
-                      </button>
-                      <button className="bill-action-button bill-action-edit" type="button" disabled={importLocked} onClick={() => onEditStart(bill)}>
-                        Edit
-                      </button>
-                      <button className="bill-action-button bill-action-remove" type="button" disabled={importLocked} onClick={() => onDelete?.(bill.id)}>
-                        Remove
-                      </button>
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="empty">Nothing here yet.</p>
-      )}
-    </div>
-  );
-}
-
-export default function BillList({
-  bills,
-  dashboard,
-  displayCurrency,
-  hasBalanceSnapshot,
-  importLocked,
-  todayIso,
-  onBillsChange,
-  onNotice,
-}) {
+export default function BillList({ bills, dashboard, displayCurrency, hasBalanceSnapshot, importLocked, todayIso, onBillsChange, onNotice }) {
   const [editingBillId, setEditingBillId] = useState("");
   const [editingBillForm, setEditingBillForm] = useState({ supplierName: "", billName: "", name: "", amount: "", dueDay: "", category: "" });
   const [editError, setEditError] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedBillIds, setSelectedBillIds] = useState(new Set());
-  const [billListPage, setBillListPage] = useState(0);
   const [billListFilter, setBillListFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("due_asc");
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_BILLS);
 
-  const hasBills = bills.length > 0;
+  const normalisedBills = useMemo(() => (
+    dashboard.paydayDate ? [...dashboard.beforePayday, ...dashboard.afterPayday] : dashboard.afterPayday
+  ), [dashboard.afterPayday, dashboard.beforePayday, dashboard.paydayDate]);
+  const beforePaydayIds = useMemo(() => new Set(dashboard.beforePayday.map((bill) => bill.id)), [dashboard.beforePayday]);
+  const view = useMemo(() => buildBillListView({
+    bills: normalisedBills,
+    beforePaydayIds,
+    filter: billListFilter,
+    search,
+    sort,
+    isPaid: isPaidBill,
+    isRecent: isRecentlyAdded,
+  }), [beforePaydayIds, billListFilter, normalisedBills, search, sort]);
+  const visibleUrgent = view.urgent.slice(0, visibleCount);
+  const remainingCapacity = Math.max(0, visibleCount - visibleUrgent.length);
+  const visibleUpcoming = view.upcoming.slice(0, remainingCapacity);
+  const hasMore = visibleUrgent.length + visibleUpcoming.length < view.all.length;
 
-  const allBillsForList = useMemo(() => {
-    const combined = dashboard.paydayDate
-      ? [...dashboard.beforePayday, ...dashboard.afterPayday]
-      : dashboard.upcomingBills;
-    if (billListFilter === "before" && dashboard.paydayDate) return dashboard.beforePayday;
-    if (billListFilter === "after" && dashboard.paydayDate) return dashboard.afterPayday;
-    if (billListFilter === "recent") return combined.filter(isRecentlyAdded);
-    if (billListFilter === "paid") return combined.filter(isPaidBill);
-    return combined;
-  }, [dashboard, billListFilter]);
-  const billListTotalPages = Math.max(1, Math.ceil(allBillsForList.length / BILLS_PER_PAGE));
-  const safeBillPage = Math.min(billListPage, Math.max(0, billListTotalPages - 1));
-  const pagedBills = allBillsForList.slice(safeBillPage * BILLS_PER_PAGE, (safeBillPage + 1) * BILLS_PER_PAGE);
-  const beforePaydayIdSet = useMemo(() => new Set(dashboard.beforePayday.map((b) => b.id)), [dashboard.beforePayday]);
-  const pagedBeforeGroup = pagedBills.filter((b) => beforePaydayIdSet.has(b.id));
-  const pagedAfterGroup = pagedBills.filter((b) => !beforePaydayIdSet.has(b.id));
-  const billListSummary = useMemo(() => {
-    if (!hasBills) {
-      return null;
-    }
+  const filterCounts = useMemo(() => ({
+    all: normalisedBills.length,
+    before: normalisedBills.filter((bill) => beforePaydayIds.has(bill.id)).length,
+    after: normalisedBills.filter((bill) => !beforePaydayIds.has(bill.id)).length,
+    paid: normalisedBills.filter(isPaidBill).length,
+    recent: normalisedBills.filter(isRecentlyAdded).length,
+  }), [beforePaydayIds, normalisedBills]);
 
-    const total = allBillsForList.reduce((sum, bill) => sum + (Number(bill.amount) || 0), 0);
-    const label = billListFilter === "before"
-      ? "bills before payday"
-      : billListFilter === "after"
-        ? "bills after payday"
-        : billListFilter === "recent"
-          ? "recently added bills"
-          : billListFilter === "paid"
-            ? "paid bills"
-            : "total monthly bills";
-
-    return { amount: formatCurrency(total, displayCurrency), label };
-  }, [allBillsForList, billListFilter, displayCurrency, hasBills]);
+  function resetDisclosure() {
+    setVisibleCount(INITIAL_VISIBLE_BILLS);
+  }
 
   function startBillEdit(bill) {
     const splitName = splitBillDisplayName(bill.name || "");
@@ -257,34 +142,29 @@ export default function BillList({
   }
 
   function cancelBillEdit() {
+    if (savingEdit) return;
     setEditingBillId("");
     setEditingBillForm({ supplierName: "", billName: "", name: "", amount: "", dueDay: "", category: "" });
+    setEditError("");
   }
 
-  async function handleBillEditSave(event, billId) {
+  async function handleBillEditSave(event) {
     event.preventDefault();
-
+    const billId = editingBillId;
     const amount = Number(editingBillForm.amount);
     const dueDay = Number(editingBillForm.dueDay);
-
-    const displayName = sanitiseBillDisplayName(composeBillDisplayName({
-      supplierName: editingBillForm.supplierName,
-      billName: editingBillForm.billName,
-      fallbackName: editingBillForm.name,
-    }));
-
-    if (!displayName.trim() || !Number.isFinite(amount) || !Number.isFinite(dueDay)) {
-      setEditError("Add a bill name, amount, and due day before saving.");
+    const displayName = sanitiseBillDisplayName(composeBillDisplayName({ supplierName: editingBillForm.supplierName, billName: editingBillForm.billName, fallbackName: editingBillForm.name }));
+    if (!displayName.trim() || !Number.isFinite(amount) || amount < 0 || !isValidDueDay(dueDay)) {
+      setEditError("Add a bill name, amount, and usual due day before saving.");
       return;
     }
 
     setSavingEdit(true);
     setEditError("");
-
     try {
       const existingBill = bills.find((bill) => bill.id === billId);
       const updatedBill = buildBillDocument({
-        name: sanitiseBillDisplayName(displayName.trim()),
+        name: displayName.trim(),
         supplierName: editingBillForm.supplierName || null,
         billName: editingBillForm.billName || null,
         amount,
@@ -293,22 +173,11 @@ export default function BillList({
         reminderOffsetDays: 1,
         paidThroughDate: existingBill?.paidThroughDate || null,
       });
-      const payload = {
-        ...updatedBill,
-        category: editingBillForm.category || null,
-        lastPaidAt: existingBill?.lastPaidAt || null,
-      };
-
-      await runWithTimeout(
-        postDashboardBillAction("update_bill", { billId, fields: payload }),
-        "Saving that bill is taking too long. Check your connection and try again.",
-      );
-
-      onBillsChange?.((current) => current.map((bill) => (
-        bill.id === billId ? { ...bill, ...payload, id: billId } : bill
-      )));
+      const payload = { ...updatedBill, category: editingBillForm.category || null, lastPaidAt: existingBill?.lastPaidAt || null };
+      await runWithTimeout(postDashboardBillAction("update_bill", { billId, fields: payload }), "Saving that bill is taking too long. Check your connection and try again.");
+      onBillsChange?.((current) => current.map((bill) => bill.id === billId ? { ...bill, ...payload, id: billId } : bill));
       logSecurityEventClient("bill_updated", { source: "edit" });
-      cancelBillEdit();
+      setEditingBillId("");
       onNotice?.("Bill updated.");
     } catch (saveError) {
       setEditError(friendlyBillSaveError(saveError, "Could not save that bill."));
@@ -324,6 +193,7 @@ export default function BillList({
     try {
       await postDashboardBillAction("delete_bill", { billId });
       logSecurityEventClient("bill_deleted");
+      onNotice?.("Bill removed.");
     } catch (saveError) {
       onBillsChange?.(() => previousBills);
       setEditError(friendlyBillSaveError(saveError, "Could not delete that bill. Try again."));
@@ -334,69 +204,43 @@ export default function BillList({
     if (isPaidBill(bill)) {
       const previousPaidThroughDate = bill.paidThroughDate || null;
       const previousLastPaidAt = bill.lastPaidAt || null;
-
       setEditError("");
-      onBillsChange?.((current) => current.map((entry) => (
-        entry.id === bill.id ? { ...entry, paidThroughDate: null, lastPaidAt: null } : entry
-      )));
-
+      onBillsChange?.((current) => current.map((entry) => entry.id === bill.id ? { ...entry, paidThroughDate: null, lastPaidAt: null } : entry));
       try {
-        await runWithTimeout(
-          postDashboardBillAction("update_bill", { billId: bill.id, fields: { paidThroughDate: null, lastPaidAt: null } }),
-          "Saving the paid status is taking too long. Check your connection and try again.",
-        );
+        await runWithTimeout(postDashboardBillAction("update_bill", { billId: bill.id, fields: { paidThroughDate: null, lastPaidAt: null } }), "Saving the paid status is taking too long. Check your connection and try again.");
         onNotice?.(`${bill.name} reactivated.`);
       } catch (saveError) {
-        onBillsChange?.((current) => current.map((entry) => (
-          entry.id === bill.id ? { ...entry, paidThroughDate: previousPaidThroughDate, lastPaidAt: previousLastPaidAt } : entry
-        )));
+        onBillsChange?.((current) => current.map((entry) => entry.id === bill.id ? { ...entry, paidThroughDate: previousPaidThroughDate, lastPaidAt: previousLastPaidAt } : entry));
         setEditError(friendlyBillSaveError(saveError, "Could not reactivate that bill."));
       }
       return;
     }
 
-    const cycleDate = bill.nextDueDate || calculateBillSchedule(
-      bill.dueDay,
-      bill.reminderOffsetDays,
-      bill.paidThroughDate || null,
-      todayIso,
-    ).nextDueDate;
-
+    const cycleDate = bill.nextDueDate || calculateBillSchedule(bill.dueDay, bill.reminderOffsetDays, bill.paidThroughDate || null, todayIso).nextDueDate;
     if (!cycleDate) {
       setEditError("Add a due day before marking this bill as paid.");
       return;
     }
-
     const previousPaidThroughDate = bill.paidThroughDate || null;
-
     setEditError("");
-    onBillsChange?.((current) => current.map((entry) => (
-      entry.id === bill.id ? { ...entry, paidThroughDate: cycleDate } : entry
-    )));
-
+    onBillsChange?.((current) => current.map((entry) => entry.id === bill.id ? { ...entry, paidThroughDate: cycleDate } : entry));
     try {
-      await runWithTimeout(
-        postDashboardBillAction("update_bill", { billId: bill.id, fields: { paidThroughDate: cycleDate, lastPaidAt: "__SERVER_TIMESTAMP__" } }),
-        "Saving the paid status is taking too long. Check your connection and try again.",
-      );
+      await runWithTimeout(postDashboardBillAction("update_bill", { billId: bill.id, fields: { paidThroughDate: cycleDate, lastPaidAt: "__SERVER_TIMESTAMP__" } }), "Saving the paid status is taking too long. Check your connection and try again.");
       onNotice?.(`${bill.name} marked as paid.`);
     } catch (saveError) {
-      onBillsChange?.((current) => current.map((entry) => (
-        entry.id === bill.id ? { ...entry, paidThroughDate: previousPaidThroughDate } : entry
-      )));
+      onBillsChange?.((current) => current.map((entry) => entry.id === bill.id ? { ...entry, paidThroughDate: previousPaidThroughDate } : entry));
       setEditError(friendlyBillSaveError(saveError, "Could not mark that bill as paid."));
     }
   }
 
   async function handleBulkDelete() {
-    if (selectedBillIds.size === 0) return;
-    const count = selectedBillIds.size;
-    if (!window.confirm(`Delete ${count} selected bill${count === 1 ? "" : "s"}?`)) return;
+    if (!selectedBillIds.size || !window.confirm(`Delete ${selectedBillIds.size} selected bill${selectedBillIds.size === 1 ? "" : "s"}?`)) return;
     const previousBills = bills;
+    const ids = [...selectedBillIds];
     onBillsChange?.((current) => current.filter((bill) => !selectedBillIds.has(bill.id)));
     try {
-      await postDashboardBillAction("bulk_delete_bills", { billIds: Array.from(selectedBillIds) });
-      logSecurityEventClient("bill_deleted", { count });
+      await postDashboardBillAction("bulk_delete_bills", { billIds: ids });
+      logSecurityEventClient("bill_deleted", { count: ids.length });
       setSelectedBillIds(new Set());
       setSelectMode(false);
     } catch (saveError) {
@@ -405,116 +249,70 @@ export default function BillList({
     }
   }
 
-  const sharedGroupProps = {
-    editingBillId,
-    editingBillForm,
-    onBillFormChange: setEditingBillForm,
-    onEditStart: startBillEdit,
-    onEditCancel: cancelBillEdit,
-    onEditSave: handleBillEditSave,
-    savingEdit,
+  const cardProps = {
+    displayCurrency,
     importLocked,
+    selectMode,
+    onToggleSelect: (id) => setSelectedBillIds((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }),
+    onEdit: startBillEdit,
     onDelete: handleBillDelete,
     onMarkPaid: handleBillPaidToggle,
-    selectMode,
-    selectedBillIds,
-    onToggleSelect: (id) => setSelectedBillIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }),
-    displayCurrency,
   };
 
   return (
-    <section className={`list-panel ${!hasBalanceSnapshot && !hasBills ? "is-disabled-soft" : ""}`}>
-      <div className="section-head">
-        <h2 style={{ margin: 0 }}>Bill list</h2>
-        {bills.length > 0 ? (
-          <div className="select-mode-controls">
-            <button className="secondary-button small-button" type="button" onClick={() => { setSelectMode((s) => !s); setSelectedBillIds(new Set()); }}>
-              {selectMode ? "Done" : "Select bills"}
-            </button>
-            {selectMode ? (
-              <>
-                <button className="secondary-button small-button" type="button" onClick={() => setSelectedBillIds(new Set(bills.map((b) => b.id)))}>
-                  Select all
-                </button>
-                <button className="secondary-button small-button" type="button" onClick={() => setSelectedBillIds(new Set())}>
-                  Clear
-                </button>
-                {selectedBillIds.size > 0 ? (
-                  <button className="secondary-button small-button delete-button" type="button" onClick={handleBulkDelete}>
-                    Delete {selectedBillIds.size} selected
-                  </button>
-                ) : null}
-              </>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
-      {billListSummary ? (
-        <div className="bill-list-summary-row" aria-live="polite">
-          <span className="stat-chip bill-list-summary-chip">
-            <strong>{billListSummary.amount}</strong>
-            {` ${billListSummary.label}`}
-          </span>
+    <section className={`list-panel compact-bill-manager${!hasBalanceSnapshot && !bills.length ? " is-disabled-soft" : ""}`}>
+      <div className="compact-bill-toolbar">
+        <div className="bill-search-field">
+          <label className="sr-only" htmlFor="bill-search">Search bills</label>
+          <input id="bill-search" type="search" value={search} onChange={(event) => { setSearch(event.target.value); resetDisclosure(); }} placeholder="Search bills" />
         </div>
-      ) : null}
-
-      {hasBills ? (
-        <div className="bill-filter-tabs">
+        <div className="bill-filter-tabs" aria-label="Filter bills">
           {[
             { key: "all", label: "All" },
-            ...(dashboard.paydayDate ? [{ key: "before", label: "Before you're paid" }, { key: "after", label: "After you're paid" }] : []),
+            ...(dashboard.paydayDate ? [{ key: "before", label: "Before payday" }, { key: "after", label: "After payday" }] : []),
             { key: "paid", label: "Paid" },
             { key: "recent", label: "Recently added" },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              className={`bill-filter-tab${billListFilter === tab.key ? " is-active" : ""}`}
-              onClick={() => { setBillListFilter(tab.key); setBillListPage(0); }}
-            >{tab.label}</button>
+          ].map((item) => (
+            <button key={item.key} type="button" className={`bill-filter-tab${billListFilter === item.key ? " is-active" : ""}`} aria-pressed={billListFilter === item.key} onClick={() => { setBillListFilter(item.key); resetDisclosure(); }}>
+              {item.label}{filterCounts[item.key] ? ` (${filterCounts[item.key]})` : ""}
+            </button>
           ))}
+        </div>
+        <label className="bill-sort-field">Sort <select value={sort} onChange={(event) => { setSort(event.target.value); resetDisclosure(); }}><option value="due_asc">Due soonest</option><option value="amount_desc">Amount: high to low</option><option value="name_asc">Name</option></select></label>
+        {bills.length ? <button className="secondary-button small-button" type="button" onClick={() => { setSelectMode((value) => !value); setSelectedBillIds(new Set()); }}>{selectMode ? "Done" : "Select"}</button> : null}
+      </div>
+
+      {selectMode ? (
+        <div className="compact-selection-toolbar">
+          <button type="button" onClick={() => setSelectedBillIds(new Set(view.all.map((bill) => bill.id)))}>Select filtered</button>
+          <button type="button" onClick={() => setSelectedBillIds(new Set())}>Clear</button>
+          {selectedBillIds.size ? <button className="delete-button" type="button" onClick={handleBulkDelete}>Delete {selectedBillIds.size}</button> : null}
         </div>
       ) : null}
 
-      {billListTotalPages > 1 ? (
-        <BillPagination
-          page={safeBillPage}
-          total={billListTotalPages}
-          onPrev={() => setBillListPage((p) => Math.max(0, p - 1))}
-          onNext={() => setBillListPage((p) => Math.min(billListTotalPages - 1, p + 1))}
-        />
-      ) : null}
+      {!dashboard.paydayDate && bills.length ? <p className="compact-bill-note">No upcoming income is confirmed, so bills are shown together by next due date.</p> : null}
+      {!bills.length ? <div className="compact-bill-empty"><h3>No bills yet</h3><p>Add your regular commitments to include them in your runway.</p></div> : null}
+      {bills.length && !view.all.length ? <div className="compact-bill-empty"><h3>No matching bills</h3><p>Try another search or filter.</p></div> : null}
 
-      {dashboard.paydayDate && billListFilter === "all" ? (
-        <>
-          {pagedBeforeGroup.length > 0 ? <BillGroup title="Before you're paid" bills={pagedBeforeGroup} {...sharedGroupProps} /> : null}
-          {pagedAfterGroup.length > 0 ? <BillGroup title="After you're paid" bills={pagedAfterGroup} {...sharedGroupProps} /> : null}
-          {pagedBills.length === 0 ? <p className="empty">No bills on this page.</p> : null}
-        </>
-      ) : (
-        <BillGroup
-          title={
-            billListFilter === "before" ? "Before you're paid"
-            : billListFilter === "after" ? "After you're paid"
-            : billListFilter === "recent" ? "Recently added"
-            : billListFilter === "paid" ? "Paid bills"
-            : "All bills"
-          }
-          bills={pagedBills}
-          {...sharedGroupProps}
-        />
-      )}
+      <BillSection title="Due before payday" description="These leave your account before the next confirmed income." bills={visibleUrgent} variant="urgent" {...cardProps} selectedBillIds={selectedBillIds} />
+      <BillSection title={billListFilter === "paid" ? "Paid bills" : billListFilter === "recent" ? "Recently added" : "Upcoming regular bills"} bills={visibleUpcoming} variant="upcoming" {...cardProps} selectedBillIds={selectedBillIds} />
+      {hasMore ? <button className="secondary-button compact-bill-show-more" type="button" onClick={() => setVisibleCount((count) => count + INITIAL_VISIBLE_BILLS)}>Show more ({view.all.length - visibleUrgent.length - visibleUpcoming.length})</button> : null}
+      {editError && !editingBillId ? <p className="error" role="alert">{editError}</p> : null}
 
-      {billListTotalPages > 1 ? (
-        <BillPagination
-          page={safeBillPage}
-          total={billListTotalPages}
-          onPrev={() => setBillListPage((p) => Math.max(0, p - 1))}
-          onNext={() => setBillListPage((p) => Math.min(billListTotalPages - 1, p + 1))}
-        />
-      ) : null}
-
-      {editError ? <p className="error">{editError}</p> : null}
+      <Drawer open={Boolean(editingBillId)} onClose={cancelBillEdit} closeDisabled={savingEdit} title="Edit bill" description="Changes update this bill without leaving the page.">
+        <form className="compact-bill-edit-form" onSubmit={handleBillEditSave}>
+          <div className="field-row"><label className="field-label" htmlFor="edit-bill-supplier">Supplier name</label><input data-drawer-initial-focus id="edit-bill-supplier" value={editingBillForm.supplierName} onChange={(event) => setEditingBillForm((current) => ({ ...current, supplierName: event.target.value }))} /></div>
+          <div className="field-row"><label className="field-label" htmlFor="edit-bill-name">Bill name</label><input id="edit-bill-name" value={editingBillForm.billName || editingBillForm.name} onChange={(event) => setEditingBillForm((current) => ({ ...current, billName: event.target.value, name: event.target.value }))} required /></div>
+          <div className="compact-bill-edit-grid">
+            <div className="field-row"><label className="field-label" htmlFor="edit-bill-amount">Amount</label><input id="edit-bill-amount" inputMode="decimal" value={editingBillForm.amount} onChange={(event) => setEditingBillForm((current) => ({ ...current, amount: event.target.value }))} required /></div>
+            <DayOfMonthField id="edit-bill-due-day" label="Usual due day" value={editingBillForm.dueDay} onChange={(event) => setEditingBillForm((current) => ({ ...current, dueDay: event.target.value }))} required />
+          </div>
+          <div className="field-row"><label className="field-label" htmlFor="edit-bill-category">Category</label><select id="edit-bill-category" value={editingBillForm.category} onChange={(event) => setEditingBillForm((current) => ({ ...current, category: event.target.value }))}><option value="">Auto-detect</option>{Object.entries(CATEGORY_META).map(([value, meta]) => <option value={value} key={value}>{meta.label}</option>)}</select></div>
+          <p className="helper-text">Recurs monthly. The next absolute due date is recalculated from the usual due day.</p>
+          {editError ? <p className="error" role="alert">{editError}</p> : null}
+          <div className="edit-actions"><button className="secondary-button" type="button" onClick={cancelBillEdit} disabled={savingEdit}>Cancel</button><button className="primary-button" type="submit" disabled={savingEdit || importLocked}>{savingEdit ? "Saving…" : "Save changes"}</button></div>
+        </form>
+      </Drawer>
     </section>
   );
 }

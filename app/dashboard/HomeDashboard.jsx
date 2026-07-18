@@ -151,6 +151,7 @@ function HomeDashboardContent({ view = "overview" }) {
   const [selectedRunwayWeek, setSelectedRunwayWeek] = useState(null);
   const [spendTestOpen, setSpendTestOpen] = useState(false);
   const [addBillOpen, setAddBillOpen] = useState(false);
+  const [billsIncomeTab, setBillsIncomeTab] = useState("bills");
   const [previewStartBusy, setPreviewStartBusy] = useState(false);
   const [previewStartError, setPreviewStartError] = useState("");
 
@@ -165,6 +166,9 @@ function HomeDashboardContent({ view = "overview" }) {
   const [editError, setEditError] = useState("");
   const balanceSaveRequestRef = useRef(0);
   const primaryResultRef = useRef(null);
+  const currentPositionRef = useRef(null);
+  const updateBalanceButtonRef = useRef(null);
+  const balanceCompletionPendingRef = useRef(false);
   const incomeSectionRef = useRef(null);
   const previewAutoStartAttemptedRef = useRef(false);
 
@@ -613,7 +617,7 @@ function HomeDashboardContent({ view = "overview" }) {
   useEffect(() => {
     if (!pendingBalanceResult) return;
 
-    const { previousBalance, previousResult, nextBalance, focusResult } = pendingBalanceResult;
+    const { previousResult } = pendingBalanceResult;
     const resultChange = previousResult === null || spendingRoomUntilPayday === null
       ? null
       : spendingRoomUntilPayday - previousResult;
@@ -631,21 +635,14 @@ function HomeDashboardContent({ view = "overview" }) {
       }
     }
 
-    setPageNotice(Number.isFinite(previousBalance)
-      ? `Balance updated from ${formatCurrency(previousBalance, displayCurrency)} to ${formatCurrency(nextBalance, displayCurrency)}.`
-      : `Balance updated to ${formatCurrency(nextBalance, displayCurrency)}.`);
+    const resultMessage = spendingRoomUntilPayday === null
+      ? "Your current position has been recalculated."
+      : `${formatCurrency(spendingRoomUntilPayday, displayCurrency)} left until your next income.`;
+    setPageNotice(`Balance updated. ${resultMessage}`);
     setBalanceImpact(impact);
     setPendingBalanceResult(null);
-
-    if (focusResult) {
-      setBalanceEditorOpen(false);
-      setHighlightPrimaryResult(true);
-      window.setTimeout(() => {
-        primaryResultRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-        primaryResultRef.current?.focus({ preventScroll: true });
-      }, 50);
-      window.setTimeout(() => setHighlightPrimaryResult(false), 1800);
-    }
+    balanceCompletionPendingRef.current = true;
+    setBalanceEditorOpen(false);
   }, [displayCurrency, pendingBalanceResult, spendingRoomUntilPayday]);
 
   const clearTillStatus = (() => {
@@ -918,13 +915,11 @@ function HomeDashboardContent({ view = "overview" }) {
 
     const saveRequestId = balanceSaveRequestRef.current + 1;
     balanceSaveRequestRef.current = saveRequestId;
-    const previousBalance = Number(displayAccount?.currentBalance);
     const previousResult = spendingRoomUntilPayday;
 
     setBalanceError("");
     setPageNotice("");
     setBalanceImpact("");
-    setOptimisticBalance(parsedBalance);
     setBalanceInput(parsedBalance.toString());
     setSavingBalance(true);
 
@@ -945,11 +940,9 @@ function HomeDashboardContent({ view = "overview" }) {
         trackEvent("balance_updated_during_preview");
         trackEvent("position_recalculated_during_preview", { source: "balance_update" });
       }
+      setOptimisticBalance(parsedBalance);
       setPendingBalanceResult({
-        previousBalance,
         previousResult,
-        nextBalance: parsedBalance,
-        focusResult: setupStep === 4,
       });
     } catch (saveError) {
       if (balanceSaveRequestRef.current !== saveRequestId) {
@@ -957,7 +950,6 @@ function HomeDashboardContent({ view = "overview" }) {
       }
 
       safeError("[dashboard-settings-balance-save] failed", { code: saveError?.code });
-      setOptimisticBalance(null);
       setPageNotice("");
       setBalanceError(friendlySettingsError(saveError, "Current available money could not be saved."));
     } finally {
@@ -1043,8 +1035,24 @@ function HomeDashboardContent({ view = "overview" }) {
   }
 
   function openBalanceEditor(withFocusPayday) {
+    balanceCompletionPendingRef.current = false;
     setFocusPayday(Boolean(withFocusPayday));
     setBalanceEditorOpen(true);
+  }
+
+  function handleBalanceDrawerAfterClose() {
+    if (!balanceCompletionPendingRef.current) return;
+    balanceCompletionPendingRef.current = false;
+
+    const position = currentPositionRef.current || primaryResultRef.current;
+    if (!position) return;
+    const rect = position.getBoundingClientRect();
+    const mobileLayout = window.matchMedia?.("(max-width: 760px)").matches ?? window.innerWidth <= 760;
+    const outsideViewport = rect.top < 0 || rect.bottom > window.innerHeight;
+    if (mobileLayout || outsideViewport) {
+      position.scrollIntoView({ block: "start", behavior: "auto" });
+    }
+    (updateBalanceButtonRef.current || position).focus?.({ preventScroll: true });
   }
 
   useEffect(() => {
@@ -1061,15 +1069,40 @@ function HomeDashboardContent({ view = "overview" }) {
   }, [setupStep]);
 
   function focusIncomeSection() {
-    const section = incomeSectionRef.current;
-    if (!section || accessState === "preview_expired") return;
-
-    section.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
+    if (accessState === "preview_expired") return;
+    setBillsIncomeTab("income");
     window.requestAnimationFrame(() => {
-      const focusTarget = section.querySelector("#income-pattern:not(:disabled)")
-        || section.querySelector("#income-section-title");
-      focusTarget?.focus({ preventScroll: true });
+      window.requestAnimationFrame(() => {
+        const section = incomeSectionRef.current;
+        if (!section) return;
+        section.scrollIntoView({ behavior: getScrollBehavior(), block: "start" });
+        const focusTarget = section.querySelector("#income-pattern:not(:disabled)")
+          || section.querySelector("#income-section-title");
+        focusTarget?.focus({ preventScroll: true });
+      });
     });
+  }
+
+  function focusBillsAddSection() {
+    if (accessState === "preview_expired") return;
+    setBillsIncomeTab("bills");
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => triggerQuickAction("bills", "add-bills"));
+    });
+  }
+
+  function handleBillsIncomeTabKeyDown(event) {
+    const tabs = ["bills", "income"];
+    const currentIndex = tabs.indexOf(billsIncomeTab);
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    setBillsIncomeTab(tabs[nextIndex]);
+    window.requestAnimationFrame(() => document.getElementById(`bills-income-tab-${tabs[nextIndex]}`)?.focus());
   }
 
   if (!authReady) {
@@ -1346,7 +1379,7 @@ function HomeDashboardContent({ view = "overview" }) {
         {view === "overview" ? (
           <>
             <div ref={primaryResultRef} className={highlightPrimaryResult ? "primary-result-highlight" : ""} tabIndex={-1} aria-live="polite">
-              <CurrentPositionCard cashPosition={cashPosition} displayCurrency={displayCurrency} onUpdateBalance={() => openBalanceEditor(false)} onTestSpend={() => setSpendTestOpen(true)} onAddBill={() => setAddBillOpen(true)} />
+              <CurrentPositionCard currentPositionRef={currentPositionRef} updateBalanceButtonRef={updateBalanceButtonRef} cashPosition={cashPosition} displayCurrency={displayCurrency} onUpdateBalance={() => openBalanceEditor(false)} onTestSpend={() => setSpendTestOpen(true)} onAddBill={() => setAddBillOpen(true)} />
               {balanceImpact ? <p className="balance-impact" role="status">{balanceImpact}</p> : null}
             </div>
 
@@ -1376,7 +1409,7 @@ function HomeDashboardContent({ view = "overview" }) {
               </div>
             </section>
 
-            <Drawer open={balanceEditorOpen} onClose={() => setBalanceEditorOpen(false)} title="Update your position" description="Update the balance currently available in your account.">
+            <Drawer open={balanceEditorOpen} onClose={() => setBalanceEditorOpen(false)} onAfterClose={handleBalanceDrawerAfterClose} closeDisabled={savingBalance} title="Update your position" description="Update the balance currently available in your account.">
               <BalanceEditor open focusPayday={focusPayday} onConsumeFocusPayday={() => setFocusPayday(false)} hasBalanceSnapshot={hasBalanceSnapshot} currentBalance={dashboard.currentBalance} balanceInput={balanceInput} onBalanceInputChange={setBalanceInput} balanceError={balanceError} savingBalance={savingBalance} onSubmitBalance={handleBalanceSave} income={displayIncome} hasPayday={hasPayday} hasIncomeAmount={hasIncomeAmount} hasBills={hasBills} totalMonthlyBills={totalMonthlyBills} monthlySpendingRoomValue={monthlySpendingRoomValue} editingIncome={editingIncome} onSetEditingIncome={setEditingIncome} incomeForm={incomeForm} onIncomeFormChange={setIncomeForm} savingEdit={savingEdit} editError={editError} onSubmitIncome={handleIncomeSave} incomeEvents={incomeEvents} onIncomeEventsChange={setIncomeEvents} todayIso={todayIso} onNotice={setPageNotice} displayCurrency={displayCurrency} onCurrencySelect={handleCurrencySave} />
             </Drawer>
             <SpendTestDrawer open={spendTestOpen} onClose={() => setSpendTestOpen(false)} cashPosition={cashPosition} displayCurrency={displayCurrency} />
@@ -1389,17 +1422,37 @@ function HomeDashboardContent({ view = "overview" }) {
 
         {view === "bills-income" ? (
           <div className="management-page-stack">
-            <section className="management-page-intro management-page-intro-action">
-              <div><p className="overview-kicker">Money in and out</p><h1>Bills & income</h1><p>Manage regular commitments, imports and every confirmed income source used by your runway.</p></div>
-              <div className="management-page-actions">
-                <button className="primary-button" type="button" disabled={!canEdit} onClick={() => triggerQuickAction("bills", "add-bills")}>Add bill</button>
-                <button className="secondary-button" type="button" disabled={!canEdit} onClick={focusIncomeSection}>Add income</button>
+            <section className="bills-income-header" aria-labelledby="bills-income-title">
+              <div className="bills-income-header-main">
+                <div>
+                  <p className="overview-kicker">Money in and out</p>
+                  <h1 id="bills-income-title">Bills & income</h1>
+                  <p>Manage the regular money used by your runway.</p>
+                </div>
+                <div className="management-page-actions">
+                  <button className="primary-button" type="button" disabled={!canEdit} onClick={focusBillsAddSection}>Add bill</button>
+                  <button className="secondary-button" type="button" disabled={!canEdit} onClick={focusIncomeSection}>Add income</button>
+                </div>
+              </div>
+              <dl className="bills-income-metrics">
+                <div><dt>Monthly bills</dt><dd>{formatCurrency(totalMonthlyBills, displayCurrency)}</dd></div>
+                <div><dt>Active bills</dt><dd>{bills.length}</dd></div>
+                <div><dt>Income sources</dt><dd>{activeIncomeCount}</dd></div>
+                {cashPosition?.nextConfirmedIncome ? <div><dt>Due before payday</dt><dd>{formatCurrency(cashPosition.billsBeforeNextIncomeTotal || 0, displayCurrency)}</dd></div> : null}
+              </dl>
+              <div className="bills-income-tabs" role="tablist" aria-label="Bills and income" onKeyDown={handleBillsIncomeTabKeyDown}>
+                <button id="bills-income-tab-bills" type="button" role="tab" aria-selected={billsIncomeTab === "bills"} aria-controls="bills-income-panel-bills" tabIndex={billsIncomeTab === "bills" ? 0 : -1} onClick={() => setBillsIncomeTab("bills")}>Bills <span>{bills.length}</span></button>
+                <button id="bills-income-tab-income" type="button" role="tab" aria-selected={billsIncomeTab === "income"} aria-controls="bills-income-panel-income" tabIndex={billsIncomeTab === "income" ? 0 : -1} onClick={() => setBillsIncomeTab("income")}>Income <span>{activeIncomeCount}</span></button>
               </div>
             </section>
-            <section className="management-panel" aria-labelledby="bill-management-title"><h2 id="bill-management-title">Bills</h2><BillList bills={bills} dashboard={dashboard} displayCurrency={displayCurrency} hasBalanceSnapshot={hasBalanceSnapshot} importLocked={billsBusy} todayIso={todayIso} onBillsChange={setBills} onNotice={setPageNotice} /></section>
-            <section className="management-panel" aria-labelledby="household-utilities-title"><h2 id="household-utilities-title">Household utilities tracker</h2><UtilitiesTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} /></section>
-            <section className="management-panel" aria-labelledby="add-bills-title"><h2 id="add-bills-title">Add or import bills</h2><AddBills bills={bills} onBillsChange={setBills} hasIncome={Boolean(displayIncome)} hasBalanceSnapshot={hasBalanceSnapshot} hasPayday={hasPayday} displayCurrency={displayCurrency} onImportingChange={setBillsBusy} /></section>
-            <section ref={incomeSectionRef} id="income-section" className="management-panel" aria-labelledby="income-section-title"><h2 id="income-section-title" tabIndex={-1}>Income</h2><AdditionalIncomeEditor incomeEvents={incomeEvents} onIncomeEventsChange={setIncomeEvents} todayIso={todayIso} displayCurrency={displayCurrency} onNotice={setPageNotice} defaultExpanded /></section>
+            <div id="bills-income-panel-bills" className="bills-income-tab-panel" role="tabpanel" aria-labelledby="bills-income-tab-bills" hidden={billsIncomeTab !== "bills"}>
+              <section className="management-panel bills-management-panel" aria-labelledby="bill-management-title"><h2 className="sr-only" id="bill-management-title">Bills</h2><BillList bills={bills} dashboard={dashboard} displayCurrency={displayCurrency} hasBalanceSnapshot={hasBalanceSnapshot} importLocked={billsBusy || !canEdit} todayIso={todayIso} onBillsChange={setBills} onNotice={setPageNotice} /></section>
+              <section className="management-panel" aria-labelledby="household-utilities-title"><h2 id="household-utilities-title">Household utilities tracker</h2><UtilitiesTracker bills={bills} onAddMissingUtility={handleAddMissingUtility} /></section>
+              <section className="management-panel" aria-labelledby="add-bills-title"><h2 id="add-bills-title">Add or import bills</h2><AddBills bills={bills} onBillsChange={setBills} hasIncome={Boolean(displayIncome)} hasBalanceSnapshot={hasBalanceSnapshot} hasPayday={hasPayday} displayCurrency={displayCurrency} onImportingChange={setBillsBusy} /></section>
+            </div>
+            <div id="bills-income-panel-income" className="bills-income-tab-panel" role="tabpanel" aria-labelledby="bills-income-tab-income" hidden={billsIncomeTab !== "income"}>
+              <section ref={incomeSectionRef} id="income-section" className="management-panel" aria-labelledby="income-section-title"><h2 id="income-section-title" tabIndex={-1}>Income</h2><AdditionalIncomeEditor incomeEvents={incomeEvents} onIncomeEventsChange={setIncomeEvents} todayIso={todayIso} displayCurrency={displayCurrency} onNotice={setPageNotice} defaultExpanded /></section>
+            </div>
           </div>
         ) : null}
 

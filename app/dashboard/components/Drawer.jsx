@@ -11,12 +11,21 @@ const FOCUSABLE = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
-export default function Drawer({ open, title, description, onClose, children, size = "standard" }) {
+export default function Drawer({ open, title, description, onClose, onAfterClose, children, size = "standard", closeDisabled = false }) {
   const titleId = useId();
   const descriptionId = useId();
   const panelRef = useRef(null);
   const closeRef = useRef(null);
   const returnFocusRef = useRef(null);
+  const openRef = useRef(open);
+  const onCloseRef = useRef(onClose);
+  const onAfterCloseRef = useRef(onAfterClose);
+  const closeDisabledRef = useRef(closeDisabled);
+
+  openRef.current = open;
+  onCloseRef.current = onClose;
+  onAfterCloseRef.current = onAfterClose;
+  closeDisabledRef.current = closeDisabled;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -33,7 +42,7 @@ export default function Drawer({ open, title, description, onClose, children, si
     function handleKeyDown(event) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        if (!closeDisabledRef.current) onCloseRef.current?.();
         return;
       }
 
@@ -62,15 +71,19 @@ export default function Drawer({ open, title, description, onClose, children, si
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
       const returnTarget = returnFocusRef.current;
-      window.requestAnimationFrame(() => returnTarget?.isConnected && returnTarget.focus?.());
+      window.requestAnimationFrame(() => {
+        if (openRef.current) return;
+        if (returnTarget?.isConnected) returnTarget.focus?.();
+        onAfterCloseRef.current?.();
+      });
     };
-  }, [onClose, open]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
+      if (event.target === event.currentTarget && !closeDisabled) onClose();
     }}>
       <aside
         ref={panelRef}
@@ -86,7 +99,7 @@ export default function Drawer({ open, title, description, onClose, children, si
             <h2 id={titleId}>{title}</h2>
             {description ? <p id={descriptionId}>{description}</p> : null}
           </div>
-          <button ref={closeRef} className="drawer-close" type="button" onClick={onClose} aria-label={`Close ${title}`}>
+          <button ref={closeRef} className="drawer-close" type="button" onClick={onClose} aria-label={`Close ${title}`} disabled={closeDisabled}>
             <span aria-hidden="true">×</span>
           </button>
         </header>
