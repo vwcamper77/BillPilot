@@ -1,8 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
   MAX_MONEY_PENCE,
-  calculateCommittedCostsThroughDate,
-  calculateConfirmedIncomeBeforeDate,
   calculatePaydayCashflow,
   calendarDaysBetween,
   formatGbp,
@@ -13,35 +11,16 @@ import {
 } from "../../lib/paydayCashflowCalculator.js";
 import { createPaydayCalculatorSchemas } from "../../lib/linkableAssetsSchema.js";
 
-function calculate(overrides = {}) {
-  return calculatePaydayCashflow({
-    currentBalancePence: 50000,
-    confirmedIncomeBeforeDatePence: 10000,
-    billsDueBeforeDatePence: 20000,
-    oneOffCommittedCostsPence: 5000,
-    safetyBufferPence: 2500,
-    ...overrides,
-  });
-}
-
-test("uses the documented calculator formula for a positive result", () => {
-  expect(calculate()).toEqual({ clearToSpendPence: 32500, shortfallPence: 0, isShortfall: false });
+test("uses only cash available now", () => {
+  expect(calculatePaydayCashflow({ availableCashPence: 30000 })).toEqual({ availableCashPence: 30000 });
 });
 
-test("returns an exact zero result", () => {
-  expect(calculate({ currentBalancePence: 17500 })).toEqual({ clearToSpendPence: 0, shortfallPence: 0, isShortfall: false });
+test("accepts an exact zero amount", () => {
+  expect(calculatePaydayCashflow({ availableCashPence: 0 })).toEqual({ availableCashPence: 0 });
 });
 
-test("reports the size of a shortfall rather than negative spending money", () => {
-  expect(calculate({ currentBalancePence: 10000, confirmedIncomeBeforeDatePence: 0 })).toEqual({
-    clearToSpendPence: -17500,
-    shortfallPence: 17500,
-    isShortfall: true,
-  });
-});
-
-test("accepts a negative current balance", () => {
-  expect(calculate({ currentBalancePence: -1000, confirmedIncomeBeforeDatePence: 5000, billsDueBeforeDatePence: 0, oneOffCommittedCostsPence: 0, safetyBufferPence: 0 }).clearToSpendPence).toBe(4000);
+test("rejects negative available cash", () => {
+  expect(() => calculatePaydayCashflow({ availableCashPence: -1 })).toThrow(/cannot be negative/);
 });
 
 test("parses whole pounds into pence", () => {
@@ -60,13 +39,13 @@ test("rejects invalid and over-precise monetary input", () => {
 
 test("rejects negative values unless explicitly allowed", () => {
   expect(() => parseMoneyToPence("-1")).toThrow(/zero or a positive/);
-  expect(() => calculate({ billsDueBeforeDatePence: -1 })).toThrow(/cannot be negative/);
+  expect(() => calculatePaydayCashflow({ availableCashPence: -1 })).toThrow(/cannot be negative/);
 });
 
 test("rejects monetary input above the explicit maximum", () => {
   expect(parseMoneyToPence("1000000.00")).toBe(MAX_MONEY_PENCE);
   expect(() => parseMoneyToPence("1000000.01")).toThrow(/no greater than £1,000,000\.00/);
-  expect(() => calculate({ currentBalancePence: MAX_MONEY_PENCE + 1 })).toThrow(/cannot be greater/);
+  expect(() => calculatePaydayCashflow({ availableCashPence: MAX_MONEY_PENCE + 1 })).toThrow(/cannot be greater/);
 });
 
 test("formats whole pence as en-GB GBP", () => {
@@ -110,31 +89,12 @@ test("selected YYYY-MM-DD values retain their calendar parts through UTC", () =>
   expect(() => parseIsoCalendarDate("2026-02-30")).toThrow(/valid date/);
 });
 
-test("excludes confirmed income arriving on the selected end date", () => {
-  expect(calculateConfirmedIncomeBeforeDate([
-    { date: "2026-07-19", amountPence: 1000 },
-    { date: "2026-07-20", amountPence: 2000 },
-    { date: "2026-07-21", amountPence: 4000 },
-  ], "2026-07-20")).toBe(1000);
-});
-
-test("includes committed costs due on the selected end date", () => {
-  expect(calculateCommittedCostsThroughDate([
-    { date: "2026-07-19", amountPence: 1000 },
-    { date: "2026-07-20", amountPence: 2000 },
-    { date: "2026-07-21", amountPence: 4000 },
-  ], "2026-07-20")).toBe(3000);
-});
-
-test("shows weekly pacing only when at least seven days remain", () => {
-  expect(getPacingFigures(14000, 7, 7)).toEqual({ dailyPence: 2000, weeklyPence: 14000 });
-  expect(getPacingFigures(12000, 6, 6)).toEqual({ dailyPence: 2000, weeklyPence: null });
-  expect(getPacingFigures(-1, 7, 7)).toEqual({ dailyPence: null, weeklyPence: null });
+test("divides available cash by the planning days", () => {
+  expect(getPacingFigures(30000, 12)).toEqual({ dailyPence: 2500 });
 });
 
 test("rounds indicative pacing down to the nearest penny", () => {
-  expect(getPacingFigures(1000, 3, 2)).toEqual({ dailyPence: 333, weeklyPence: null });
-  expect(getPacingFigures(1000, 8, 7)).toEqual({ dailyPence: 125, weeklyPence: 875 });
+  expect(getPacingFigures(1000, 3)).toEqual({ dailyPence: 333 });
 });
 
 test("calculator structured data is valid at object level and has no fabricated ratings", () => {

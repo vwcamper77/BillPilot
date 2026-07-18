@@ -39,9 +39,15 @@ test("calculator and guide expose unique canonical metadata inputs", () => {
 test("calculator does not persist, transmit or track entered financial values", () => {
   const calculator = read("app/tools/payday-cashflow-calculator/PaydayCashflowCalculator.jsx");
   assert.doesNotMatch(calculator, /localStorage|sessionStorage|document\.cookie|fetch\(|XMLHttpRequest|sendBeacon|trackClientAnalyticsEvent|trackEvent|URLSearchParams|history\./);
-  for (const field of ["currentBalance", "confirmedIncome", "bills", "oneOffCosts", "safetyBuffer"]) {
+  for (const field of ["availableCash", "nextIncomeDate"]) {
     assert.match(calculator, new RegExp(field));
   }
+  assert.doesNotMatch(calculator, /confirmedIncome|billsDueBeforeDate|oneOffCosts|safetyBuffer/);
+});
+
+test("homepage links directly to the free payday calculator", () => {
+  const homepage = read("app/page.jsx");
+  assert.match(homepage, /href="\/tools\/payday-cashflow-calculator"/);
 });
 
 test("structured data contains no ratings, reviews or fabricated usage claims", () => {

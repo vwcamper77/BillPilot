@@ -144,6 +144,7 @@ export default function HomePage() {
           <p className="live-home-eyebrow">The problem</p>
           <h2>Your balance shows what is there. Not what is already spoken for.</h2>
           <p className="live-home-section-copy">A bank balance can look healthy while rent, council tax, energy and subscriptions are still waiting to land. ClearTill makes the subtraction visible.</p>
+          <p><Link className="live-home-dark-link" href="/tools/payday-cashflow-calculator">Use the free payday cashflow calculator</Link></p>
           <div className="live-home-three-grid live-home-problem-grid">
             <article><span>In the account</span><strong>£521</strong><p>The number you can see today.</p></article>
             <article><span>Still due before payday</span><strong>− £373</strong><p>The bills and one-off costs you have listed.</p></article>

@@ -424,7 +424,7 @@ export const BLOG_POSTS = [
         segments: [
           { text: "You can run this method with the free " },
           { text: "payday cashflow calculator", href: "/tools/payday-cashflow-calculator" },
-          { text: ". It keeps the total prominent and treats daily or weekly divisions only as rough pacing." },
+          { text: ". It divides the cash you have available now across the days until payday." },
         ],
       },
 
@@ -503,7 +503,7 @@ export const JOURNAL_TOOLS = [
     type: "tool",
     slug: "payday-cashflow-calculator",
     title: "Payday cashflow calculator",
-    description: "See what remains after bills and committed costs before your next income date. No bank connection, account or sign-up required.",
+    description: "Divide the cash you have available now across the days until payday. No bank connection, account or sign-up required.",
     label: "Free tool",
     href: "/tools/payday-cashflow-calculator",
     lastModified: "2026-07-18",

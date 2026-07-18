@@ -7,12 +7,12 @@ function addCalendarDays(isoDate, days) {
 }
 
 test("calculator is private-by-design, accessible and produces the dominant result", async ({ page, context }) => {
+  await page.route(/https:\/\/[^/]*tawk\.to\//, (route) => route.abort("blockedbyclient"));
 
   await page.goto("/tools/payday-cashflow-calculator");
   await expect(page).toHaveTitle("Payday Cashflow Calculator | ClearTill");
   await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.cleartill.money/tools/payday-cashflow-calculator");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Payday cashflow calculator");
-  await page.waitForLoadState("networkidle");
 
   const cookiesBeforeInteraction = await context.cookies();
   await page.evaluate(() => {
@@ -32,23 +32,19 @@ test("calculator is private-by-design, accessible and produces the dominant resu
 
   await page.getByRole("button", { name: "Calculate" }).click();
   await expect(page.getByText("Check the highlighted fields and calculate again.")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Current balance" })).toBeFocused();
+  await expect(page.getByRole("textbox", { name: "Cash available now" })).toBeFocused();
 
-  const minimumDate = await page.getByRole("textbox", { name: "Next reliable income date" }).getAttribute("min");
-  const futureDate = addCalendarDays(minimumDate, 10);
-  await page.getByRole("textbox", { name: "Current balance" }).fill("500.50");
-  await page.getByRole("textbox", { name: "Next reliable income date" }).fill(futureDate);
-  await page.getByRole("textbox", { name: "Confirmed income arriving" }).fill("100");
-  await page.getByRole("textbox", { name: "Bills due on or before that date" }).fill("200.25");
-  await page.getByRole("textbox", { name: "One-off committed costs on or before that date" }).fill("50.10");
-  await page.getByRole("textbox", { name: "Safety buffer" }).fill("25.15");
+  const minimumDate = await page.getByRole("textbox", { name: "Next payday date" }).getAttribute("min");
+  const futureDate = addCalendarDays(minimumDate, 11);
+  await page.getByRole("textbox", { name: "Cash available now" }).fill("300");
+  await page.getByRole("textbox", { name: "Next payday date" }).fill(futureDate);
   await page.getByRole("button", { name: "Calculate" }).click();
 
   const result = page.getByRole("status");
   await expect(result).toBeFocused();
-  await expect(result.getByText("Estimated amount left after the figures entered")).toBeVisible();
-  await expect(result.locator(".calculator-result-amount")).toHaveText("£325.00");
-  await expect(result.getByText("These are rough pacing figures, not spending targets. Real spending rarely happens evenly.")).toBeVisible();
+  await expect(result.getByText("Available per day until payday")).toBeVisible();
+  await expect(result.locator(".calculator-result-amount")).toHaveText("£25.00");
+  await expect(result.getByText("£300.00 ÷ 12 days = £25.00 per day.")).toBeVisible();
   await expect(page).toHaveURL(/\/tools\/payday-cashflow-calculator$/);
 
   expect(interactionRequests).toEqual([]);
@@ -56,18 +52,18 @@ test("calculator is private-by-design, accessible and produces the dominant resu
   expect(storageWrites).toEqual([]);
   expect(await context.cookies()).toEqual(cookiesBeforeInteraction);
   const transmitted = JSON.stringify(interactionRequests);
-  for (const privateValue of ["500.50", "200.25", "50.10", "25.15", futureDate]) {
+  for (const privateValue of ["300", futureDate]) {
     expect(transmitted).not.toContain(privateValue);
   }
 
   await page.getByRole("button", { name: "Reset" }).click();
   await expect(page.getByRole("status")).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "Current balance" })).toHaveValue("");
+  await expect(page.getByRole("textbox", { name: "Cash available now" })).toHaveValue("");
 
   await page.unroute("**/*");
-  await page.getByRole("textbox", { name: "Current balance" }).fill("123.45");
+  await page.getByRole("textbox", { name: "Cash available now" }).fill("123.45");
   await page.reload();
-  await expect(page.getByRole("textbox", { name: "Current balance" })).toHaveValue("");
+  await expect(page.getByRole("textbox", { name: "Cash available now" })).toHaveValue("");
 });
 
 test("calculator actions work from the keyboard and expose validation and live-result semantics", async ({ page }) => {
@@ -76,14 +72,12 @@ test("calculator actions work from the keyboard and expose validation and live-r
   await calculateButton.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText("Check the highlighted fields and calculate again.")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Current balance" })).toHaveAttribute("aria-describedby", /currentBalance-error/);
-  await expect(page.getByRole("textbox", { name: "Current balance" })).toBeFocused();
+  await expect(page.getByRole("textbox", { name: "Cash available now" })).toHaveAttribute("aria-describedby", /availableCash-error/);
+  await expect(page.getByRole("textbox", { name: "Cash available now" })).toBeFocused();
 
-  const minimumDate = await page.getByRole("textbox", { name: "Next reliable income date" }).getAttribute("min");
-  await page.getByRole("textbox", { name: "Current balance" }).fill("100");
-  await page.getByRole("textbox", { name: "Next reliable income date" }).fill(minimumDate);
-  await page.getByRole("textbox", { name: "Bills due on or before that date" }).fill("0");
-  await page.getByRole("textbox", { name: "One-off committed costs on or before that date" }).fill("0");
+  const minimumDate = await page.getByRole("textbox", { name: "Next payday date" }).getAttribute("min");
+  await page.getByRole("textbox", { name: "Cash available now" }).fill("100");
+  await page.getByRole("textbox", { name: "Next payday date" }).fill(minimumDate);
   await calculateButton.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("status")).toBeFocused();

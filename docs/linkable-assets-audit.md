@@ -46,7 +46,7 @@ Integrated base: `origin/main` at `d0c3eeb` plus the current uncommitted linkabl
 
 - `/blog/how-much-can-i-spend-before-payday`: informational explanation of the basic “balance minus bills” method and why a bank balance alone is incomplete.
 - `/blog/budgeting-irregular-income-no-payday`: informational method for choosing a cautious next reliable income horizon when pay dates or amounts vary.
-- `/tools/payday-cashflow-calculator`: transactional intent; performs a private, one-off calculation using current figures and a selected end date.
+- `/tools/payday-cashflow-calculator`: transactional intent; privately divides cash available now across the calendar days through the selected payday.
 - `/blog/budgeting-without-open-banking`: comparative/practical intent; explains how to run a manual cashflow system, the trade-offs against connected automation and the maintenance needed.
 
 The new guide must not become another “how much can I spend before payday” article, and the calculator's supporting copy must link to—rather than reproduce—the two specialist guides.
@@ -65,7 +65,7 @@ The Journal remains the discovery hub. It should list guides normally and featur
 1. Add explicit content types to Journal records and a small typed tool record without introducing a CMS or duplicating article copy.
 2. Replace category-only buttons/topic anchors with real `?topic=` links while preserving server-rendered cards and the existing visual language.
 3. Add the design-consistent Free tools section before the ordinary guide listing.
-4. Implement pure pence-based calculator and calendar-date functions in an unauthenticated local module with focused unit tests.
+4. Implement pure pence-based division and calendar-date functions in an unauthenticated local module with focused unit tests.
 5. Build an accessible client form that holds entries only in React memory, sends no values, persists nothing and never places entries in the URL.
 6. Add server-rendered calculator content, metadata, breadcrumb and `WebApplication` JSON-LD. Use a free offer but no rating or review; Google requires a rating/review for Software App rich-result eligibility, so the markup is for accurate entity description rather than a promised rich result.
 7. Add the balanced UK guide to `app/blog/posts.js`, including publication data, related internal links and authoritative UK sources.
@@ -79,7 +79,7 @@ The Journal remains the discovery hub. It should list guides normally and featur
 - The linkable-assets work has been integrated on top of the latest `origin/main`, preserving the founder/About page, Firestore quota handling and production-Firebase test safeguards.
 - The local `/about-cleartill` migration is assumed intentional. New links should use that canonical route even though the task brief names the legacy `/about` route; `/about` remains a resolving permanent redirect.
 - Dates use Europe/London calendar semantics in the user interface, but date arithmetic must operate on parsed calendar parts so UTC conversion cannot shift a selected day.
-- Same-day calculations include the whole selected calendar day as a one-day planning period for pacing; the income arriving on the selected end date is excluded from “confirmed income before that date”.
-- Numeric totals are preferred because no safe unauthenticated bill-entry component exists that can be reused without coupling to authenticated dashboard behaviour.
+- Same-day calculations use a one-day planning period. Future income is never added: the free calculator divides only the cash the user says is available now.
+- The calculator deliberately has only two inputs—cash available now and payday date—so bills and committed costs remain part of the fuller ClearTill app rather than being confused with future income.
 - No calculator analytics will be added initially. This is safer than extending two existing event pipelines and still satisfies the product requirements.
 - The task cannot guarantee backlinks, rankings, rich results or press coverage.
