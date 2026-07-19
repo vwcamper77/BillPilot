@@ -34,10 +34,11 @@ export default function ScrollToTopButton() {
       type="button"
       onClick={returnToTop}
       aria-label="Back to top"
-      title="Back to top"
       tabIndex={visible ? 0 : -1}
     >
-      <span aria-hidden="true">↑</span>
+      <svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+        <path d="m6.75 14.25 5.25-5.25 5.25 5.25" />
+      </svg>
     </button>
   );
 }

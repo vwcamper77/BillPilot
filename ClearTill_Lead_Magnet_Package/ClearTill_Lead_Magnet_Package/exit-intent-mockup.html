@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ClearTill Exit Intent Mockup</title>
+<style>
+  :root {
+    --navy: #15343A;
+    --deep: #0C252B;
+    --mint: #BFEEDB;
+    --pale: #EAF8F2;
+    --cream: #F7F5EF;
+    --ink: #183038;
+    --muted: #65777B;
+    --line: #DCE5E3;
+    --white: #fff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fff; color: var(--ink); }
+  .site { min-height: 100vh; background: linear-gradient(180deg, #fff 0%, var(--cream) 100%); }
+  header { height: 72px; display:flex; align-items:center; justify-content:space-between; max-width:1120px; margin:auto; padding:0 28px; }
+  .logo { font-weight: 800; font-size: 23px; color: var(--navy); letter-spacing:-.4px; }
+  nav { color: var(--muted); font-size:14px; display:flex; gap:28px; }
+  .hero { max-width:1120px; margin: 0 auto; padding: 78px 28px 160px; display:grid; grid-template-columns: 1.15fr .85fr; gap:78px; align-items:center; }
+  h1 { color:var(--deep); font-size:56px; line-height:1.03; letter-spacing:-2.2px; margin:0 0 24px; max-width:680px; }
+  .hero p { color:var(--muted); font-size:20px; line-height:1.55; max-width:630px; }
+  .hero button { border:0; border-radius:12px; background:var(--navy); color:white; font-weight:750; font-size:16px; padding:16px 22px; margin-top:14px; }
+  .position { background:white; border:1px solid var(--line); border-radius:22px; padding:28px; box-shadow:0 18px 60px rgba(12,37,43,.1); }
+  .position .small { font-size:13px; color:var(--muted); }
+  .position .amount { font-size:52px; color:var(--deep); font-weight:800; margin:10px 0; }
+  .position .row { display:flex; justify-content:space-between; padding:13px 0; border-top:1px solid var(--line); }
+
+  .overlay { position:fixed; inset:0; background:rgba(7, 26, 31, .68); display:flex; justify-content:center; align-items:center; padding:24px; backdrop-filter: blur(4px); }
+  .modal { width:min(900px, 96vw); display:grid; grid-template-columns:.8fr 1.2fr; border-radius:24px; overflow:hidden; background:white; box-shadow:0 35px 100px rgba(0,0,0,.35); position:relative; }
+  .visual { background:var(--navy); color:white; padding:44px 38px; min-height:560px; position:relative; overflow:hidden; display:flex; flex-direction:column; justify-content:space-between; }
+  .visual:before { content:""; position:absolute; width:260px; height:260px; border:36px solid var(--mint); border-radius:50%; right:-145px; top:-110px; opacity:.96; }
+  .visual .wordmark { font-weight:850; font-size:22px; position:relative; z-index:1; }
+  .mini-card { background:var(--mint); color:var(--deep); border-radius:18px; padding:24px; position:relative; z-index:1; }
+  .mini-card .mini-label { font-size:12px; text-transform:uppercase; letter-spacing:.09em; font-weight:800; opacity:.75; }
+  .mini-card .formula { font-size:21px; line-height:1.25; font-weight:850; margin-top:10px; }
+  .visual .trust { font-size:12px; line-height:1.7; color:#D3E8E2; position:relative; z-index:1; }
+  .content { padding:46px 48px 38px; }
+  .close { position:absolute; right:18px; top:15px; border:0; width:38px; height:38px; border-radius:999px; background:var(--cream); color:var(--deep); font-size:21px; cursor:pointer; }
+  .eyebrow { font-size:12px; text-transform:uppercase; letter-spacing:.12em; font-weight:850; color:var(--navy); margin-bottom:14px; }
+  .content h2 { font-size:37px; line-height:1.08; letter-spacing:-1.2px; color:var(--deep); margin:0 0 15px; }
+  .lead { color:var(--muted); font-size:17px; line-height:1.55; margin:0 0 22px; }
+  .benefits { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:0 0 24px; }
+  .benefit { background:var(--pale); border:1px solid #D6EEE5; border-radius:11px; padding:11px 12px; font-size:13px; font-weight:700; color:var(--deep); }
+  label { display:block; font-size:13px; font-weight:800; margin-bottom:7px; color:var(--deep); }
+  .form-row { display:flex; gap:10px; }
+  input[type=email] { flex:1; min-width:0; border:1px solid #AFC3BE; border-radius:11px; padding:15px 14px; font-size:16px; color:var(--ink); outline:none; }
+  input[type=email]:focus { border-color:var(--navy); box-shadow:0 0 0 3px rgba(21,52,58,.12); }
+  .submit { border:0; border-radius:11px; background:var(--navy); color:white; padding:14px 19px; font-size:15px; font-weight:800; cursor:pointer; white-space:nowrap; }
+  .delivery { color:var(--muted); font-size:12px; line-height:1.5; margin:10px 0 14px; }
+  .consent { display:flex; gap:9px; align-items:flex-start; color:var(--muted); font-size:12px; line-height:1.45; }
+  .consent input { margin-top:3px; }
+  .privacy { color:var(--muted); font-size:11px; margin-top:18px; }
+  .privacy a { color:var(--navy); }
+  .success { display:none; background:var(--pale); border:1px solid #CDE9DF; padding:18px; border-radius:12px; color:var(--deep); font-weight:700; }
+  @media (max-width: 760px) {
+    .hero { grid-template-columns:1fr; }
+    nav { display:none; }
+    h1 { font-size:43px; }
+    .modal { grid-template-columns:1fr; max-height:94vh; overflow:auto; }
+    .visual { min-height:185px; padding:26px; }
+    .mini-card { display:none; }
+    .content { padding:30px 24px 26px; }
+    .content h2 { font-size:30px; }
+    .benefits { grid-template-columns:1fr; }
+    .form-row { flex-direction:column; }
+  }
+</style>
+</head>
+<body>
+<div class="site">
+  <header><div class="logo">ClearTill</div><nav><span>Pricing</span><span>About</span><span>Sign in</span></nav></header>
+  <main class="hero">
+    <section><h1>Know what's really left before payday</h1><p>Add your current balance, next payday and the bills still to come. ClearTill shows what remains after those costs — and an estimated daily spending amount.</p><button>Check my position free</button></section>
+    <aside class="position"><div class="small">12 days until payday</div><div class="amount">£148</div><div class="small">Clear after your listed bills</div><div class="row"><span>Current balance</span><strong>£521</strong></div><div class="row"><span>Bills before payday</span><strong>£373</strong></div></aside>
+  </main>
+</div>
+
+<div class="overlay" id="overlay">
+  <section class="modal" role="dialog" aria-modal="true" aria-labelledby="popup-title">
+    <button class="close" aria-label="Close" onclick="document.getElementById('overlay').style.display='none'">×</button>
+    <aside class="visual">
+      <div class="wordmark">ClearTill</div>
+      <div class="mini-card"><div class="mini-label">The calculation</div><div class="formula">Balance − bills − one-offs − buffer = what is actually clear</div></div>
+      <div class="trust">No bank login<br>No Open Banking<br>No card required</div>
+    </aside>
+    <div class="content">
+      <div class="eyebrow">Free 10-minute cash check</div>
+      <h2 id="popup-title">Before you go, work out what your balance still has to cover.</h2>
+      <p class="lead">Get the ClearTill Bank Balance Reset guide and free cash-position spreadsheet. Use it to see what is genuinely left before payday.</p>
+      <div class="benefits">
+        <div class="benefit">✓ Excel and Google Sheets</div>
+        <div class="benefit">✓ No bank connection</div>
+        <div class="benefit">✓ One-payday calculation</div>
+        <div class="benefit">✓ Immediate access</div>
+      </div>
+      <form onsubmit="event.preventDefault(); document.getElementById('form-area').style.display='none'; document.getElementById('success').style.display='block';">
+        <div id="form-area">
+          <label for="email">Email address</label>
+          <div class="form-row"><input id="email" type="email" placeholder="you@example.com" required><button class="submit" type="submit">Send the free guide</button></div>
+          <p class="delivery">We will email the guide and spreadsheet link requested. No card and no bank login.</p>
+          <label class="consent"><input type="checkbox"><span>Email me occasional ClearTill money-planning tips and product updates. I can unsubscribe at any time. <strong>This is optional.</strong></span></label>
+          <p class="privacy">ClearTill is a product from GMBF Ventures Ltd. See the <a href="#">Privacy Policy</a>.</p>
+        </div>
+        <div class="success" id="success">Check your inbox. The guide and spreadsheet link are on their way.</div>
+      </form>
+    </div>
+  </section>
+</div>
+</body>
+</html>
