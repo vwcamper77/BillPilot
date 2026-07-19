@@ -56,6 +56,8 @@ test("Overview renders six rows, routes and focus-safe drawers at desktop and mo
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { name: /left until your next income/i })).toBeVisible({ timeout: 20000 });
+  await expect(page.locator(".current-position-daily")).toContainText("for 10 days");
+  await expect(page.locator(".current-position-facts").getByText("in 10 days", { exact: false })).toBeVisible();
   await expect(page.locator(".money-runway-row")).toHaveCount(6);
   await expect(page.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);

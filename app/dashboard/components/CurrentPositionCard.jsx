@@ -14,9 +14,15 @@ function commitmentTypeLabel(type) {
   return "Committed item";
 }
 
+function dayCountLabel(days) {
+  const count = Math.max(1, Math.floor(Number(days) || 1));
+  return `${count} day${count === 1 ? "" : "s"}`;
+}
+
 export default function CurrentPositionCard({ cashPosition, displayCurrency, onUpdateBalance, onTestSpend, onAddBill, currentPositionRef, updateBalanceButtonRef }) {
   const nextIncome = cashPosition?.nextConfirmedIncome || null;
   const hasPosition = cashPosition && nextIncome;
+  const incomeCountdown = hasPosition ? dayCountLabel(cashPosition.daysUntilNextIncome) : "";
   const committedItems = [...(cashPosition?.outflowsBeforeNextIncome || [])]
     .sort((a, b) => a.date.localeCompare(b.date) || Math.abs(b.amount) - Math.abs(a.amount));
 
@@ -27,7 +33,7 @@ export default function CurrentPositionCard({ cashPosition, displayCurrency, onU
         {hasPosition ? (
           <>
             <h1 id="current-position-title">{signedCurrency(cashPosition.safeUntilNextIncome, displayCurrency)} left until your next income</h1>
-            <p className="current-position-daily">{signedCurrency(cashPosition.safePerDayUntilNextIncome, displayCurrency)} safe per day</p>
+            <p className="current-position-daily">{signedCurrency(cashPosition.safePerDayUntilNextIncome, displayCurrency)} safe per day <span>for {incomeCountdown}</span></p>
           </>
         ) : (
           <>
@@ -41,7 +47,7 @@ export default function CurrentPositionCard({ cashPosition, displayCurrency, onU
         <dl className="current-position-facts">
           <div>
             <dt>Next income</dt>
-            <dd>{formatCurrency(nextIncome.amount, displayCurrency)} on {formatDisplayDate(nextIncome.date)}</dd>
+            <dd>{formatCurrency(nextIncome.amount, displayCurrency)} on {formatDisplayDate(nextIncome.date)} <span className="current-position-countdown">(in {incomeCountdown})</span></dd>
           </div>
           <div>
             <dt>Committed before next income</dt>
