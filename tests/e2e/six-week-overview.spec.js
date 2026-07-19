@@ -227,6 +227,7 @@ test("Bills and income uses compact groups, accessible tabs and drawer editing",
   await expect(page.locator(".compact-bill-grid-urgent .compact-bill-row")).toHaveCount(1);
   await expect(page.getByText(/Page 1 of/i)).toHaveCount(0);
   await expect(page.locator(".compact-bill-row").first().getByRole("button", { name: "Mark paid" })).toBeVisible();
+  expect(await page.locator(".compact-bill-grid-urgent").evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
   expect(await page.locator(".compact-bill-grid").last().evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(2);
 
   const editButton = page.locator(".compact-bill-row").first().getByRole("button", { name: "Edit" });

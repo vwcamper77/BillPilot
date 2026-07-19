@@ -8603,7 +8603,6 @@ h1 {
 .compact-bill-section-heading h3 { margin: 0; font-size: 1rem; }
 .compact-bill-section-heading p { margin: 0; color: var(--muted); font-size: .76rem; }
 .compact-bill-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
-.compact-bill-grid-urgent { grid-template-columns: 1fr; }
 .compact-bill-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: center; min-height: 72px; padding: 9px 10px 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
 .compact-bill-section-urgent .compact-bill-row { border-left: 4px solid #df8a54; background: #fffbf5; }
 .compact-bill-row.is-paid { opacity: .74; }
