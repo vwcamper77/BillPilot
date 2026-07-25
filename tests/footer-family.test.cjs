@@ -15,6 +15,7 @@ test("footer identifies ClearTill ownership and links to the configured corporat
   assert.match(footer, />\s*GMBF Ventures Ltd\s*<\/a>/);
   assert.match(footer, /href=\{GMBF_VENTURES_URL\}/);
   assert.match(footer, /Company No\. 17286832 - Registered in England and Wales/);
+  assert.doesNotMatch(footer, /site-footer-family-mark|<img/);
   assert.match(family, /NEXT_PUBLIC_GMBF_VENTURES_URL/);
   assert.match(family, /https:\/\/gmbf-ventures\.vercel\.app\//);
 });

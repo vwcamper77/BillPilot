@@ -286,19 +286,6 @@ button {
   gap: 7px;
 }
 
-.site-footer-company a {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.site-footer-family-mark {
-  display: block;
-  width: 24px;
-  height: 24px;
-  flex: 0 0 auto;
-}
-
 .site-footer-family-products {
   display: flex;
   align-items: baseline;

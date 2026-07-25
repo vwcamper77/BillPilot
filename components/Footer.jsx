@@ -24,13 +24,6 @@ export default function Footer() {
           <p className="site-footer-company">
             ClearTill is a product of{" "}
             <a href={GMBF_VENTURES_URL} onClick={() => trackFamilyClick("gmbf_ventures")}>
-              <img
-                className="site-footer-family-mark"
-                src="/brand/gmbf/gmbf-mark-monochrome-navy.svg"
-                alt=""
-                width="24"
-                height="24"
-              />
               GMBF Ventures Ltd
             </a>
             .
