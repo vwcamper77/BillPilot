@@ -1,5 +1,6 @@
 import MarketingHeader from "@/components/MarketingHeader";
-import { canonicalUrl, createPageMetadata, LOGO_URL, SITE_URL } from "@/lib/seo";
+import { canonicalUrl, createPageMetadata, SITE_URL } from "@/lib/seo";
+import { createGmbfOrganizationSchema } from "@/lib/productFamily";
 import { isValidGoogleSheetCopyUrl } from "@/lib/leadMagnet";
 import styles from "./page.module.css";
 
@@ -30,7 +31,7 @@ const structuredData = {
       encodingFormat: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       url: `${SITE_URL}/downloads/cleartill-free-cash-position-sheet.xlsx`,
       isAccessibleForFree: true,
-      publisher: { "@type": "Organization", name: "GMBF Ventures Ltd", logo: { "@type": "ImageObject", url: LOGO_URL } },
+      publisher: createGmbfOrganizationSchema(),
     },
     {
       "@type": "BreadcrumbList",

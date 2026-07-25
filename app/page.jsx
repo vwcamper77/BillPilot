@@ -8,6 +8,10 @@ import {
   SOCIAL_IMAGE,
   SOCIAL_IMAGE_URL,
 } from "@/lib/seo";
+import {
+  createGmbfOrganizationSchema,
+  GMBF_ORGANIZATION_ID,
+} from "@/lib/productFamily";
 
 const PREVIEW_HREF = "/start";
 
@@ -34,13 +38,14 @@ const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
     {
-      "@type": "Organization",
-      "@id": `${HOME_URL}#organization`,
+      ...createGmbfOrganizationSchema(),
+    },
+    {
+      "@type": "Brand",
+      "@id": `${HOME_URL}#brand`,
       name: "ClearTill",
-      legalName: "GMBF Ventures Ltd",
       url: HOME_URL,
       logo: LOGO_URL,
-      email: "hello@cleartill.money",
       description: "ClearTill is a UK consumer cashflow-planning app that shows what is safe to spend after bills until the next income date.",
     },
     {
@@ -48,7 +53,8 @@ const structuredData = {
       "@id": `${HOME_URL}#website`,
       name: "ClearTill",
       url: HOME_URL,
-      publisher: { "@id": `${HOME_URL}#organization` },
+      publisher: { "@id": GMBF_ORGANIZATION_ID },
+      about: { "@id": `${HOME_URL}#brand` },
     },
     {
       "@type": "SoftwareApplication",
@@ -58,13 +64,15 @@ const structuredData = {
       operatingSystem: "Web",
       url: HOME_URL,
       description: "A UK consumer cashflow-planning web app that shows what is safe to spend after bills until the next income date, without bank login or Open Banking.",
-      provider: { "@id": `${HOME_URL}#organization` },
+      brand: { "@id": `${HOME_URL}#brand` },
+      publisher: { "@id": GMBF_ORGANIZATION_ID },
+      provider: { "@id": GMBF_ORGANIZATION_ID },
     },
     {
       "@type": "Person",
       name: "Gavin Ferns",
       jobTitle: "Founder of ClearTill",
-      worksFor: "GMBF Ventures Ltd",
+      worksFor: { "@id": GMBF_ORGANIZATION_ID },
       url: "https://www.cleartill.money/about-cleartill",
     },
   ],

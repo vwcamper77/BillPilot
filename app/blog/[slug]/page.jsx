@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
 import { BLOG_POSTS, formatPostDate, getCategory, getPostBySlug } from "../posts";
 import { createPageMetadata, HOME_URL, SITE_URL, SOCIAL_IMAGE_URL } from "@/lib/seo";
+import { createGmbfOrganizationSchema } from "@/lib/productFamily";
 
 export function generateStaticParams() {
   return BLOG_POSTS.map((post) => ({ slug: post.slug }));
@@ -105,8 +106,8 @@ export default async function BlogArticlePage({ params }) {
     datePublished: post.publishedAt,
     dateModified: post.updatedAt || post.publishedAt,
     mainEntityOfPage: articleUrl,
-    author: { "@type": "Organization", name: "ClearTill", url: `${SITE_URL}/about-cleartill` },
-    publisher: { "@type": "Organization", name: "ClearTill", url: SITE_URL },
+    author: createGmbfOrganizationSchema(),
+    publisher: createGmbfOrganizationSchema(),
     image: SOCIAL_IMAGE_URL,
     articleSection: category?.label,
     keywords: post.keywords?.join(", "),

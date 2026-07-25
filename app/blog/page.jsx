@@ -3,6 +3,7 @@ import Logo from "@/components/Logo";
 import BlogExplorer from "./BlogExplorer";
 import { BLOG_CATEGORIES, BLOG_POSTS, JOURNAL_TOOLS, formatPostDate, getCategory } from "./posts";
 import { createPageMetadata, SITE_URL } from "@/lib/seo";
+import { createGmbfOrganizationSchema } from "@/lib/productFamily";
 
 const PAGE_TITLE = "Journal — Practical Guides to Everyday Money";
 const PAGE_DESCRIPTION = "Clear, practical guides to managing bills, planning around payday, everyday spending and saving — without jargon or judgement.";
@@ -42,7 +43,7 @@ export default async function BlogPage({ searchParams }) {
     description: PAGE_DESCRIPTION,
     url: `${SITE_URL}/blog`,
     isPartOf: { "@type": "WebSite", name: "ClearTill", url: SITE_URL },
-    publisher: { "@type": "Organization", name: "ClearTill", url: SITE_URL },
+    publisher: createGmbfOrganizationSchema(),
     mainEntity: {
       "@type": "ItemList",
       itemListElement: [...JOURNAL_TOOLS, ...categoryPosts].map((item, index) => ({

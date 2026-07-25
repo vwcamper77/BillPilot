@@ -7,6 +7,7 @@ const root = path.resolve(__dirname, "..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
 
 const seo = read("lib/seo.js");
+const productFamily = read("lib/productFamily.js");
 const home = read("app/page.jsx");
 const about = read("app/about-cleartill/page.jsx");
 const sitemap = read("app/sitemap.js");
@@ -70,12 +71,15 @@ test("robots references the canonical production sitemap and protects private ro
 });
 
 test("homepage schema identifies the legal owner without fabricated reputation fields", () => {
-  assert.match(home, /"@type": "Organization"/);
-  assert.match(home, /legalName: "GMBF Ventures Ltd"/);
+  assert.match(home, /createGmbfOrganizationSchema\(\)/);
+  assert.match(productFamily, /"@type": "Organization"/);
+  assert.match(productFamily, /legalName: "GMBF Ventures Ltd"/);
+  assert.match(productFamily, /NEXT_PUBLIC_GMBF_VENTURES_URL/);
+  assert.match(home, /"@type": "Brand"/);
   assert.match(home, /"@type": "WebSite"/);
   assert.match(home, /"@type": "SoftwareApplication"/);
   for (const forbidden of ["AggregateRating", '"@type": "Review"', "ratingValue", "numberOfUsers", "award:"]) {
-    assert.ok(!home.includes(forbidden), `unexpected schema field: ${forbidden}`);
+    assert.ok(!`${home}\n${productFamily}`.includes(forbidden), `unexpected schema field: ${forbidden}`);
   }
 });
 

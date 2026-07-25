@@ -281,6 +281,38 @@ button {
   font-weight: 600;
 }
 
+.site-footer-family {
+  display: grid;
+  gap: 7px;
+}
+
+.site-footer-company a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.site-footer-family-mark {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+}
+
+.site-footer-family-products {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.site-footer-family-title {
+  flex-basis: 100%;
+  font-weight: 600;
+}
+
 .site-footer-company-detail,
 .legal-company-note {
   font-size: 0.8rem;
@@ -1612,6 +1644,8 @@ h1 {
   padding: 0 20px 18px;
   color: #776d62;
   font-size: 0.84rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .site-footer-links {
@@ -1632,6 +1666,15 @@ h1 {
 .site-footer a:hover,
 .site-footer a:focus-visible {
   text-decoration: underline;
+}
+
+.site-footer a:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--accent-dark);
+  outline-offset: 3px;
+}
+
+.site-footer a:hover {
   outline: none;
 }
 
