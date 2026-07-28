@@ -6,6 +6,7 @@ import MetaPixel from "@/components/MetaPixel";
 import AttributionTracker from "@/components/AttributionTracker";
 import AnalyticsConsent from "@/components/AnalyticsConsent";
 import TestAuthBridge from "@/components/TestAuthBridge";
+import AuthSessionBridge from "@/components/AuthSessionBridge";
 import InternalAnalyticsBanner from "@/components/InternalAnalyticsBanner";
 import LeadMagnetCapture from "@/components/LeadMagnetCapture";
 import TawkChat from "@/components/TawkChat";
@@ -96,6 +97,7 @@ export default async function RootLayout({ children }) {
           </>
         )}
         <AttributionTracker />
+        <AuthSessionBridge />
         <LeadMagnetCapture />
         {isTestAuthBridgeEnabled ? <TestAuthBridge /> : null}
         {gaMeasurementId && !internalAnalytics ? (

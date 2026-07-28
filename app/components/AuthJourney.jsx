@@ -20,6 +20,7 @@ import {
 } from "@/lib/firebase";
 import { friendlyGoogleAuthError, logGoogleAuthError } from "@/lib/googleAuthErrors";
 import { trackEvent } from "@/lib/analytics/track";
+import { syncFirebaseSession } from "@/lib/firebaseSession.client";
 
 const ATTRIBUTION_QUERY_KEYS = [
   "utm_source",
@@ -40,6 +41,12 @@ function onboardingPath(searchParams) {
   return `/dashboard?${target.toString()}`;
 }
 
+function safeSigninDestination(searchParams) {
+  return searchParams.get("next") === "/api/integrations/canva/connect"
+    ? "/api/integrations/canva/connect"
+    : "/dashboard";
+}
+
 function authMessage(error, action) {
   const code = String(error?.code || "");
   if (code === "auth/invalid-email") return "Enter a valid email address.";
@@ -55,6 +62,9 @@ function authMessage(error, action) {
   }
   if (code === "auth/network-request-failed") return "Check your internet connection and try again.";
   if (code === "auth/user-disabled") return "This account is disabled. Contact hello@cleartill.money for help.";
+  if (code === "auth/session-cookie-failed") {
+    return "You are signed in, but ClearTill could not start the secure browser session. Please try again.";
+  }
   return action === "signup"
     ? "We could not create your account just now. Try again or use the other sign-up option."
     : "We could not sign you in just now. Try again or use the other sign-in option.";
@@ -65,6 +75,10 @@ export default function AuthJourney({ mode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextAfterSignup = useMemo(() => onboardingPath(searchParams), [searchParams]);
+  const nextAfterSignin = useMemo(
+    () => safeSigninDestination(searchParams),
+    [searchParams],
+  );
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -72,6 +86,7 @@ export default function AuthJourney({ mode }) {
   const [password, setPassword] = useState("");
   const [resetState, setResetState] = useState("");
   const authAttemptRef = useRef(false);
+  const resumeAttemptRef = useRef(false);
 
   useEffect(() => {
     if (!auth || !isFirebaseClientConfigured) {
@@ -89,6 +104,25 @@ export default function AuthJourney({ mode }) {
           router.replace("/dashboard");
           return;
         }
+        if (
+          !isSignup
+          && nextAfterSignin !== "/dashboard"
+          && currentUser
+          && !currentUser.isAnonymous
+          && !authAttemptRef.current
+          && !resumeAttemptRef.current
+        ) {
+          resumeAttemptRef.current = true;
+          syncFirebaseSession(currentUser)
+            .then(() => window.location.replace(nextAfterSignin))
+            .catch((sessionError) => {
+              if (!active) return;
+              resumeAttemptRef.current = false;
+              setError(authMessage(sessionError, "signin"));
+              setReady(true);
+            });
+          return;
+        }
         setReady(true);
       });
     });
@@ -96,20 +130,25 @@ export default function AuthJourney({ mode }) {
       active = false;
       unsubscribe();
     };
-  }, [isSignup, router]);
+  }, [isSignup, nextAfterSignin, router]);
 
   useEffect(() => {
     if (isSignup) trackEvent("signup_started", { source: "start" });
   }, [isSignup]);
 
-  function finish(user, method) {
+  async function finish(user, method) {
+    await syncFirebaseSession(user);
     if (isSignup) {
       trackEvent("account_created", { method });
       trackEvent("onboarding_started", { source: "start" });
       router.replace(nextAfterSignup);
     } else {
       trackEvent("login", { method });
-      router.replace("/dashboard");
+      if (nextAfterSignin === "/api/integrations/canva/connect") {
+        window.location.assign(nextAfterSignin);
+      } else {
+        router.replace(nextAfterSignin);
+      }
     }
   }
 
@@ -125,11 +164,12 @@ export default function AuthJourney({ mode }) {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       if (isSignup && !getAdditionalUserInfo(result)?.isNewUser) {
+        await syncFirebaseSession(result.user);
         trackEvent("login", { method: "google" });
         router.replace("/dashboard");
         return;
       }
-      finish(result.user, "google");
+      await finish(result.user, "google");
     } catch (authError) {
       logGoogleAuthError(authError, `auth-journey-${mode}`);
       setError(friendlyGoogleAuthError(authError));
@@ -168,7 +208,7 @@ export default function AuthJourney({ mode }) {
       const result = isSignup
         ? await createUserWithEmailAndPassword(auth, cleanEmail, password)
         : await signInWithEmailAndPassword(auth, cleanEmail, password);
-      finish(result.user, "email");
+      await finish(result.user, "email");
     } catch (authError) {
       setError(authMessage(authError, mode));
     } finally {

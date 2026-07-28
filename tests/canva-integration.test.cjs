@@ -13,6 +13,13 @@ const {
   normalizeCapabilities,
   shouldRefreshToken,
 } = require("../lib/integrations/canvaCore.cjs");
+const {
+  FIREBASE_SESSION_DURATION_MS,
+  firebaseSessionCookieName,
+  isSameOriginRequest,
+  parseCookieHeader,
+  sessionCookieOptions,
+} = require("../lib/auth/sessionCore.cjs");
 
 const root = path.resolve(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -125,8 +132,9 @@ test("all Canva routes authenticate or consume one-time callback state and retur
   const status = read("app/api/integrations/canva/status/route.js");
   const disconnect = read("app/api/integrations/canva/disconnect/route.js");
 
-  assert.match(connect, /verifyRequestUser/);
+  assert.match(connect, /getCurrentUser/);
   assert.match(connect, /NextResponse\.redirect/);
+  assert.match(connect, /\/signin/);
   assert.match(status, /verifyRequestUser/);
   assert.match(status, /getCanvaStatus/);
   assert.match(disconnect, /verifyRequestUser/);
@@ -136,4 +144,49 @@ test("all Canva routes authenticate or consume one-time callback state and retur
   for (const route of [connect, callback, status, disconnect]) {
     assert.match(route, /NextResponse\.json/);
   }
+});
+
+test("Firebase session cookie policy is production-safe and same-origin guarded", () => {
+  assert.equal(firebaseSessionCookieName("production"), "__Host-cleartill_session");
+  assert.equal(firebaseSessionCookieName("development"), "cleartill_session");
+  assert.equal(FIREBASE_SESSION_DURATION_MS, 5 * 24 * 60 * 60 * 1000);
+  assert.deepEqual(sessionCookieOptions("production"), {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 432000,
+    priority: "high",
+  });
+  assert.equal(
+    parseCookieHeader("other=1; __Host-cleartill_session=signed%2Ecookie", "__Host-cleartill_session"),
+    "signed.cookie",
+  );
+  assert.equal(
+    isSameOriginRequest("https://www.cleartill.money/api/auth/session", "https://www.cleartill.money"),
+    true,
+  );
+  assert.equal(
+    isSameOriginRequest("https://www.cleartill.money/api/auth/session", "https://attacker.invalid"),
+    false,
+  );
+});
+
+test("server auth supports bearer tokens and verified Firebase session cookies", () => {
+  const serverAuth = read("lib/serverAuth.js");
+  const sessionRoute = read("app/api/auth/session/route.js");
+  const bridge = read("components/AuthSessionBridge.jsx");
+  const journey = read("app/components/AuthJourney.jsx");
+
+  assert.match(serverAuth, /export async function getCurrentUser\(/);
+  assert.match(serverAuth, /verifyIdToken\(match\[1\]\)/);
+  assert.match(serverAuth, /verifySessionCookie\(sessionCookie, true\)/);
+  assert.match(serverAuth, /allowSessionCookie: false/);
+  assert.match(sessionRoute, /createSessionCookie\(idToken/);
+  assert.match(sessionRoute, /verifyIdToken\(idToken, true\)/);
+  assert.match(sessionRoute, /Cache-Control": "no-store"/);
+  assert.match(bridge, /onIdTokenChanged/);
+  assert.match(bridge, /syncFirebaseSession/);
+  assert.match(journey, /nextAfterSignin/);
+  assert.match(journey, /window\.location\.assign\(nextAfterSignin\)/);
 });
