@@ -1,0 +1,209 @@
+{
+  "schemaVersion": "journal-draft-v1",
+  "contentId": "ct-w01-a01",
+  "status": "published",
+  "hypothesis": "A concrete explanation of the gap between current balance and entered commitments will improve recognition of the ClearTill problem and lead to more completed first positions.",
+  "primaryMeasurementGoal": "First-position activation rate among qualified Journal sessions attributed to ct-w01-a01.",
+  "campaign": {
+    "name": "balance_not_reality",
+    "productUrl": "https://www.cleartill.money/start?utm_source=journal&utm_medium=owned_content&utm_campaign=balance_not_reality&utm_content=ct-w01-a01&experiment_id=core_message_a&creative_id=journal_cta_01&content_id=ct-w01-a01"
+  },
+  "illustrativeCalculations": [
+    {
+      "label": "itemised balance less costs still due",
+      "start": 1250,
+      "deductions": [725, 125, 65, 100],
+      "totalDeductions": 1015,
+      "result": 235
+    }
+  ],
+  "article": {
+    "type": "article",
+    "slug": "why-your-bank-balance-is-not-always-what-you-can-spend",
+    "title": "Why your bank balance is not always what you can spend",
+    "seoTitle": "Why Your Bank Balance Is Not Always What You Can Spend",
+    "description": "Your current balance is only the starting point. Learn how bills and costs still due before payday change the amount likely to remain.",
+    "keywords": [
+      "what is left after bills",
+      "bank balance versus available money",
+      "money remaining before payday",
+      "bills still due before payday"
+    ],
+    "category": "bills-and-payday",
+    "readingMinutes": 7,
+    "featured": false,
+    "takeaway": "Start with the current balance, then subtract the bills and costs due before the next income date. The result is an estimate based on the figures included, not a guarantee that the whole amount can be spent.",
+    "faqs": [
+      {
+        "question": "Is my bank balance wrong?",
+        "answer": "No. It shows the current account balance. The separate planning question is how much may remain after payments that have not left yet but are due before your next income date."
+      },
+      {
+        "question": "Which costs should I include?",
+        "answer": "Include bills, Direct Debits, standing orders and known one-off costs due before the next income date. Avoid subtracting a payment twice if it is already reflected in the balance you started with."
+      },
+      {
+        "question": "Does the result mean the money is safe to spend?",
+        "answer": "No. It is an estimate based on the balance, dates and costs entered. Missing, changed or unexpected costs can change the position."
+      },
+      {
+        "question": "Do I need to connect my bank to ClearTill?",
+        "answer": "No bank login or Open Banking connection is required. You choose and update the figures used in the calculation."
+      }
+    ],
+    "content": [
+      {
+        "type": "paragraph",
+        "text": "A bank balance tells you how much is in the account now. It does not, by itself, subtract every bill or one-off cost that is still due before your next income date."
+      },
+      {
+        "type": "paragraph",
+        "text": "That distinction matters when you are deciding what may remain before payday. The useful number is not automatically the balance on the screen. It is the balance after the relevant future commitments have been allowed for."
+      },
+      {
+        "type": "callout",
+        "title": "The short answer",
+        "text": "Current balance minus the bills and costs still due before the next income date equals an estimated forward position. The estimate is only as complete as the figures used."
+      },
+      {
+        "type": "heading",
+        "text": "A balance is a snapshot",
+        "id": "a-balance-is-a-snapshot"
+      },
+      {
+        "type": "paragraph",
+        "text": "Suppose you check your account on Thursday. The balance includes transactions that have already cleared, but several Direct Debits are due next week. Those future payments can still be represented inside the current balance because they have not left yet."
+      },
+      {
+        "type": "paragraph",
+        "text": "The bank has not hidden anything and the balance is not inaccurate. It is answering a different question: what is in the account at this moment? Planning to payday requires you to add the dates and costs that matter next."
+      },
+      {
+        "type": "heading",
+        "text": "A worked example",
+        "id": "worked-example"
+      },
+      {
+        "type": "paragraph",
+        "text": "Illustrative example — not a real customer account. Assume the current balance is £1,250 and the following entered costs are due before payday."
+      },
+      {
+        "type": "table",
+        "caption": "Illustrative costs due before payday",
+        "headers": ["Cost", "Amount"],
+        "rows": [
+          ["Rent", "£725"],
+          ["Energy", "£125"],
+          ["Phone and broadband", "£65"],
+          ["Insurance", "£100"],
+          ["Total still due", "£1,015"]
+        ],
+        "totalRow": 4
+      },
+      {
+        "type": "formula",
+        "label": "Estimated amount remaining before payday",
+        "formula": "£1,250 − £1,015 = £235"
+      },
+      {
+        "type": "result",
+        "segments": [
+          {"text": "The account balance is £1,250, while the estimated position after the entered costs is "},
+          {"text": "£235", "strong": true},
+          {"text": ". The £1,015 difference is still visible in the account until those payments leave."}
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "The arithmetic is £725 + £125 + £65 + £100 = £1,015, followed by £1,250 − £1,015 = £235. Both totals have been checked."
+      },
+      {
+        "type": "image",
+        "src": "/marketing/journal/why-your-bank-balance-is-not-always-what-you-can-spend-pixabay-791939.jpg",
+        "width": 1280,
+        "height": 853,
+        "alt": "Open paper planner beside pink flowers and a glass jar on a white desk, representing bills and dates to consider before payday.",
+        "caption": "Planning bills by date helps turn a current balance into a forward-looking estimate.",
+        "credit": "Photo by kaboompics via Pixabay",
+        "creditUrl": "https://pixabay.com/photos/new-year-background-organizer-791939/",
+        "licenceUrl": "https://pixabay.com/service/license-summary/"
+      },
+      {
+        "type": "heading",
+        "text": "What belongs in the calculation",
+        "id": "what-belongs-in-the-calculation"
+      },
+      {
+        "type": "list",
+        "items": [
+          "The current usable balance at a known time",
+          "Bills and Direct Debits due before the next income date",
+          "Standing orders and scheduled repayments due in the same period",
+          "Known one-off costs that you have committed to paying before the date",
+          "An optional buffer you personally choose to leave untouched"
+        ]
+      },
+      {
+        "type": "paragraph",
+        "text": "Dates matter. A bill due the day before payday belongs in this period. The same bill due the day after payday belongs in the next one. Also check whether a card payment is pending or already included in the starting balance so that you do not subtract it twice."
+      },
+      {
+        "type": "heading",
+        "text": "Why the answer can change",
+        "id": "why-the-answer-can-change"
+      },
+      {
+        "type": "paragraph",
+        "text": "A forward position is not permanent. Spending may reduce the current balance. A bill amount or date may change. A new one-off cost may appear. Update the inputs when something material changes and recalculate before relying on the result."
+      },
+      {
+        "type": "paragraph",
+        "text": "This is also why the result should not be described as safe to spend. The calculation cannot include a cost that was forgotten, entered incorrectly or not yet known. It provides a clearer estimate from the information available; it does not guarantee an outcome."
+      },
+      {
+        "type": "heading",
+        "text": "Where ClearTill fits",
+        "id": "where-cleartill-fits"
+      },
+      {
+        "type": "paragraph",
+        "text": "ClearTill keeps this narrow calculation in a saved, updateable position. You enter a balance, the next income date, and the bills and costs you want included. It then estimates what is likely to remain before that date."
+      },
+      {
+        "type": "paragraph",
+        "text": "No bank login or Open Banking connection is required. That also means ClearTill cannot automatically know about a payment you have not entered. The output depends on the completeness and timing of your figures."
+      },
+      {
+        "type": "paragraph",
+        "segments": [
+          {"text": "If you want to run the calculation with your own figures, "},
+          {"text": "check your ClearTill position free", "href": "https://www.cleartill.money/start?utm_source=journal&utm_medium=owned_content&utm_campaign=balance_not_reality&utm_content=ct-w01-a01&experiment_id=core_message_a&creative_id=journal_cta_01&content_id=ct-w01-a01"},
+          {"text": ". The seven-day live preview requires no card and does not charge automatically when it ends."}
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Frequently asked questions",
+        "id": "frequently-asked-questions"
+      },
+      {"type": "faqs"}
+    ]
+  },
+  "heroImage": {
+    "visualBrief": "Create a 1600 × 900 ClearTill Journal hero using the calculation hierarchy £1,250 balance − £1,015 still due = £235 estimated remaining. Label it as illustrative, use large mobile-readable typography, avoid banking-app imitation and leave clear space for the article title.",
+    "expectedCanvaExportFilename": "2026-07-23_ct-w01-a01_journal_hero_v01.png",
+    "altText": "Illustrative ClearTill calculation showing a £1,250 balance minus £1,015 still due before payday, leaving an estimated £235."
+  },
+  "approvalChecks": {
+    "copyApproved": true,
+    "claimsChecked": true,
+    "productFactsChecked": true,
+    "licenceChecked": true,
+    "linksChecked": true,
+    "visualChecked": true,
+    "scheduleChecked": true,
+    "humanApproved": true
+  },
+  "approval": {"approvedBy": "user", "approvedAt": "2026-07-21T23:00:00+01:00"},
+  "publication": {"publishedAt": "2026-07-21T23:00:00+01:00", "exportedToLiveCollection": true}
+}

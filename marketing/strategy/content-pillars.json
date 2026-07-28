@@ -1,0 +1,14 @@
+{
+  "strategyHorizonWeeks": 12,
+  "pillars": [
+    {"id": "bank_balance_illusion", "name": "The bank-balance illusion", "purpose": "Show why a current balance can overstate the amount available before future payments leave.", "proofMode": "Simple arithmetic and familiar payment timing examples."},
+    {"id": "remains_before_payday", "name": "What remains before payday", "purpose": "Own the practical question ClearTill is designed to answer.", "proofMode": "Balance minus entered costs still due before the next income date."},
+    {"id": "manual_by_design", "name": "Manual by design", "purpose": "Frame user-controlled inputs and no bank connection as deliberate product choices.", "proofMode": "Product walkthroughs and privacy-conscious use cases."},
+    {"id": "one_off_costs", "name": "Real-life one-off costs", "purpose": "Demonstrate how repairs, renewals and family costs change a short-term position.", "proofMode": "Clearly labelled illustrative scenarios."},
+    {"id": "bills_dates_balances", "name": "Bills, dates and changing balances", "purpose": "Explain why the position changes as dates pass or the balance is updated.", "proofMode": "Before-and-after walkthroughs."},
+    {"id": "founder_insight", "name": "Founder-led product insight", "purpose": "Explain the reasoning behind a calm, focused product.", "proofMode": "First-person design decisions without invented traction."},
+    {"id": "worked_examples", "name": "Worked illustrative examples", "purpose": "Make the calculation tangible without implying a customer result.", "proofMode": "Explicitly illustrative figures and visible arithmetic."},
+    {"id": "product_walkthroughs", "name": "Product walkthroughs", "purpose": "Show how to create, update and revisit a position.", "proofMode": "Accurate screens or diagrams tied to verified features."}
+  ],
+  "weeklyMix": {"masterPosts": 3, "messageVariants": 3, "channels": ["linkedin", "facebook", "instagram"]}
+}

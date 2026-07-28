@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+    <rect width="1080" height="1350" fill="#fbf7ef"/>
+    <circle cx="999" cy="81" r="180" fill="#37c48e" opacity=".12"/>
+    <rect x="81" y="81" width="150" height="52" rx="26" fill="#143c3a"/><text x="156" y="115" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#ffffff">ClearTill</text>
+    <text x="81" y="181" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="800" fill="#60726f"><tspan x="81" dy="0">BALANCE VERSUS WHAT REMAINS · 5 OF 5</tspan></text>
+    <text x="81" y="256" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="81" font-weight="800" fill="#143c3a"><tspan x="81" dy="0">Check your own</tspan><tspan x="81" dy="83.43">position before</tspan><tspan x="81" dy="83.43">payday.</tspan></text>
+    <rect x="81" y="700" width="864" height="290" rx="44" fill="#143c3a"/><text x="540" y="815" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="800" fill="#ffffff"><tspan x="540" dy="0">Start your 7-day</tspan><tspan x="540" dy="60.480000000000004">live preview</tspan></text><rect x="335" y="1050" width="410" height="52" rx="26" fill="#37c48e"/><text x="540" y="1084" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#143c3a">No card required</text>
+    <line x1="81" y1="1221" x2="999" y2="1221" stroke="#d7e8e1" stroke-width="2"/>
+    <text x="81" y="1269" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="600" fill="#60726f"><tspan x="81" dy="0">No automatic charge when the preview ends • cleartill.money/start</tspan></text>
+  </svg>

@@ -1,0 +1,11 @@
+{
+  "objections": [
+    {"id": "bank_app_enough", "objection": "I can already see my balance in my banking app.", "response": "The balance is the starting point. ClearTill also allows for the bills and costs you enter as still due before payday.", "evidence": ["manual_inputs", "position_calculation"]},
+    {"id": "manual_is_effort", "objection": "Entering figures manually sounds like work.", "response": "Manual entry keeps the figures under the user's control and avoids a bank connection. Content should acknowledge the trade-off rather than dismiss it.", "evidence": ["manual_inputs", "no_bank_connection"]},
+    {"id": "accuracy", "objection": "What if I forget a bill or enter the wrong amount?", "response": "The output is an estimate based on what the user enters. Review and update the position when the balance, dates or costs change.", "evidence": ["manual_inputs"]},
+    {"id": "spreadsheet", "objection": "I can do this in a spreadsheet.", "response": "Yes. ClearTill is for people who want the same core arithmetic in a saved, updateable position with recurring costs and reminders.", "evidence": ["ongoing_features"]},
+    {"id": "card_required", "objection": "Will I have to enter a card to try it?", "response": "No. The seven-day live preview requires no card and does not charge automatically at expiry.", "evidence": ["preview_no_card"]},
+    {"id": "financial_advice", "objection": "Will it tell me what I should spend?", "response": "No. ClearTill provides an estimated cash position from user-entered figures; it is not financial advice or a guarantee.", "evidence": ["position_calculation"]},
+    {"id": "data_privacy", "objection": "Does it need access to my transactions?", "response": "No bank login or Open Banking connection is required. The user controls the information entered.", "evidence": ["no_bank_connection", "data_controls"]}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "character": ["calm", "plain-spoken", "specific", "respectful", "practical", "non-judgemental"],
+  "principles": [
+    "Lead with the everyday question before explaining the product.",
+    "Use short sentences and concrete dates or illustrative figures.",
+    "Describe arithmetic accurately and label examples as illustrative.",
+    "Use likely, estimate and based on what you enter instead of certainty language.",
+    "Respect manual control as a deliberate choice, not a technical limitation.",
+    "End with one proportionate action."
+  ],
+  "preferredTerms": ["what remains before payday", "your position", "bills still due", "figures you enter", "no bank connection", "live preview"],
+  "avoidTerms": ["guaranteed", "risk-free", "financial freedom", "AI-powered banking", "safe to spend", "perfect budget", "effortless wealth", "customers love"],
+  "channelGuidance": {
+    "linkedin": "Use an insight-led opening, explain the product decision or calculation, and keep hashtags to zero or one.",
+    "facebook": "Use conversational language, a recognisable situation and a direct link-led CTA.",
+    "instagram": "Use a concise hook, line breaks, a visual-first explanation and no more than five relevant hashtags."
+  }
+}

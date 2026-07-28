@@ -1,0 +1,18 @@
+{
+  "campaign": "four_week_position_test",
+  "timezone": "Europe/London",
+  "status": "not_started",
+  "measurementPolicy": {
+    "primaryEvent": "preview_started",
+    "supportingEvents": ["social_link_clicked", "landing_cta_clicked", "first_position_saved", "balance_updated", "return_visit", "plan_selected", "checkout_started", "purchase_completed"],
+    "purchaseSource": "Verified server-side Stripe webhook outcomes only",
+    "attributionDimensions": ["utm_source", "utm_medium", "utm_campaign", "utm_content", "experiment_id", "content_id", "landing_variant", "access_type"],
+    "windowDays": 7
+  },
+  "messageRollup": {
+    "a": {"posts": 4, "impressions": 0, "clicks": 0, "landingCtaClicks": 0, "previewStarts": 0, "verifiedPurchases": 0, "decision": "pending_measurement"},
+    "b": {"posts": 4, "impressions": 0, "clicks": 0, "landingCtaClicks": 0, "previewStarts": 0, "verifiedPurchases": 0, "decision": "pending_measurement"},
+    "c": {"posts": 4, "impressions": 0, "clicks": 0, "landingCtaClicks": 0, "previewStarts": 0, "verifiedPurchases": 0, "decision": "pending_measurement"}
+  },
+  "weeklyReviews": []
+}

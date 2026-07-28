@@ -1,0 +1,12 @@
+{
+  "reviewedAt": "2026-07-19",
+  "policy": "Use category-level comparisons unless a named competitor claim has been freshly researched, sourced and approved.",
+  "categories": [
+    {"id": "bank_balance", "alternative": "Checking a banking-app balance", "strength": "Immediate and familiar.", "gapClearTillAddresses": "Does not itself subtract every entered payment still due before payday.", "fairnessRule": "Do not imply banking apps conceal information or are inaccurate."},
+    {"id": "mental_math", "alternative": "Remembering bills and subtracting them mentally", "strength": "No setup or new tool.", "gapClearTillAddresses": "Harder to maintain when dates, one-off costs and balances change.", "fairnessRule": "Do not imply everybody finds mental arithmetic difficult."},
+    {"id": "spreadsheet", "alternative": "A spreadsheet or paper worksheet", "strength": "Flexible, transparent and user-controlled.", "gapClearTillAddresses": "ClearTill saves an updateable position and can carry recurring costs forward with reminders.", "fairnessRule": "Acknowledge that a well-maintained spreadsheet can perform the arithmetic."},
+    {"id": "open_banking_budget_apps", "alternative": "Budgeting tools connected through Open Banking", "strength": "Can automate transaction collection and categorisation.", "gapClearTillAddresses": "ClearTill offers a focused manual route without a bank connection.", "fairnessRule": "Do not claim Open Banking is inherently unsafe or that connected tools give away credentials."},
+    {"id": "full_budgeting", "alternative": "Monthly category budgets", "strength": "Useful for broader spending plans and longer-term habits.", "gapClearTillAddresses": "ClearTill focuses narrowly on the forward position to the next income date.", "fairnessRule": "Position the tools as serving different jobs, not as universal replacements."}
+  ],
+  "namedCompetitors": []
+}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import Logo from "@/components/Logo";
 import { BLOG_POSTS, formatPostDate, getCategory, getPostBySlug } from "../posts";
@@ -24,6 +25,7 @@ export async function generateMetadata({ params }) {
     keywords: post.keywords,
     openGraph: {
       ...pageMetadata.openGraph,
+      images: post.heroImage?.src ? [{ url: post.heroImage.src, alt: post.heroImage.alt }] : pageMetadata.openGraph.images,
       publishedTime: post.publishedAt,
       modifiedTime: post.updatedAt || post.publishedAt,
     },
@@ -72,6 +74,12 @@ function ArticleBlock({ block, faqs }) {
     </div>
   );
   if (block.type === "callout") return <aside className="article-callout"><strong>{block.title}</strong><p>{block.text}</p></aside>;
+  if (block.type === "image") return (
+    <figure className="article-inline-image">
+      <Image src={block.src} alt={block.alt} width={block.width} height={block.height} loading="lazy" />
+      <figcaption>{block.caption} <a href={block.creditUrl} rel="noopener noreferrer">{block.credit}</a>.</figcaption>
+    </figure>
+  );
   return <p><InlineContent segments={block.segments} text={block.text} /></p>;
 }
 
@@ -98,6 +106,8 @@ export default async function BlogArticlePage({ params }) {
   if (!post) notFound();
   const category = getCategory(post.category);
   const articleUrl = `${SITE_URL}/blog/${post.slug}`;
+  const articleImageUrl = post.heroImage?.src ? `${SITE_URL}${post.heroImage.src}` : SOCIAL_IMAGE_URL;
+  const supportingImages = post.content.filter((block) => block.type === "image");
   const articleSchema = {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -108,7 +118,14 @@ export default async function BlogArticlePage({ params }) {
     mainEntityOfPage: articleUrl,
     author: createGmbfOrganizationSchema(),
     publisher: createGmbfOrganizationSchema(),
-    image: SOCIAL_IMAGE_URL,
+    image: [articleImageUrl, ...supportingImages.map((item) => `${SITE_URL}${item.src}`)],
+    associatedMedia: supportingImages.map((item) => ({
+      "@type": "ImageObject",
+      contentUrl: `${SITE_URL}${item.src}`,
+      caption: item.caption,
+      creditText: item.credit,
+      license: item.licenceUrl,
+    })),
     articleSection: category?.label,
     keywords: post.keywords?.join(", "),
   };
@@ -151,6 +168,12 @@ export default async function BlogArticlePage({ params }) {
           <p className="article-description">{post.description}</p>
           <div className="article-meta"><span>By ClearTill</span><span aria-hidden="true">·</span><time dateTime={post.publishedAt}>{formatPostDate(post.publishedAt)}</time><span aria-hidden="true">·</span><span>{post.readingMinutes} min read</span></div>
         </header>
+
+        {post.heroImage ? (
+          <figure className="article-hero-image">
+            <Image src={post.heroImage.src} alt={post.heroImage.alt} width={post.heroImage.width} height={post.heroImage.height} priority />
+          </figure>
+        ) : null}
 
         {post.slug === "budgeting-irregular-income-no-payday" ? <DashboardHierarchyPreview /> : null}
 

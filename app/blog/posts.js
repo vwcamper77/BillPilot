@@ -1,3 +1,29 @@
+import balanceArticleRecord from "../../marketing/drafts/journal/why-your-bank-balance-is-not-always-what-you-can-spend.json";
+import manualArticleRecord from "../../marketing/drafts/journal/why-use-a-money-app-without-connecting-your-bank.json";
+
+const PUBLISHED_CAMPAIGN_ARTICLES = [
+  {
+    ...balanceArticleRecord.article,
+    publishedAt: "2026-07-21",
+    heroImage: {
+      src: "/marketing/journal/why-your-bank-balance-is-not-always-what-you-can-spend.png",
+      alt: balanceArticleRecord.heroImage.altText,
+      width: 1600,
+      height: 900,
+    },
+  },
+  {
+    ...manualArticleRecord.article,
+    publishedAt: "2026-07-21",
+    heroImage: {
+      src: "/marketing/journal/why-use-a-money-app-without-connecting-your-bank.png",
+      alt: manualArticleRecord.heroImage.altText,
+      width: 1600,
+      height: 900,
+    },
+  },
+];
+
 export const BLOG_CATEGORIES = [
   {
     slug: "money-basics",
@@ -48,6 +74,7 @@ export const BLOG_CATEGORIES = [
 // Cards, pages, metadata and the sitemap share this approved source of truth.
 /** @type {JournalArticle[]} */
 export const BLOG_POSTS = [
+  ...PUBLISHED_CAMPAIGN_ARTICLES,
   {
     type: "article",
     slug: "how-much-can-i-spend-before-payday",

@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "stock-photo-selections-v1",
+  "status": "approved",
+  "approvalInstruction": "Reply exactly: APPROVE PIXABAY A:791939 B:1565402",
+  "selections": {
+    "ct-w01-a01": {
+      "providerAssetId": "791939",
+      "recommendation": "recommended",
+      "placement": "After the worked example and before 'What belongs in the calculation'.",
+      "rationale": "The open paper planner reinforces that balances must be interpreted alongside dated commitments. It contains no person, bank branding, currency or account information.",
+      "altText": "Open paper planner beside pink flowers and a glass jar on a white desk, representing bills and dates to consider before payday.",
+      "caption": "Planning bills by date helps turn a current balance into a forward-looking estimate.",
+      "credit": "Photo by kaboompics via Pixabay",
+      "approvalChecks": {
+        "visualApproved": true,
+        "licenceChecked": true,
+        "modelOrPropertyReleaseChecked": true,
+        "trademarkRiskChecked": true,
+        "sensitiveContextChecked": true,
+        "altTextApproved": true,
+        "placementApproved": true,
+        "humanApproved": true
+      }
+    },
+    "ct-w01-b01": {
+      "providerAssetId": "1565402",
+      "recommendation": "recommended",
+      "placement": "After the manual-versus-connected comparison and before 'What control means in practice'.",
+      "rationale": "The blank-screen phone, notebook and pen support deliberate manual entry without depicting a bank interface, personal data or a distressed customer.",
+      "altText": "Black smartphone with its screen turned off resting on a notebook beside a fountain pen in a tan leather bag.",
+      "caption": "A manual money app can work from figures you choose to enter without importing a bank transaction history.",
+      "credit": "Photo by LUM3N via Pixabay",
+      "approvalChecks": {
+        "visualApproved": true,
+        "licenceChecked": true,
+        "modelOrPropertyReleaseChecked": true,
+        "trademarkRiskChecked": true,
+        "sensitiveContextChecked": true,
+        "altTextApproved": true,
+        "placementApproved": true,
+        "humanApproved": true
+      }
+    }
+  }
+}

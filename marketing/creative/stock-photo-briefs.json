@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "stock-photo-briefs-v1",
+  "provider": {
+    "name": "pixabay",
+    "apiUrl": "https://pixabay.com/api/",
+    "documentationUrl": "https://pixabay.com/api/docs/",
+    "licence": "Pixabay Content License",
+    "licenceUrl": "https://pixabay.com/service/license-summary/",
+    "cacheHours": 24,
+    "productionRule": "Candidate URLs are temporary review references. Download an approved image into ClearTill-controlled storage before production use; do not publish or pass a Pixabay CDN URL to Buffer."
+  },
+  "defaults": {
+    "imageType": "photo",
+    "orientation": "horizontal",
+    "safeSearch": true,
+    "language": "en",
+    "minimumWidth": 1600,
+    "minimumHeight": 900,
+    "perPage": 6
+  },
+  "campaigns": {
+    "ct-w01-a01": {
+      "required": false,
+      "role": "Supporting editorial photograph after the worked example; the branded calculation remains the primary hero creative.",
+      "query": "household budget calculator calendar notebook desk",
+      "avoid": ["recognisable bank brands", "visible account details", "distress or debt imagery", "readable financial documents", "recognisable people presented as customers"],
+      "composition": "Landscape household-planning scene with a calculator, notebook or calendar; no readable account information, currency notes or recognisable brands."
+    },
+    "ct-w01-b01": {
+      "required": false,
+      "role": "Supporting editorial photograph near the manual-versus-connected comparison; the branded three-input diagram remains the primary hero creative.",
+      "query": "pocket leather notebook smartphone pen",
+      "avoid": ["bank logos", "phone screens with account data", "security scare imagery", "distress or debt imagery", "recognisable people presented as customers"],
+      "composition": "Calm, neutral household-planning scene with the phone screen hidden or blank, no readable personal data and no recognisable brands."
+    },
+    "ct-w01-c01": {
+      "required": false,
+      "role": "No stock photography. Use the real ClearTill test-account recording and registered Canva product frame.",
+      "query": null,
+      "avoid": ["fake product screens", "generic banking interfaces", "stock phone mockups"],
+      "composition": "Not applicable."
+    }
+  }
+}

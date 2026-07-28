@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="627" viewBox="0 0 1200 627">
+    <rect width="1200" height="627" fill="#fbf7ef"/>
+    <circle cx="1110" cy="90" r="130" fill="#37c48e" opacity=".12"/>
+    <rect x="90" y="90" width="150" height="52" rx="26" fill="#143c3a"/><text x="165" y="124" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#ffffff">ClearTill</text>
+    <text x="90" y="190" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="800" fill="#60726f"><tspan x="90" dy="0">PRODUCT DEMONSTRATION</tspan></text>
+    <text x="90" y="265" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="62" font-weight="800" fill="#143c3a"><tspan x="90" dy="0">Watch the estimated position update.</tspan></text>
+    <rect x="70" y="315" width="760" height="230" rx="28" fill="#ffffff" stroke="#37c48e" stroke-width="6" stroke-dasharray="16 12"/><text x="450" y="405" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#60726f"><tspan x="450" dy="0">Place current test-account</tspan><tspan x="450" dy="39.099999999999994">recording here</tspan></text><rect x="865" y="315" width="270" height="230" rx="28" fill="#e9f8f2" stroke="#d7e8e1" stroke-width="2"/>
+    <text x="893" y="363" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#60726f"><tspan x="893" dy="0">ILLUSTRATIVE</tspan></text>
+    <text x="893" y="431" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="800" fill="#37c48e"><tspan x="893" dy="0">£385</tspan></text>
+    <line x1="90" y1="489" x2="1110" y2="489" stroke="#d7e8e1" stroke-width="2"/>
+    <text x="90" y="537" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600" fill="#60726f"><tspan x="90" dy="0">£780 balance − £395 entered costs = £385 estimated position</tspan></text>
+  </svg>

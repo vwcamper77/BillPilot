@@ -1,0 +1,25 @@
+{
+  "brand": "ClearTill",
+  "category": "forward cash-position tool",
+  "positioningStatement": "ClearTill helps people understand what is likely to remain before payday after the bills and costs they have entered.",
+  "primaryProblem": "A current bank balance does not show how much of that balance is already spoken for before the next income date.",
+  "promise": "A clearer, manually controlled view of the amount likely to remain before payday.",
+  "method": "Current balance minus the bills and costs entered as due before the next income date.",
+  "differentiators": [
+    "No bank login or Open Banking connection is required.",
+    "The user chooses and controls every figure entered.",
+    "The result updates when the user changes their balance, dates or costs.",
+    "A seven-day live preview is available without a card."
+  ],
+  "primaryCta": "Check my position free",
+  "primaryCtaPath": "/start",
+  "requiredQualifier": "ClearTill outputs are estimates based on the balance, dates and costs entered by the user.",
+  "notPositionedAs": [
+    "financial advice",
+    "a bank",
+    "an accounting system",
+    "a debt solution",
+    "a guaranteed spending-safety tool",
+    "an Open Banking service"
+  ]
+}

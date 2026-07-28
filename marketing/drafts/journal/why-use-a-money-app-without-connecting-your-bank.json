@@ -1,0 +1,193 @@
+{
+  "schemaVersion": "journal-draft-v1",
+  "contentId": "ct-w01-b01",
+  "status": "published",
+  "hypothesis": "A balanced explanation of manual control and its trade-offs will reduce bank-connection objections without creating fear about Open Banking.",
+  "primaryMeasurementGoal": "Preview-start rate among qualified Journal sessions attributed to ct-w01-b01, interpreted alongside comments about privacy and manual-entry effort.",
+  "campaign": {
+    "name": "manual_by_design",
+    "productUrl": "https://www.cleartill.money/start?utm_source=journal&utm_medium=owned_content&utm_campaign=manual_by_design&utm_content=ct-w01-b01&experiment_id=core_message_b&creative_id=journal_cta_01&content_id=ct-w01-b01"
+  },
+  "article": {
+    "type": "article",
+    "slug": "why-use-a-money-app-without-connecting-your-bank",
+    "title": "Why use a money app without connecting your bank?",
+    "seoTitle": "Why Use a Money App Without Connecting Your Bank?",
+    "description": "Understand why some people prefer a manually controlled money app, what they gain by avoiding a bank connection and what extra work that choice involves.",
+    "keywords": [
+      "money app without bank connection",
+      "budgeting app without Open Banking",
+      "manual money planning app",
+      "privacy conscious budgeting"
+    ],
+    "category": "money-basics",
+    "readingMinutes": 8,
+    "featured": false,
+    "takeaway": "A manual money app lets you choose the figures it uses and avoids a bank connection, but you must keep those figures current. Connected and manual tools serve different preferences and neither approach is automatically right for everyone.",
+    "faqs": [
+      {
+        "question": "Does ClearTill connect to my bank account?",
+        "answer": "No. ClearTill does not require a bank login or Open Banking connection. You enter the balance, dates and costs used in the estimate."
+      },
+      {
+        "question": "Is Open Banking unsafe?",
+        "answer": "This article does not make that claim. Connected services can offer useful automation through authorised access and consent. The relevant choice is whether that convenience or manual control better suits you."
+      },
+      {
+        "question": "What is the downside of manual entry?",
+        "answer": "The estimate can become incomplete or stale if you forget a cost, enter the wrong amount or do not update the balance when circumstances change."
+      },
+      {
+        "question": "Can I try ClearTill without a card?",
+        "answer": "Yes. The seven-day live preview requires no card and does not charge automatically when it ends. It starts when you save a complete position with a balance, next income date and at least one upcoming cost."
+      }
+    ],
+    "content": [
+      {
+        "type": "paragraph",
+        "text": "Many money apps use a bank connection to collect transactions and reduce manual work. That can be convenient. It is not the only useful approach."
+      },
+      {
+        "type": "paragraph",
+        "text": "A manually controlled app asks you to enter the limited figures needed for a particular calculation. Some people prefer that because they decide what information is included and can see exactly what the result depends on."
+      },
+      {
+        "type": "callout",
+        "title": "The short answer",
+        "text": "Use a money app without a bank connection when deliberate control over the inputs matters more to you than automatic transaction collection. Accept that you will need to enter and update the figures yourself."
+      },
+      {
+        "type": "heading",
+        "text": "Manual and connected tools solve different problems",
+        "id": "manual-and-connected-tools"
+      },
+      {
+        "type": "paragraph",
+        "text": "A connected budgeting tool can collect eligible account and transaction information, categorise activity and reduce repeated entry. That can be valuable when you want a broad historical view or manage many transactions."
+      },
+      {
+        "type": "paragraph",
+        "text": "A manual tool can focus on a smaller forward-looking question. You decide the current balance, the next income date and the commitments that belong in the period. It does not imply that connected services are unsafe, and it should not pretend manual data is automatically complete."
+      },
+      {
+        "type": "table",
+        "caption": "Practical differences between manual and connected approaches",
+        "headers": ["Question", "Manual approach", "Connected approach"],
+        "rows": [
+          ["Set-up", "Enter the figures needed for the calculation", "Give consent and connect supported accounts"],
+          ["Updates", "You decide when to update each figure", "Eligible transactions may update automatically"],
+          ["Scope", "Limited to the information you choose to include", "Can provide a broader account and transaction view"],
+          ["Corrections", "You correct your own entries", "You may need to correct categories or matches"],
+          ["Ongoing effort", "More manual checking", "Less re-entry, with connections and consent to manage"]
+        ]
+      },
+      {
+        "type": "image",
+        "src": "/marketing/journal/why-use-a-money-app-without-connecting-your-bank-pixabay-1565402.jpg",
+        "width": 1280,
+        "height": 853,
+        "alt": "Black smartphone with its screen turned off resting on a notebook beside a fountain pen in a tan leather bag.",
+        "caption": "A manual money app can work from figures you choose to enter without importing a bank transaction history.",
+        "credit": "Photo by LUM3N via Pixabay",
+        "creditUrl": "https://pixabay.com/photos/pocket-leather-goods-purse-notebook-1565402/",
+        "licenceUrl": "https://pixabay.com/service/license-summary/"
+      },
+      {
+        "type": "heading",
+        "text": "What control means in practice",
+        "id": "what-control-means"
+      },
+      {
+        "type": "ordered-list",
+        "items": [
+          [
+            {"text": "Choose the boundary. ", "strong": true},
+            {"text": "Decide whether the position covers one account, your own money or a shared household view."}
+          ],
+          [
+            {"text": "Enter the current balance. ", "strong": true},
+            {"text": "Use a balance at a known time and consider pending payments already reflected in it."}
+          ],
+          [
+            {"text": "Choose the next income date. ", "strong": true},
+            {"text": "Use the next date on which you reasonably expect income."}
+          ],
+          [
+            {"text": "Add relevant costs. ", "strong": true},
+            {"text": "Include bills and known one-off costs due before that date."}
+          ],
+          [
+            {"text": "Update when things change. ", "strong": true},
+            {"text": "A manual position is only useful while the entries remain current enough for the decision you are making."}
+          ]
+        ]
+      },
+      {
+        "type": "formula",
+        "label": "Manual forward-position method",
+        "formula": "current balance − entered costs due before the next income date"
+      },
+      {
+        "type": "heading",
+        "text": "The honest trade-off",
+        "id": "the-honest-trade-off"
+      },
+      {
+        "type": "paragraph",
+        "text": "Manual entry takes effort. If you have several accounts, many changing payments or little time to review figures, a connected tool may be more convenient. A manual estimate can also be wrong when a cost is missing, a date changes or the balance is not updated."
+      },
+      {
+        "type": "paragraph",
+        "text": "The benefit is transparency over the inputs. You can see which balance, dates and costs created the estimate. You can include cash or an account that a connected service does not support. You can also keep the exercise narrow instead of importing a full transaction history."
+      },
+      {
+        "type": "paragraph",
+        "text": "Neither route makes the underlying money position better. The useful system is the one you understand and can keep sufficiently accurate."
+      },
+      {
+        "type": "heading",
+        "text": "Where ClearTill fits",
+        "id": "where-cleartill-fits"
+      },
+      {
+        "type": "paragraph",
+        "text": "ClearTill is a forward cash-position tool based on the figures you enter. It does not require a bank login or Open Banking connection. You add the current balance, next income date, and bills or one-off costs you want included; ClearTill estimates what is likely to remain before that date."
+      },
+      {
+        "type": "paragraph",
+        "text": "The result is not financial advice and does not guarantee that an amount is safe to spend. ClearTill cannot automatically identify a commitment that you have not entered. Review the position when balances, dates or costs change."
+      },
+      {
+        "type": "paragraph",
+        "segments": [
+          {"text": "If manual control suits the way you want to plan, "},
+          {"text": "check your ClearTill position free", "href": "https://www.cleartill.money/start?utm_source=journal&utm_medium=owned_content&utm_campaign=manual_by_design&utm_content=ct-w01-b01&experiment_id=core_message_b&creative_id=journal_cta_01&content_id=ct-w01-b01"},
+          {"text": ". The seven-day live preview requires no card and does not charge automatically when it ends."}
+        ]
+      },
+      {
+        "type": "heading",
+        "text": "Frequently asked questions",
+        "id": "frequently-asked-questions"
+      },
+      {"type": "faqs"}
+    ]
+  },
+  "heroImage": {
+    "visualBrief": "Create a 1600 × 900 ClearTill Journal hero showing three user-controlled inputs—balance, next income date and upcoming costs—flowing into one estimated position. Add 'No bank login • No Open Banking'. Avoid bank logos, padlocks, fear imagery and any suggestion that connected tools are unsafe.",
+    "expectedCanvaExportFilename": "2026-07-28_ct-w01-b01_journal_hero_v01.png",
+    "altText": "Diagram showing user-entered balance, next income date and upcoming costs producing an estimated ClearTill position without a bank connection."
+  },
+  "approvalChecks": {
+    "copyApproved": true,
+    "claimsChecked": true,
+    "productFactsChecked": true,
+    "licenceChecked": true,
+    "linksChecked": true,
+    "visualChecked": true,
+    "scheduleChecked": true,
+    "humanApproved": true
+  },
+  "approval": {"approvedBy": "user", "approvedAt": "2026-07-21T23:00:00+01:00"},
+  "publication": {"publishedAt": "2026-07-21T23:00:00+01:00", "exportedToLiveCollection": true}
+}

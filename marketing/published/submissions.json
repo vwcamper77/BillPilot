@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "description": "Local idempotency ledger for provider submissions. Records are appended only after a provider confirms creation.",
+  "submissions": [
+    {
+      "contentId": "ct-w01-a01",
+      "channel": "linkedin",
+      "provider": "buffer",
+      "mode": "draft",
+      "remotePostId": "6a5ffc15ab4498e061a5f014",
+      "submittedAt": "2026-07-21T23:09:09.506Z"
+    },
+    {
+      "contentId": "ct-w01-a01",
+      "channel": "facebook",
+      "provider": "buffer",
+      "mode": "draft",
+      "remotePostId": "6a5ffc71cdc1cdd7f75e34a7",
+      "submittedAt": "2026-07-21T23:10:41.562Z"
+    },
+    {
+      "contentId": "ct-w01-a01",
+      "channel": "instagram",
+      "provider": "buffer",
+      "mode": "draft",
+      "remotePostId": "6a5ffc7224f2657e75baed60",
+      "submittedAt": "2026-07-21T23:10:42.743Z"
+    },
+    {
+      "contentId": "ct-w01-b01",
+      "channel": "facebook",
+      "provider": "buffer",
+      "mode": "draft",
+      "remotePostId": "6a5ffc7424f2657e75baed7e",
+      "submittedAt": "2026-07-21T23:10:44.049Z"
+    },
+    {
+      "contentId": "ct-w01-b01",
+      "channel": "instagram",
+      "provider": "buffer",
+      "mode": "draft",
+      "remotePostId": "6a5ffc75d7dddf6db4e36521",
+      "submittedAt": "2026-07-21T23:10:45.350Z"
+    },
+    {
+      "contentId": "ct-w01-c01",
+      "channel": "facebook",
+      "provider": "buffer",
+      "mode": "sent",
+      "remotePostId": "6a5ffc7653f69b72240651f2",
+      "submittedAt": "2026-07-21T23:10:46.774Z",
+      "publishedAt": "2026-07-22T07:13:00.000Z"
+    },
+    {
+      "contentId": "ct-w01-c01",
+      "channel": "instagram",
+      "provider": "buffer",
+      "mode": "sent",
+      "remotePostId": "6a5ffc78d7dddf6db4e36542",
+      "submittedAt": "2026-07-21T23:10:48.116Z",
+      "publishedAt": "2026-07-22T12:27:00.000Z"
+    }
+  ]
+}

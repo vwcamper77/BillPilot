@@ -1,0 +1,46 @@
+{
+  "programme": "ClearTill 12-week organic social validation",
+  "timezone": "Europe/London",
+  "primaryOutcome": "preview_started",
+  "guardrails": ["No invented proof", "No live publishing without approval", "Do not optimise on impressions alone", "Purchase outcomes remain webhook-verified"],
+  "months": [
+    {
+      "month": 1,
+      "objective": "Validate the core problem and proposition.",
+      "weeks": [
+        {"week": 1, "dates": "2026-07-20/2026-07-26", "theme": "Recognise the gap between balance and what remains", "hypothesis": "The bank-balance framing will create the strongest qualified response."},
+        {"week": 2, "dates": "2026-07-27/2026-08-02", "theme": "Explain no-bank-connection control", "hypothesis": "Manual control will reduce privacy objections without depressing CTA interest."},
+        {"week": 3, "dates": "2026-08-03/2026-08-09", "theme": "Make the arithmetic visible", "hypothesis": "A short formula will produce more landing visits than abstract benefit copy."},
+        {"week": 4, "dates": "2026-08-10/2026-08-16", "theme": "Apply all three messages to real-life costs", "hypothesis": "One-off cost scenarios will reveal which proposition remains persuasive in context."}
+      ],
+      "decisionRule": "Select the message with the strongest preview-start rate after checking landing CTA rate and sufficient directional volume; retain inconclusive variants for further testing."
+    },
+    {
+      "month": 2,
+      "objective": "Validate audiences, objections and use cases using the winning Month 1 message.",
+      "weeks": [
+        {"week": 5, "theme": "Fixed-payday households", "hypothesis": "Due-date tension will resonate with people whose bills cluster late in the pay cycle."},
+        {"week": 6, "theme": "Privacy-conscious planners", "hypothesis": "User-controlled figures will answer the bank-connection objection."},
+        {"week": 7, "theme": "One-off and annual costs", "hypothesis": "An irregular-cost scenario will increase product comprehension."},
+        {"week": 8, "theme": "Spreadsheet and manual-maths objection", "hypothesis": "Acknowledging valid alternatives will improve CTA quality and trust."}
+      ],
+      "decisionRule": "Choose the audience/use-case combination with the best qualified landing-to-preview progression, not the largest reach."
+    },
+    {
+      "month": 3,
+      "objective": "Validate format, CTA and conversion using the winning message and audience.",
+      "weeks": [
+        {"week": 9, "theme": "Static formula graphic versus founder text", "hypothesis": "The visible calculation will improve link-click intent."},
+        {"week": 10, "theme": "Worked carousel versus short walkthrough", "hypothesis": "Stepwise explanation will improve landing CTA clicks."},
+        {"week": 11, "theme": "Primary CTA wording", "hypothesis": "Check my position free will outperform a generic try-free CTA."},
+        {"week": 12, "theme": "Winning combination confirmation", "hypothesis": "Repeating the selected message, audience, format and CTA will confirm whether the result is stable."}
+      ],
+      "decisionRule": "Adopt only a result that repeats directionally across at least two posts; otherwise document the test as inconclusive."
+    }
+  ],
+  "messageVariants": {
+    "a": "Your bank balance is not necessarily what you can spend.",
+    "b": "Know what remains without connecting your bank.",
+    "c": "Balance minus what is still due before payday."
+  }
+}

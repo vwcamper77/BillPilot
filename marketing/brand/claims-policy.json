@@ -1,0 +1,41 @@
+{
+  "requiredDisclosures": [
+    "ClearTill outputs are estimates based on the figures entered by the user.",
+    "Illustrative examples must be explicitly identified as illustrative.",
+    "ClearTill is not financial advice and does not guarantee that money is safe to spend."
+  ],
+  "prohibitedClaims": [
+    "Invented or unattributed customers and testimonials",
+    "Savings, user numbers, conversion rates or financial statistics without an approved source",
+    "Regulated endorsements, awards or security certifications not listed in verified product facts",
+    "Bank integrations, transaction feeds or Open Banking functionality",
+    "Guaranteed availability, affordability or spending safety",
+    "Claims that ClearTill resolves debt or payment difficulty"
+  ],
+  "prohibitedDescriptions": ["financial advice", "bank", "accounting system", "debt solution", "guaranteed spending-safety tool", "Open Banking service"],
+  "testimonialPatterns": [
+    "a customer said",
+    "our customers say",
+    "users love",
+    "helped me save",
+    "I saved £",
+    "trusted by thousands"
+  ],
+  "unsupportedClaimPatterns": [
+    "guaranteed",
+    "always accurate",
+    "risk-free",
+    "safe to spend",
+    "connects to your bank",
+    "bank-grade",
+    "award-winning"
+  ],
+  "debtSupport": {
+    "rule": "If content discusses missed payments, arrears or problem debt, direct readers to free specialist support and do not position ClearTill as the remedy.",
+    "services": [
+      {"name": "MoneyHelper", "url": "https://www.moneyhelper.org.uk/en/money-troubles/dealing-with-debt"},
+      {"name": "StepChange", "url": "https://www.stepchange.org/"}
+    ]
+  },
+  "approvalGate": ["human status is approved", "claimsChecked is true", "productFactsChecked is true", "explicit publish confirmation is present"]
+}

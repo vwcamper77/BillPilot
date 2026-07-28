@@ -1,0 +1,42 @@
+{
+  "primary": [
+    {
+      "id": "fixed_payday_bill_juggler",
+      "description": "UK adults paid on a regular date who mentally subtract bills from the balance shown by their bank.",
+      "jobToBeDone": "See what is likely to remain after costs due before payday.",
+      "tension": "The bank balance looks available even though several payments have not left yet.",
+      "useCases": ["mid-month position check", "planning around direct-debit dates", "checking a one-off cost before payday"]
+    },
+    {
+      "id": "privacy_conscious_planner",
+      "description": "People who want a useful cash-position calculation without connecting a bank account.",
+      "jobToBeDone": "Keep direct control of the figures used in the calculation.",
+      "tension": "They do not want to share bank-login or Open Banking data with a planning tool.",
+      "useCases": ["manual balance update", "manual bill list", "no-bank-login product trial"]
+    },
+    {
+      "id": "changing_cost_household",
+      "description": "Households whose short-term position changes because of irregular or one-off costs.",
+      "jobToBeDone": "Include costs that a static monthly budget can miss.",
+      "tension": "A repair, school cost or annual renewal can materially change what remains this pay cycle.",
+      "useCases": ["one-off cost planning", "changing due dates", "balance recalculation"]
+    }
+  ],
+  "secondary": [
+    {
+      "id": "irregular_income_planner",
+      "description": "People planning to the next income date they can reasonably rely on.",
+      "caution": "Content must not imply business cash-flow, tax or income advice."
+    },
+    {
+      "id": "spreadsheet_fatigued_planner",
+      "description": "People who understand the arithmetic but want a position they can save and update.",
+      "caution": "Do not claim spreadsheets are inherently inaccurate or unsuitable."
+    }
+  ],
+  "excludedTargeting": [
+    "People seeking regulated financial advice",
+    "People seeking a debt-management or insolvency solution",
+    "Businesses seeking accounting or treasury software"
+  ]
+}

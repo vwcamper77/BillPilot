@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+    <rect width="1080" height="1350" fill="#fbf7ef"/>
+    <circle cx="999" cy="81" r="180" fill="#37c48e" opacity=".12"/>
+    <rect x="81" y="81" width="150" height="52" rx="26" fill="#143c3a"/><text x="156" y="115" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#ffffff">ClearTill</text>
+    <text x="81" y="181" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="800" fill="#60726f"><tspan x="81" dy="0">MANUAL BY DESIGN</tspan></text>
+    <text x="81" y="256" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="81" font-weight="800" fill="#143c3a"><tspan x="81" dy="0">Know what may</tspan><tspan x="81" dy="83.43">remain without</tspan><tspan x="81" dy="83.43">connecting your bank.</tspan></text>
+    <rect x="81" y="600" width="864" height="145" rx="28" fill="#ffffff" stroke="#d7e8e1" stroke-width="2"/>
+    <text x="109" y="648" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#60726f"><tspan x="109" dy="0">YOU ENTER</tspan></text>
+    <text x="109" y="716" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="800" fill="#143c3a"><tspan x="109" dy="0">Current balance</tspan></text><rect x="81" y="775" width="864" height="145" rx="28" fill="#e9f8f2" stroke="#d7e8e1" stroke-width="2"/>
+    <text x="109" y="823" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#60726f"><tspan x="109" dy="0">YOU CHOOSE</tspan></text>
+    <text x="109" y="891" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="800" fill="#143c3a"><tspan x="109" dy="0">Next income date</tspan></text><rect x="81" y="950" width="864" height="145" rx="28" fill="#ffffff" stroke="#d7e8e1" stroke-width="2"/>
+    <text x="109" y="998" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#60726f"><tspan x="109" dy="0">YOU INCLUDE</tspan></text>
+    <text x="109" y="1066" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="52" font-weight="800" fill="#143c3a"><tspan x="109" dy="0">Costs still due</tspan></text><rect x="300" y="1140" width="480" height="52" rx="26" fill="#37c48e"/><text x="540" y="1174" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#143c3a">→ Estimated position</text>
+    <line x1="81" y1="1221" x2="999" y2="1221" stroke="#d7e8e1" stroke-width="2"/>
+    <text x="81" y="1269" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="600" fill="#60726f"><tspan x="81" dy="0">No bank login • No Open Banking • You control the figures</tspan></text>
+  </svg>

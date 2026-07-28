@@ -1,0 +1,20 @@
+{
+  "verifiedAt": "2026-07-19",
+  "facts": [
+    {"id": "manual_inputs", "statement": "ClearTill calculates from the balance, dates and costs entered by the user.", "sources": ["app/pricing/page.jsx", "app/about-cleartill/page.jsx"]},
+    {"id": "no_bank_connection", "statement": "ClearTill does not require a bank login or Open Banking connection.", "sources": ["app/pricing/page.jsx", "app/privacy/page.jsx"]},
+    {"id": "position_calculation", "statement": "ClearTill shows a forward position after allowing for entered bills and costs due before the next income date.", "sources": ["app/blog/posts.js", "lib/seo.js"]},
+    {"id": "preview_duration", "statement": "The free live preview lasts seven days.", "sources": ["app/pricing/page.jsx", "lib/previewPolicy.cjs"]},
+    {"id": "preview_activation", "statement": "The preview starts only after the user saves a complete position containing a balance, payday and at least one upcoming cost.", "sources": ["app/pricing/page.jsx", "lib/previewLifecycle.server.js"]},
+    {"id": "preview_no_card", "statement": "The free live preview requires no card and does not charge automatically when it ends.", "sources": ["app/pricing/page.jsx", "lib/previewEmails.server.js"]},
+    {"id": "preview_expiry", "statement": "After the preview expires, live updates and reminders stop and the last position remains read-only.", "sources": ["app/pricing/page.jsx", "lib/previewPolicy.cjs"]},
+    {"id": "ongoing_features", "statement": "Paid plans provide ongoing live positions, carry recurring costs forward and provide ongoing reminders.", "sources": ["app/pricing/page.jsx"]},
+    {"id": "monthly_price", "statement": "The public monthly plan is £3.99 per month.", "sources": ["app/pricing/page.jsx", "app/api/stripe/subscription-checkout/route.js"]},
+    {"id": "annual_price", "statement": "The public annual plan is £24.99 paid upfront per year.", "sources": ["app/pricing/page.jsx", "app/api/stripe/subscription-checkout/route.js"]},
+    {"id": "data_controls", "statement": "Account controls allow the user to export, reset or delete their data.", "sources": ["app/pricing/page.jsx", "app/privacy/page.jsx"]}
+  ],
+  "conditionalFacts": [
+    {"id": "card_trial_flow", "statement": "A separate £1.99 card-based subscription-trial flow exists behind SUBSCRIPTION_TRIAL_ENABLED.", "marketingUse": "Do not advertise while the public no-card preview is the active offer.", "sources": ["lib/billing/config.js"]}
+  ],
+  "unverifiedAndProhibited": ["customer count", "savings outcomes", "conversion rate", "security certification", "banking integration", "award or endorsement"]
+}

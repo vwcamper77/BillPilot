@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+    <rect width="1080" height="1920" fill="#fbf7ef"/>
+    <circle cx="999" cy="81" r="180" fill="#37c48e" opacity=".12"/>
+    <rect x="81" y="81" width="150" height="52" rx="26" fill="#143c3a"/><text x="156" y="115" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#ffffff">ClearTill</text>
+    <text x="81" y="181" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="800" fill="#60726f"><tspan x="81" dy="0">PRODUCT DEMONSTRATION</tspan></text>
+    <text x="81" y="256" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="81" font-weight="800" fill="#143c3a"><tspan x="81" dy="0">See how entered</tspan><tspan x="81" dy="83.43">figures become an</tspan><tspan x="81" dy="83.43">estimated position.</tspan></text>
+    <rect x="81" y="760" width="864" height="640" rx="48" fill="#143c3a"/><text x="540" y="940" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="105" font-weight="800" fill="#ffffff"><tspan x="540" dy="0">£780</tspan><tspan x="540" dy="152.25">− £395</tspan><tspan x="540" dy="152.25">= £385</tspan></text><rect x="300" y="1480" width="480" height="52" rx="26" fill="#37c48e"/><text x="540" y="1514" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#143c3a">Illustrative test data</text>
+    <line x1="81" y1="1791" x2="999" y2="1791" stroke="#d7e8e1" stroke-width="2"/>
+    <text x="81" y="1839" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="600" fill="#60726f"><tspan x="81" dy="0">20-second ClearTill walkthrough • Estimate based on figures entered</tspan></text>
+  </svg>
