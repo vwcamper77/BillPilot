@@ -1,7 +1,11 @@
-import { BLOG_POSTS, JOURNAL_TOOLS } from "./blog/posts";
+import { JOURNAL_TOOLS } from "./blog/posts";
+import { getPublishedJournalPosts } from "@/lib/journal/repository.server";
 import { HOME_URL, SITE_URL } from "@/lib/seo";
 
-export default function sitemap() {
+export const dynamic = "force-dynamic";
+
+export default async function sitemap() {
+  const publishedPosts = await getPublishedJournalPosts();
   const staticPages = [
     {
       url: HOME_URL,
@@ -53,7 +57,7 @@ export default function sitemap() {
     },
   ];
 
-  const blogPosts = BLOG_POSTS.map((post) => ({
+  const blogPosts = publishedPosts.map((post) => ({
     url: `${SITE_URL}/blog/${post.slug}`,
     lastModified: post.updatedAt || post.publishedAt,
     changeFrequency: "monthly",

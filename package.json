@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test tests/analytics-integrity.test.cjs tests/revenue-integrity.test.cjs tests/subscription-trial.test.cjs tests/acquisition-auth.test.cjs tests/preview-lifecycle.test.cjs tests/seo-integrity.test.cjs tests/firestore-safety.test.cjs tests/linkable-assets.test.cjs tests/lead-magnet.test.cjs tests/reminder-integrity.test.cjs tests/email-operations-integrity.test.cjs tests/firebase-scheduler-integrity.test.cjs tests/footer-family.test.cjs tests/canva-integration.test.cjs",
+    "test": "node --test tests/analytics-integrity.test.cjs tests/revenue-integrity.test.cjs tests/subscription-trial.test.cjs tests/acquisition-auth.test.cjs tests/preview-lifecycle.test.cjs tests/seo-integrity.test.cjs tests/firestore-safety.test.cjs tests/linkable-assets.test.cjs tests/lead-magnet.test.cjs tests/reminder-integrity.test.cjs tests/email-operations-integrity.test.cjs tests/firebase-scheduler-integrity.test.cjs tests/footer-family.test.cjs tests/canva-integration.test.cjs tests/seo-article-engine.test.cjs tests/seo-admin-dashboard.test.cjs tests/seo-content-operations.test.cjs",
     "test:e2e": "playwright test",
     "test:e2e:safe": "playwright test",
     "reconcile:stripe": "node scripts/reconcile-stripe-entitlements.mjs",

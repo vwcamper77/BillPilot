@@ -299,7 +299,10 @@ test("founding-member entitlement flow stays isolated and email enumeration copy
 
 test("Firebase deployment config points at checked-in Firestore rules and functions", () => {
   const config = JSON.parse(read("firebase.json"));
-  assert.deepEqual(config.firestore, { rules: "firestore.rules" });
+  assert.deepEqual(config.firestore, {
+    rules: "firestore.rules",
+    indexes: "firestore.indexes.json",
+  });
   assert.deepEqual(config.functions, { source: "functions", runtime: "nodejs22" });
 });
 

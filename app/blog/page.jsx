@@ -1,7 +1,8 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import BlogExplorer from "./BlogExplorer";
-import { BLOG_CATEGORIES, BLOG_POSTS, JOURNAL_TOOLS, formatPostDate, getCategory } from "./posts";
+import { BLOG_CATEGORIES, JOURNAL_TOOLS, formatPostDate, getCategory } from "./posts";
+import { getPublishedJournalPosts } from "@/lib/journal/repository.server";
 import { createPageMetadata, SITE_URL } from "@/lib/seo";
 import { createGmbfOrganizationSchema } from "@/lib/productFamily";
 
@@ -26,9 +27,10 @@ export default async function BlogPage({ searchParams }) {
   const resolvedSearchParams = await searchParams;
   const requestedTopic = typeof resolvedSearchParams?.topic === "string" ? resolvedSearchParams.topic : "all";
   const activeCategory = BLOG_CATEGORIES.some((category) => category.slug === requestedTopic) ? requestedTopic : "all";
+  const publishedPosts = await getPublishedJournalPosts();
   const categoryPosts = activeCategory === "all"
-    ? BLOG_POSTS
-    : BLOG_POSTS.filter((post) => post.category === activeCategory);
+    ? publishedPosts
+    : publishedPosts.filter((post) => post.category === activeCategory);
   const posts = categoryPosts.map((post) => ({
     ...post,
     content: undefined,

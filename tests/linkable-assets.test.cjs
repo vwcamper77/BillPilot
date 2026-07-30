@@ -72,5 +72,6 @@ test("Journal content types include articles and a separate validated tool recor
   assert.match(posts, /article-only field/);
   assert.match(blog, /Free tools/);
   assert.match(blog, /\?topic=\$\{category\.slug\}/);
-  assert.match(blog, /BLOG_POSTS\.filter\(\(post\) => post\.category === activeCategory\)/);
+  assert.match(blog, /getPublishedJournalPosts\(\)/);
+  assert.match(blog, /publishedPosts\.filter\(\(post\) => post\.category === activeCategory\)/);
 });

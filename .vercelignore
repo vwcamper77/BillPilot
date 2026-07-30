@@ -1,0 +1,14 @@
+.git
+.next*
+node_modules
+functions/node_modules
+.env*
+cleartill-*.json
+*-firebase-adminsdk-*.json
+service-account*.json
+firebase-service-account*.json
+.DS_Store
+marketing/assets/product-screenshots/rejected
+marketing/assets/product-screenshots/source
+marketing/assets/product-screenshots/**/*.mov
+marketing/assets/product-screenshots/**/*.mp4
