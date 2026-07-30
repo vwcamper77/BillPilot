@@ -32,6 +32,8 @@ const STATUS_LABELS = {
   distribution_ready: "Distribution ready",
   buffer_idea_created: "Buffer Idea",
   buffer_scheduled: "Buffer scheduled",
+  cancelled: "Cancelled",
+  partially_cancelled: "Partially cancelled",
   promoted: "Promoted",
   measurement_pending: "Measurement pending",
   refresh_due: "Refresh due",
@@ -410,6 +412,8 @@ function GenerationArea({ admin }) {
   const preview = admin.data?.preview;
   const [selected, setSelected] = useState([]);
   const [ordered, setOrdered] = useState([]);
+  const [cancelConfirmation, setCancelConfirmation] = useState(null);
+  const [cancellationResult, setCancellationResult] = useState(null);
   useEffect(() => {
     const items = preview?.selected || [];
     setOrdered(items);
@@ -440,6 +444,36 @@ function GenerationArea({ admin }) {
     { action: "process_next" },
     "One background generation job was processed.",
   );
+  const queuedJobsFor = (batch) => {
+    const batchId = batch.batchId || batch.id;
+    return (admin.data?.jobs || []).filter((job) => (
+      job.batchId === batchId && job.status === "queued"
+    )).length;
+  };
+  const requestCancellation = (batch) => {
+    const queuedJobs = queuedJobsFor(batch);
+    setCancellationResult(null);
+    setCancelConfirmation({
+      batch,
+      batchId: batch.batchId || batch.id,
+      queuedJobs,
+      partial: ["running", "in_progress"].includes(batch.status),
+    });
+  };
+  const confirmCancellation = async () => {
+    if (!cancelConfirmation) return;
+    const result = await admin.mutate(
+      `/api/admin/seo-articles/batches/${encodeURIComponent(cancelConfirmation.batchId)}/cancel`,
+      {
+        reason: "Cancelled before generation due to invalid topic composition",
+      },
+      "Batch cancellation recorded.",
+    );
+    if (result) {
+      setCancellationResult(result);
+      setCancelConfirmation(null);
+    }
+  };
   const editBrief = (item, replace = false) => {
     const title = window.prompt(
       replace ? "Replacement provisional title" : "Edit provisional title",
@@ -501,9 +535,57 @@ function GenerationArea({ admin }) {
       </section>
       <section className={styles.panel}>
         <div className={styles.panelHeader}><div><p className={styles.eyebrow}>Background progress</p><h2>Recent batches</h2></div></div>
+        {cancellationResult ? (
+          <div className={styles.cancelSuccess} role="status">
+            <p className={styles.eyebrow}>Generation stopped safely</p>
+            <h3>{cancellationResult.messageTitle}</h3>
+            <p>{cancellationResult.message}</p>
+            <div className={styles.stats}>
+              <Metric label="Completed" value={cancellationResult.completedJobs} />
+              <Metric label="Failed" value={cancellationResult.failedJobs} />
+              <Metric label="Cancelled" value={cancellationResult.cancelledJobs} />
+              <Metric label="Tokens" value={Number(cancellationResult.tokenUsage || 0).toLocaleString()} />
+            </div>
+          </div>
+        ) : null}
+        {cancelConfirmation ? (
+          <div className={styles.cancelDialog} role="alertdialog" aria-modal="true" aria-labelledby="cancel-batch-title">
+            <p className={styles.eyebrow}>Emergency stop</p>
+            <h3 id="cancel-batch-title">Cancel batch {cancelConfirmation.batchId.slice(0, 8)}?</h3>
+            <p>{cancelConfirmation.queuedJobs} queued jobs will be cancelled.</p>
+            <p>No generated articles will be deleted.</p>
+            {cancelConfirmation.partial
+              ? <p>The in-flight job will finish safely. No remaining queued job will start.</p>
+              : null}
+            <div className={styles.buttonRow}>
+              <button type="button" className={styles.dangerButton} disabled={admin.state.loading} onClick={confirmCancellation}>
+                {cancelConfirmation.partial ? "Stop after the current job" : "Cancel batch"}
+              </button>
+              <button type="button" disabled={admin.state.loading} onClick={() => setCancelConfirmation(null)}>Keep batch</button>
+            </div>
+          </div>
+        ) : null}
         {(admin.data?.batches || []).length ? (
-          <div className={styles.tableWrap}><table><thead><tr><th>Batch</th><th>Status</th><th>Progress</th><th>Failed</th><th>Tokens</th></tr></thead><tbody>
-            {admin.data.batches.map((batch) => <tr key={batch.id}><td>{batch.id.slice(0, 8)}</td><td>{label(batch.status)}</td><td>{batch.completed || 0}/{batch.total || 0}</td><td>{batch.failed || 0}</td><td>{Number(batch.tokenUsage?.totalTokens || 0).toLocaleString()}</td></tr>)}
+          <div className={styles.tableWrap}><table><thead><tr><th>Batch</th><th>Status</th><th>Progress</th><th>Failed</th><th>Cancelled</th><th>Tokens</th><th>Action</th></tr></thead><tbody>
+            {admin.data.batches.map((batch) => {
+              const queuedJobs = queuedJobsFor(batch);
+              const cancellable = ["queued", "running", "in_progress"].includes(batch.status)
+                && queuedJobs > 0;
+              const batchId = batch.batchId || batch.id;
+              return (
+                <tr key={batch.id}>
+                  <td><code className={styles.batchId}>{batchId}</code></td>
+                  <td>{label(batch.status)}</td>
+                  <td>{batch.completed || 0}/{batch.total || 0}</td>
+                  <td>{batch.failed || 0}</td>
+                  <td>{batch.cancelled || 0}</td>
+                  <td>{Number(batch.tokenUsage?.totalTokens || batch.tokenUsage?.total || 0).toLocaleString()}</td>
+                  <td>{cancellable
+                    ? <button type="button" className={styles.dangerButton} onClick={() => requestCancellation(batch)}>Cancel batch</button>
+                    : "No queued jobs"}</td>
+                </tr>
+              );
+            })}
           </tbody></table></div>
         ) : <p>No batches have been queued.</p>}
         {(admin.data?.jobs || []).length ? (
