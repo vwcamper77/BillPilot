@@ -16,10 +16,24 @@ export async function POST(request) {
     });
     if (contentType.includes("application/json")) return NextResponse.json(result);
     return NextResponse.redirect(
-      new URL(`/seo/review/result?action=${encodeURIComponent(result.action)}&status=${encodeURIComponent(result.status)}`, request.url),
+      new URL(`/seo/review/result?outcome=success&action=${encodeURIComponent(result.action)}&status=${encodeURIComponent(result.status)}&articleId=${encodeURIComponent(result.draftId)}&version=${encodeURIComponent(result.version || 1)}`, request.url),
       303,
     );
   } catch (error) {
+    if (!String(request.headers.get("content-type") || "").includes("application/json")) {
+      const message = String(error?.message || "");
+      const outcome = /stale/i.test(message)
+        ? "stale"
+        : /already|actioned|completed|replaced/i.test(message)
+          ? "completed"
+          : /expired/i.test(message)
+            ? "expired"
+            : "invalid";
+      return NextResponse.redirect(
+        new URL(`/seo/review/result?outcome=${outcome}`, request.url),
+        303,
+      );
+    }
     return NextResponse.json({
       ok: false,
       published: false,

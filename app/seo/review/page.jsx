@@ -1,3 +1,5 @@
+import Link from "next/link";
+import Logo from "@/components/Logo";
 import { getSeoArticleReview } from "@/lib/seoArticles/engine.server";
 
 export const metadata = {
@@ -20,9 +22,16 @@ export default async function SeoArticleReviewPage({ searchParams }) {
     review = await getSeoArticleReview(token);
   } catch {
     return (
-      <main style={{ maxWidth: 760, margin: "64px auto", padding: 24, fontFamily: "Arial, sans-serif" }}>
-        <h1>This review link is invalid or expired.</h1>
-        <p>Ask the ClearTill content administrator to send a fresh review.</p>
+      <main style={{ minHeight: "75vh", display: "grid", placeItems: "center", padding: 24, background: "#f7f4ed", color: "#143c3a" }}>
+        <section style={{ width: "min(680px, 100%)", padding: 36, borderRadius: 20, background: "white", boxShadow: "0 24px 70px rgba(20,60,58,.1)" }}>
+          <Logo height={42} />
+          <p style={{ marginTop: 28, color: "#278a68", fontWeight: 800, letterSpacing: ".12em", fontSize: 12 }}>CLEARTILL JOURNAL REVIEW</p>
+          <h1>This review link is invalid or expired.</h1>
+          <p>Ask the ClearTill content administrator to send a fresh finished-article review package. No decision was recorded.</p>
+          <Link style={{ display: "inline-block", marginTop: 18, padding: "11px 15px", borderRadius: 9, background: "#143c3a", color: "white", textDecoration: "none", fontWeight: 750 }} href="/admin/seo-articles">
+            Return to SEO dashboard
+          </Link>
+        </section>
       </main>
     );
   }

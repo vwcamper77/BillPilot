@@ -1,4 +1,5 @@
-import { BLOG_POSTS, getCategory } from "../posts";
+import { getCategory } from "../posts";
+import { getPublishedJournalPosts } from "@/lib/journal/repository.server";
 
 const SITE_URL = "https://www.cleartill.money";
 
@@ -11,8 +12,9 @@ function escapeXml(value = "") {
     .replaceAll("'", "&apos;");
 }
 
-export function GET() {
-  const items = BLOG_POSTS.map((post) => {
+export async function GET() {
+  const posts = await getPublishedJournalPosts();
+  const items = posts.map((post) => {
     const url = `${SITE_URL}/blog/${post.slug}`;
     return `
       <item>
