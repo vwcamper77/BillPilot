@@ -24,7 +24,12 @@ export async function POST(request, { params }) {
   try {
     const actor = await verifyAnalyticsAdminRequest(request);
     const { batchId } = await params;
-    const result = await cancelSeoGenerationBatch({ batchId, actor });
+    const body = await request.json().catch(() => ({}));
+    const result = await cancelSeoGenerationBatch({
+      batchId,
+      actor,
+      prepareControlledPreview: body.prepareControlledPreview === true,
+    });
     return NextResponse.json(result, {
       headers: { "Cache-Control": "private, no-store" },
     });

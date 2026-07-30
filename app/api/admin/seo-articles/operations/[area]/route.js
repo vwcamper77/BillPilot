@@ -39,6 +39,15 @@ function friendlyError(error) {
   if (error?.code === "seo/duplicate-primary-keyword") {
     return "That primary keyword is already assigned to another calendar item.";
   }
+  if (error?.code === "seo/settings-missing") {
+    return "Save the SEO generation settings before preparing or queueing a batch.";
+  }
+  if (error?.code === "seo/batch-confirmation-required") {
+    return "Review and explicitly confirm the selected article count before queueing the batch.";
+  }
+  if (error?.code === "seo/batch-topic-validation-failed") {
+    return "The batch contains duplicate, overlapping, incomplete or insufficiently diverse topics.";
+  }
   return "The SEO operation could not be completed.";
 }
 
