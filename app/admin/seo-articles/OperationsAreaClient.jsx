@@ -412,6 +412,7 @@ function GenerationArea({ admin }) {
   const preview = admin.data?.preview;
   const [selected, setSelected] = useState([]);
   const [ordered, setOrdered] = useState([]);
+  const [queueConfirmation, setQueueConfirmation] = useState(null);
   const [cancelConfirmation, setCancelConfirmation] = useState(null);
   const [cancellationResult, setCancellationResult] = useState(null);
   useEffect(() => {
@@ -429,16 +430,30 @@ function GenerationArea({ admin }) {
     [next[index], next[destination]] = [next[destination], next[index]];
     setOrdered(next);
   };
-  const queue = (ids) => admin.mutate(
-    "/api/admin/seo-articles/operations/generate",
-    {
-      action: "create_batch",
-      batchSize: ids.length,
-      calendarItemIds: ids,
-      idempotencyKey: crypto.randomUUID(),
-    },
-    "Generation batch queued. The browser is not waiting for completion.",
-  );
+  const queue = (ids) => {
+    const uniqueIds = [...new Set(ids)];
+    setQueueConfirmation({
+      ids: uniqueIds,
+      items: uniqueIds
+        .map((id) => ordered.find((item) => item.calendarItemId === id))
+        .filter(Boolean),
+    });
+  };
+  const confirmQueue = async () => {
+    if (!queueConfirmation) return;
+    const result = await admin.mutate(
+      "/api/admin/seo-articles/operations/generate",
+      {
+        action: "create_batch",
+        confirmed: true,
+        confirmedCount: queueConfirmation.ids.length,
+        calendarItemIds: queueConfirmation.ids,
+        idempotencyKey: crypto.randomUUID(),
+      },
+      `Generation batch of ${queueConfirmation.ids.length} queued. The browser is not waiting for completion.`,
+    );
+    if (result) setQueueConfirmation(null);
+  };
   const processNext = () => admin.mutate(
     "/api/admin/seo-articles/jobs/process",
     { action: "process_next" },
@@ -466,6 +481,7 @@ function GenerationArea({ admin }) {
       `/api/admin/seo-articles/batches/${encodeURIComponent(cancelConfirmation.batchId)}/cancel`,
       {
         reason: "Cancelled before generation due to invalid topic composition",
+        prepareControlledPreview: true,
       },
       "Batch cancellation recorded.",
     );
@@ -474,14 +490,50 @@ function GenerationArea({ admin }) {
       setCancelConfirmation(null);
     }
   };
-  const editBrief = (item, replace = false) => {
+  const editBrief = (item, replace = false, titleOnly = false) => {
     const title = window.prompt(
       replace ? "Replacement provisional title" : "Edit provisional title",
       item.provisionalTitle,
     );
     if (title === null) return;
-    const keyword = window.prompt("Primary keyword", replace ? "" : item.primaryKeyword);
+    const keyword = titleOnly
+      ? item.primaryKeyword
+      : window.prompt("Primary keyword", replace ? "" : item.primaryKeyword);
     if (keyword === null) return;
+    const category = titleOnly
+      ? item.category
+      : window.prompt("Category key", item.category);
+    if (category === null) return;
+    const searchIntent = titleOnly
+      ? item.searchIntent
+      : window.prompt("Distinct search intent", item.searchIntent);
+    if (searchIntent === null) return;
+    const articleType = titleOnly
+      ? item.articleType
+      : window.prompt("Article type", item.articleType);
+    if (articleType === null) return;
+    const seasonality = titleOnly
+      ? item.evergreenOrAdaptive
+      : window.prompt("Seasonal or evergreen", item.evergreenOrAdaptive);
+    if (seasonality === null) return;
+    const plannedDate = titleOnly
+      ? item.proposedPublicationDate
+      : window.prompt(
+        "Planned publication date and time",
+        item.proposedPublicationDate,
+      );
+    if (plannedDate === null) return;
+    const rationale = titleOnly
+      ? item.rationale
+      : window.prompt("Rationale", item.rationale);
+    if (rationale === null) return;
+    const adaptiveEvidence = item.evergreenOrAdaptive === "adaptive"
+      ? window.prompt(
+        "Evidence supporting this adaptive topic",
+        item.adaptiveEvidence || "",
+      )
+      : item.adaptiveEvidence;
+    if (adaptiveEvidence === null) return;
     admin.mutate(
       "/api/admin/seo-articles/operations/generate",
       {
@@ -490,12 +542,40 @@ function GenerationArea({ admin }) {
         provisionalTitle: title,
         primaryKeyword: keyword,
         secondaryKeywords: item.secondaryKeywords || [],
-        rationale: item.rationale,
+        category,
+        searchIntent,
+        articleType,
+        evergreenOrAdaptive: seasonality,
+        proposedPublicationDate: plannedDate,
+        rationale,
+        adaptiveEvidence,
         replace,
       },
-      replace ? "Topic replaced in the planning queue." : "Article brief updated.",
+      replace ? "Topic replaced in the planning queue." : titleOnly ? "Article title updated." : "Article brief updated.",
     );
   };
+  const useMonthlyBillCalendar = (item) => admin.mutate(
+    "/api/admin/seo-articles/operations/generate",
+    {
+      action: "update_brief",
+      calendarItemId: item.calendarItemId,
+      provisionalTitle: "How to Build a Simple Monthly Bill Calendar",
+      primaryKeyword: "monthly bill calendar UK",
+      secondaryKeywords: [
+        "monthly bill calendar",
+        "bill date template UK",
+        "monthly bills planner",
+      ],
+      category: "calculators_templates_tools",
+      searchIntent: "Build and use a simple monthly bill calendar",
+      articleType: "template/tool support",
+      evergreenOrAdaptive: "evergreen",
+      proposedPublicationDate: "2026-08-10T09:30:00",
+      rationale: "Evergreen template and tool support selected for the controlled first batch. August examples may be used inside the article without changing the title.",
+      replace: true,
+    },
+    "The third preview topic was replaced after checking existing Journal content.",
+  );
   return (
     <>
       <section className={styles.notice}>
@@ -506,31 +586,89 @@ function GenerationArea({ admin }) {
         <header className={styles.panelHeader}>
           <div><p className={styles.eyebrow}>Pre-generation summary</p><h2>Next eligible batch</h2></div>
           <div className={styles.buttonRow}>
-            <button type="button" disabled={!admin.data?.settings.generationEnabled || !selected.length} onClick={() => queue(selected)}>Generate selected</button>
-            <button type="button" disabled={!admin.data?.settings.generationEnabled || !ordered.length} onClick={() => queue(ordered.map((item) => item.calendarItemId))}>Generate all {ordered.length}</button>
+            <button type="button" disabled={!admin.data?.settings.generationEnabled || !selected.length || preview?.validation?.passed === false} onClick={() => queue(ordered.filter((item) => selected.includes(item.calendarItemId)).map((item) => item.calendarItemId))}>Generate selected ({selected.length})</button>
+            <button type="button" disabled={!selected.length} onClick={() => setSelected([])}>Cancel selection</button>
             <button type="button" disabled={!admin.data?.settings.generationEnabled} onClick={processNext}>Process next queued job</button>
           </div>
         </header>
+        {queueConfirmation ? (
+          <div className={styles.queueDialog} role="alertdialog" aria-modal="true" aria-labelledby="confirm-generation-title">
+            <p className={styles.eyebrow}>Final confirmation</p>
+            <h3 id="confirm-generation-title">Queue exactly {queueConfirmation.ids.length} article{queueConfirmation.ids.length === 1 ? "" : "s"}?</h3>
+            <p>This creates {queueConfirmation.ids.length} background job{queueConfirmation.ids.length === 1 ? "" : "s"}. It does not publish anything.</p>
+            <ol>
+              {queueConfirmation.items.map((item) => <li key={item.calendarItemId}>{item.provisionalTitle}</li>)}
+            </ol>
+            <div className={styles.buttonRow}>
+              <button type="button" disabled={admin.state.loading} onClick={confirmQueue}>Confirm {queueConfirmation.ids.length} and queue</button>
+              <button type="button" disabled={admin.state.loading} onClick={() => setQueueConfirmation(null)}>Return to preview</button>
+            </div>
+          </div>
+        ) : null}
+        {preview?.validation?.passed === false ? (
+          <div className={styles.validationWarning} role="alert">
+            <strong>Batch confirmation blocked</strong>
+            <ul>
+              {preview.validation.issues.map((issue, index) => (
+                <li key={`${issue.code}-${issue.calendarItemId || index}`}>{label(issue.code)}{issue.calendarItemId ? ` — ${issue.calendarItemId}` : ""}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <div className={styles.estimate}>
+          <Metric label="Selected articles" value={selected.length} />
+          <Metric label="Saved batch maximum" value={admin.data?.settings.batchSize} />
           <Metric label="Estimated input + output range" value={`${(preview?.estimatedOpenAi.lowerTokens || 0).toLocaleString()}–${(preview?.estimatedOpenAi.upperTokens || 0).toLocaleString()} tokens`} />
           <Metric label="Monetary estimate" value="Awaiting model pricing" />
           <Metric label="Hero assets" value={`${ordered.length} master + mobile pairs`} />
         </div>
-        <div className={styles.batchList}>
-          {ordered.map((item, index) => (
-            <article key={item.calendarItemId}>
-              <input type="checkbox" checked={selected.includes(item.calendarItemId)} onChange={() => toggle(item.calendarItemId)} aria-label={`Select ${item.provisionalTitle}`} />
-              <span>{index + 1}</span>
-              <div><strong>{item.provisionalTitle}</strong><p>{item.primaryKeyword} · {label(item.category)}</p><small>Duplicate risk: {item.duplicateRisk?.passed ? "passed" : "blocked"} · {dateOnly(item.proposedPublicationDate)}</small></div>
-              <div className={styles.compactActions}>
-                <button type="button" onClick={() => move(index, -1)} aria-label="Move topic earlier">↑</button>
-                <button type="button" onClick={() => move(index, 1)} aria-label="Move topic later">↓</button>
-                <button type="button" onClick={() => toggle(item.calendarItemId)}>Skip topic</button>
-                <button type="button" onClick={() => editBrief(item)}>Edit brief</button>
-                <button type="button" onClick={() => editBrief(item, true)}>Replace topic</button>
-              </div>
-            </article>
-          ))}
+        <div className={styles.tableWrap}>
+          <table className={styles.reviewTable}>
+            <thead>
+              <tr>
+                <th scope="col">Select</th>
+                <th scope="col">Order</th>
+                <th scope="col">Proposed title</th>
+                <th scope="col">Primary keyword</th>
+                <th scope="col">Category</th>
+                <th scope="col">Search intent</th>
+                <th scope="col">Seasonality</th>
+                <th scope="col">Publication date</th>
+                <th scope="col">Overlap / cannibalisation</th>
+                <th scope="col">Rationale</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordered.map((item, index) => (
+                <tr key={item.calendarItemId}>
+                  <td><input type="checkbox" checked={selected.includes(item.calendarItemId)} onChange={() => toggle(item.calendarItemId)} aria-label={`Select ${item.provisionalTitle}`} /></td>
+                  <td>{index + 1}</td>
+                  <td><strong>{item.provisionalTitle}</strong></td>
+                  <td>{item.primaryKeyword}</td>
+                  <td>{label(item.category)}</td>
+                  <td>{item.searchIntent}</td>
+                  <td>{label(item.evergreenOrAdaptive)}</td>
+                  <td>{dateOnly(item.proposedPublicationDate)}</td>
+                  <td>{item.duplicateRisk?.passed ? "Passed" : "Blocked"}</td>
+                  <td>{item.rationale}</td>
+                  <td>
+                    <div className={styles.compactActions}>
+                      <button type="button" onClick={() => move(index, -1)} aria-label="Move topic earlier">↑</button>
+                      <button type="button" onClick={() => move(index, 1)} aria-label="Move topic later">↓</button>
+                      <button type="button" onClick={() => editBrief(item, false, true)}>Edit title</button>
+                      <button type="button" onClick={() => editBrief(item)}>Edit brief</button>
+                      <button type="button" onClick={() => editBrief(item, true)}>Replace topic</button>
+                      {item.provisionalTitle === "Using a Money App Without Connecting Your Bank Account"
+                        ? <button type="button" onClick={() => useMonthlyBillCalendar(item)}>Use monthly bill calendar</button>
+                        : null}
+                      <button type="button" onClick={() => toggle(item.calendarItemId)}>Remove</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
       <section className={styles.panel}>
@@ -554,6 +692,7 @@ function GenerationArea({ admin }) {
             <h3 id="cancel-batch-title">Cancel batch {cancelConfirmation.batchId.slice(0, 8)}?</h3>
             <p>{cancelConfirmation.queuedJobs} queued jobs will be cancelled.</p>
             <p>No generated articles will be deleted.</p>
+            <p>The three controlled replacement topics will be saved as a preview only. No generation jobs will be created.</p>
             {cancelConfirmation.partial
               ? <p>The in-flight job will finish safely. No remaining queued job will start.</p>
               : null}
@@ -940,7 +1079,7 @@ function SettingsArea({ admin }) {
       <section className={styles.settingsGrid}>
         <fieldset>
           <legend>Planning</legend>
-          <Field label="Batch size (1–10)"><input type="number" min="1" max="10" value={form.batchSize || 10} onChange={(event) => update("batchSize", Number(event.target.value))} /></Field>
+          <Field label="Batch size (1–10)"><input type="number" min="1" max="10" value={form.batchSize ?? 3} onChange={(event) => update("batchSize", Number(event.target.value))} /></Field>
           <Field label="Articles per week"><input type="number" value={form.articlesPerWeek || 3} disabled /></Field>
           <Field label="Publication time"><input type="time" value={form.publicationTime || "09:30"} onChange={(event) => update("publicationTime", event.target.value)} /></Field>
           <Field label="Timezone"><input value={form.timezone || "Europe/London"} disabled /></Field>

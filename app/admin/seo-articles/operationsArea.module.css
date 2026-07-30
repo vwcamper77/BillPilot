@@ -116,7 +116,9 @@
 }
 
 .cancelDialog,
-.cancelSuccess {
+.cancelSuccess,
+.queueDialog,
+.validationWarning {
   border-radius: 14px;
   margin: 18px 0;
   padding: 18px;
@@ -125,6 +127,31 @@
 .cancelDialog {
   background: #fff3ef;
   border: 1px solid #e9b6aa;
+}
+
+.queueDialog {
+  background: #eef8f3;
+  border: 1px solid #9bcdb5;
+}
+
+.validationWarning {
+  background: #fff0c9;
+  border: 1px solid #e5c46d;
+  color: #634b0d;
+}
+
+.reviewTable {
+  min-width: 1500px;
+}
+
+.reviewTable td {
+  max-width: 260px;
+  vertical-align: top;
+  white-space: normal;
+}
+
+.reviewTable td:last-child {
+  min-width: 180px;
 }
 
 .cancelSuccess {
