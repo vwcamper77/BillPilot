@@ -9,6 +9,7 @@ const planCore = require("../lib/seoArticles/contentPlan.cjs");
 const pipelineCore = require("../lib/seoArticles/pipelineCore.cjs");
 const publicationCore = require("../lib/seoArticles/publicationCore.cjs");
 const bufferCore = require("../lib/integrations/bufferCore.cjs");
+const batchCancellationCore = require("../lib/seoArticles/batchCancellationCore.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
@@ -448,6 +449,93 @@ test("existing production test article is not targeted and all recurring automat
   assert.deepEqual(vercel.crons, [{ path: "/api/reminders", schedule: "0 7 * * *" }]);
   assert.equal(pipelineCore.DEFAULT_SETTINGS.publicationAutomationEnabled, false);
   assert.equal(bufferCore.bufferRuntimeConfig({ BUFFER_SYNC_ENABLED: "false" }).syncEnabled, false);
+});
+
+test("fully queued generation batches cancel before any provider work", () => {
+  const jobs = Array.from({ length: 10 }, (_, index) => ({
+    id: `job-${index + 1}`,
+    status: "queued",
+    attempts: 0,
+  }));
+  const summary = batchCancellationCore.summariseBatchState({
+    batch: {
+      status: "queued",
+      total: 10,
+      tokenUsage: { total: 0 },
+    },
+    jobs,
+    drafts: [],
+    reviewPackages: [],
+  });
+  const outcome = batchCancellationCore.cancellationOutcome(summary);
+  assert.equal(batchCancellationCore.canCancelBatch({ status: "queued" }, summary), true);
+  assert.equal(outcome.status, "cancelled");
+  assert.equal(outcome.cancelled, 10);
+  assert.equal(outcome.completed, 0);
+  assert.equal(outcome.failed, 0);
+  assert.equal(summary.started, 0);
+  assert.equal(summary.articleCount, 0);
+  assert.equal(summary.emailCount, 0);
+  assert.equal(summary.responseIds.length, 0);
+  assert.equal(summary.batchTokenUsage, 0);
+  assert.equal(summary.recordedTokenUsage, 0);
+});
+
+test("running generation batches stop after the current job", () => {
+  const summary = batchCancellationCore.summariseBatchState({
+    batch: { status: "in_progress", total: 10 },
+    jobs: [
+      { id: "active", status: "writing", attempts: 1, startedAt: "2026-07-30T12:00:00Z" },
+      ...Array.from({ length: 9 }, (_, index) => ({
+        id: `queued-${index + 1}`,
+        status: "queued",
+        attempts: 0,
+      })),
+    ],
+  });
+  const outcome = batchCancellationCore.cancellationOutcome(summary);
+  assert.equal(batchCancellationCore.canCancelBatch({ status: "in_progress" }, summary), true);
+  assert.equal(outcome.status, "partially_cancelled");
+  assert.equal(outcome.newlyCancelled, 9);
+  assert.equal(outcome.inFlight, 1);
+  assert.equal(outcome.completed, 0);
+});
+
+test("batch cancellation endpoint is admin-only, POST-only and transaction safe", () => {
+  const route = read("app/api/admin/seo-articles/batches/[batchId]/cancel/route.js");
+  const server = read("lib/seoArticles/batchCancellation.server.js");
+  assert.match(route, /export async function POST/);
+  assert.doesNotMatch(route, /export async function GET/);
+  assert.match(route, /verifyAnalyticsAdminRequest\(request\)/);
+  assert.match(route, /cancelSeoGenerationBatch/);
+  assert.match(server, /db\.runTransaction/);
+  assert.match(server, /transaction\.create\(auditRef/);
+  assert.match(server, /cancel_generation_batch/);
+  assert.match(server, /Cancelled before generation due to invalid topic composition/);
+  assert.match(server, /duplicatePrevented: true/);
+  assert.match(server, /\.limit\(MAX_BATCH_JOBS \+ 1\)/);
+});
+
+test("cancelled batches cannot call providers or create content side effects", () => {
+  const cancellation = read("lib/seoArticles/batchCancellation.server.js");
+  const worker = read("lib/seoArticles/batchGeneration.server.js");
+  assert.doesNotMatch(cancellation, /openai\.server|generateStructuredSeoArticle|sendEmail|generateNativeHero|buffer/i);
+  assert.match(worker, /batch\.cancellationRequested === true/);
+  assert.match(worker, /\["cancelled", "partially_cancelled"\]\.includes\(batch\.status\)/);
+  assert.match(worker, /status: "cancelled"/);
+  assert.match(worker, /status: cancellationRequested[\s\S]*"partially_cancelled"/);
+});
+
+test("generation admin shows explicit cancellation confirmation and branded result", () => {
+  const client = read("app/admin/seo-articles/OperationsAreaClient.jsx");
+  const server = read("lib/seoArticles/batchCancellation.server.js");
+  assert.match(client, /Cancel batch \{cancelConfirmation\.batchId\.slice\(0, 8\)\}\?/);
+  assert.match(client, /queued jobs will be cancelled/);
+  assert.match(client, /No generated articles will be deleted/);
+  assert.match(client, /Stop after the current job/);
+  assert.match(client, /messageTitle/);
+  assert.match(server, /No articles or review emails were created/);
+  assert.match(client, /className=\{styles\.batchId\}/);
 });
 
 test("Firestore index configuration covers the bounded compound queries", () => {

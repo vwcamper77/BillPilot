@@ -115,6 +115,41 @@
   color: #12513f;
 }
 
+.cancelDialog,
+.cancelSuccess {
+  border-radius: 14px;
+  margin: 18px 0;
+  padding: 18px;
+}
+
+.cancelDialog {
+  background: #fff3ef;
+  border: 1px solid #e9b6aa;
+}
+
+.cancelSuccess {
+  background: #ddf4e8;
+  border: 1px solid #9bcdb5;
+  color: #12513f;
+}
+
+.cancelDialog h3,
+.cancelSuccess h3 {
+  margin: 4px 0 10px;
+}
+
+.shell .dangerButton {
+  background: #9b3d35;
+}
+
+.batchId {
+  display: inline-block;
+  font-size: 12px;
+  max-width: 260px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .stats,
 .estimate {
   display: grid;
