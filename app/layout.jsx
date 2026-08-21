@@ -33,6 +33,9 @@ export const metadata = {
     template: "%s | ClearTill",
   },
   description: HOME_DESCRIPTION,
+  verification: {
+    google: "MJAHXddxZwTCR5GaGnQekG_uo29mGn3XAoJwZpKIf1M",
+  },
   manifest: "/site.webmanifest",
   icons: {
     icon: [

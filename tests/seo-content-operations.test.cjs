@@ -129,7 +129,7 @@ test("calendar rescheduling rejects an occupied slot and a fourth weekly slot", 
 
 test("all automation settings default to disabled in Europe/London", () => {
   const settings = pipelineCore.validateSettings();
-  assert.equal(settings.batchSize, 10);
+  assert.equal(settings.batchSize, 3);
   assert.equal(settings.articlesPerWeek, 3);
   assert.equal(settings.timezone, "Europe/London");
   assert.equal(settings.generationEnabled, false);
@@ -157,19 +157,152 @@ test("pipeline transition records contain the required audit fields", () => {
   assert.equal(record.sourceAction, "generate_batch");
 });
 
-test("generation batch defaults to 10 and selects only eligible non-duplicate slots", () => {
+test("saved batch size of 3 selects exactly 3 eligible non-duplicate slots", () => {
   const plan = planCore.createAnnualContentPlan();
   plan.items[0].status = "published";
   const result = pipelineCore.selectGenerationBatch(plan.items, {
+    batchSize: 3,
     duplicateCheck: (item) => (
       item.calendarItemId === plan.items[1].calendarItemId
         ? { passed: false }
         : { passed: true }
     ),
   });
-  assert.equal(result.selected.length, 10);
+  assert.equal(result.selected.length, 3);
   assert.equal(result.selected.some((item) => item.calendarItemId === plan.items[0].calendarItemId), false);
   assert.equal(result.selected.some((item) => item.calendarItemId === plan.items[1].calendarItemId), false);
+  const jobs = pipelineCore.buildGenerationJobSpecs("controlled-batch", result.selected);
+  assert.equal(jobs.length, 3);
+  assert.deepEqual(jobs.map((job) => job.position), [0, 1, 2]);
+  assert.equal(jobs.every((job) => job.status === "queued" && job.attempts === 0), true);
+});
+
+test("controlled replacement preview contains exactly the approved three topics", () => {
+  const preview = pipelineCore.selectGenerationBatch(
+    planCore.createAnnualContentPlan().items,
+    { batchSize: 3 },
+  );
+  assert.deepEqual(preview.selected.map((item) => ({
+    title: item.provisionalTitle,
+    keyword: item.primaryKeyword,
+    category: item.category,
+    seasonality: item.evergreenOrAdaptive,
+  })), [
+    {
+      title: "How to Budget for Back-to-School Costs Before Payday",
+      keyword: "back to school budget before payday",
+      category: "seasonal_life_events",
+      seasonality: "seasonal",
+    },
+    {
+      title: "How to List Direct Debits Due Before Your Next Payday",
+      keyword: "direct debits before payday",
+      category: "bills_direct_debits_subscriptions",
+      seasonality: "evergreen",
+    },
+    {
+      title: "How to Build a Simple Monthly Bill Calendar",
+      keyword: "monthly bill calendar UK",
+      category: "calculators_templates_tools",
+      seasonality: "evergreen",
+    },
+  ]);
+  assert.equal(preview.selected[2].articleType, "template/tool support");
+  assert.equal(preview.selected[2].proposedPublicationDate, "2026-08-10T09:30:00");
+  assert.equal(preview.validation.passed, true);
+});
+
+test("monthly planning themes are not appended verbatim to planned titles", () => {
+  const plan = planCore.createAnnualContentPlan();
+  const planned = plan.items.filter((item) => item.evergreenOrAdaptive !== "adaptive");
+  assert.equal(planned.every((item) => (
+    !item.provisionalTitle.toLowerCase().includes(item.seasonalRelevance.toLowerCase())
+  )), true);
+  assert.equal(planned.some((item) => item.seasonalRelevance.includes("back-to-school")), true);
+});
+
+test("unassigned adaptive slots are excluded from generation previews", () => {
+  const plan = planCore.createAnnualContentPlan();
+  const adaptiveSlots = plan.items
+    .filter((item) => item.evergreenOrAdaptive === "adaptive")
+    .slice(0, 2);
+  const [adaptive] = adaptiveSlots;
+  assert.equal(adaptive.provisionalTitle, null);
+  assert.equal(adaptive.primaryKeyword, null);
+  assert.equal(adaptive.adaptiveEvidence, null);
+  const preview = pipelineCore.selectGenerationBatch(adaptiveSlots, { batchSize: 2 });
+  assert.equal(preview.selected.length, 0);
+  assert.equal(preview.excluded.length, 2);
+  assert.equal(preview.excluded[0].reason, "adaptive_unassigned");
+  assert.equal(preview.excluded[1].reason, "adaptive_unassigned");
+});
+
+test("duplicate keywords and overlapping search intent block batch confirmation", () => {
+  const duplicateKeyword = pipelineCore.validateGenerationBatch([
+    {
+      calendarItemId: "one",
+      provisionalTitle: "Plan direct debits before payday",
+      primaryKeyword: "direct debits before payday",
+      searchIntent: "List direct debits due before payday",
+      category: "bills_direct_debits_subscriptions",
+    },
+    {
+      calendarItemId: "two",
+      provisionalTitle: "Check direct debits before payday",
+      primaryKeyword: "direct debits before payday",
+      searchIntent: "List direct debits due before payday",
+      category: "clear_to_spend",
+    },
+  ], { duplicateCheck: planCore.findDuplicateRisks });
+  assert.equal(duplicateKeyword.passed, false);
+  assert.ok(duplicateKeyword.issues.some((issue) => issue.code === "duplicate_primary_keyword"));
+  assert.ok(duplicateKeyword.issues.some((issue) => (
+    ["duplicate_search_intent", "content_overlap"].includes(issue.code)
+  )));
+});
+
+test("title length and minimum category diversity block batch confirmation", () => {
+  const batch = Array.from({ length: 3 }, (_, index) => ({
+    calendarItemId: `item-${index}`,
+    provisionalTitle: index === 0
+      ? "This provisional title is deliberately much too long for the configured generation preview title limit"
+      : `Distinct short article title ${index}`,
+    primaryKeyword: `distinct keyword ${index}`,
+    searchIntent: `Distinct informational intent ${index}`,
+    category: "clear_to_spend",
+  }));
+  const result = pipelineCore.validateGenerationBatch(batch, {
+    maxTitleLength: 60,
+    duplicateCheck: () => ({ passed: true }),
+  });
+  assert.equal(result.passed, false);
+  assert.ok(result.issues.some((issue) => issue.code === "title_too_long"));
+  assert.ok(result.issues.some((issue) => (
+    issue.code === "category_diversity"
+    && issue.requiredCategories === 2
+  )));
+});
+
+test("missing saved settings fail closed and preview confirmation is required", () => {
+  const operations = read("lib/seoArticles/contentOps.server.js");
+  const worker = read("lib/seoArticles/batchGeneration.server.js");
+  const client = read("app/admin/seo-articles/OperationsAreaClient.jsx");
+  assert.match(operations, /readSettings\(db, \{ required: true \}\)/);
+  assert.match(operations, /!Number\.isInteger\(saved\.batchSize\)/);
+  assert.match(worker, /!Number\.isInteger\(saved\.batchSize\)/);
+  assert.doesNotMatch(worker, /snapshot\.exists \? snapshot\.data\(\) : DEFAULT_SETTINGS/);
+  assert.match(operations, /input\.confirmed !== true/);
+  assert.match(operations, /confirmedCount !== requestedIds\.length/);
+  assert.match(operations, /confirmedCount > settings\.batchSize/);
+  assert.match(client, /Queue exactly \{queueConfirmation\.ids\.length\}/);
+  assert.match(client, /confirmed: true/);
+  assert.doesNotMatch(client, /batchSize: ids\.length/);
+  assert.match(client, /<th scope="col">Proposed title<\/th>/);
+  assert.match(client, /<th scope="col">Overlap \/ cannibalisation<\/th>/);
+  assert.match(client, /Edit title/);
+  assert.match(client, /Edit brief/);
+  assert.match(client, /Replace topic/);
+  assert.match(client, /Generate selected/);
 });
 
 test("failed generation does not block later jobs and retry is idempotent by durable job state", () => {
